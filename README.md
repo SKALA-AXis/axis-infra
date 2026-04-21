@@ -21,7 +21,8 @@ axis-infra/                     ← 이 레포 (Single Source of Truth)
 │   └── workflows/
 │       └── validate.yml        # SQL·OpenAPI 유효성 검사 CI
 └── docs/
-    ├── CONVENTION.md           # 팀 개발 컨벤션
+    ├── conventions/
+    │   └── CONVENTION.md       # 팀 개발 컨벤션
     ├── adr/                    # 기술 결정 기록 (ADR)
     ├── meetings/               # 회의록
     └── sprints/                # 스프린트 계획 및 회고
