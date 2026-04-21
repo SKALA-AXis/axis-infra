@@ -5,6 +5,7 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  workflow_dispatch:
 
 jobs:
   validate-sql:
@@ -58,6 +59,8 @@ jobs:
     name: Notify API Spec Change
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    permissions:
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -66,7 +69,7 @@ jobs:
       - name: Check for API spec changes
         id: check-changes
         run: |
-          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'api/openapi.yaml' 'api/ai-internal-api.yaml')
+          CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" -- 'api/openapi.yaml' 'api/ai-internal-api.yaml')
           if [ -n "$CHANGED" ]; then
             echo "changed=true" >> $GITHUB_OUTPUT
             echo "files=$CHANGED" >> $GITHUB_OUTPUT
@@ -79,37 +82,38 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const changedFiles = `${{ steps.check-changes.outputs.files }}`.trim().split('\n');
+            const changedFiles = process.env.CHANGED_FILES.trim().split('\n');
             const fileList = changedFiles.map(f => `- \`${f}\``).join('\n');
-
-            const body = `## ⚠️ API 스펙 변경 감지
-
-            다음 API 스펙 파일이 변경되었습니다:
-            ${fileList}
-
-            **각 레포에서 타입 자동 생성을 재실행해야 합니다:**
-
-            **axis-frontend:**
-            \`\`\`bash
-            npx openapi-typescript ../axis-infra/api/openapi.yaml -o src/types/api.ts
-            \`\`\`
-
-            **axis-backend:**
-            \`\`\`bash
-            openapi-generator-cli generate -i ../axis-infra/api/openapi.yaml -g spring -o ./generated
-            \`\`\`
-
-            **axis-ai:**
-            \`\`\`bash
-            datamodel-codegen --input ../axis-infra/api/ai-internal-api.yaml --output src/schemas.py
-            \`\`\`
-
-            > 이 PR이 머지되기 전에 관련 레포 PR을 함께 준비해주세요.
-            > 참고: [API 스펙 공유 규칙](docs/conventions/CONVENTION.md#10-api-스펙-공유-규칙)`;
-
-            github.rest.issues.createComment({
+            const body = [
+              '## ⚠️ API 스펙 변경 감지',
+              '',
+              '다음 API 스펙 파일이 변경되었습니다:',
+              fileList,
+              '',
+              '**각 레포에서 타입 자동 생성을 재실행해야 합니다:**',
+              '',
+              '**axis-frontend:**',
+              '```bash',
+              'npx openapi-typescript ../axis-infra/api/openapi.yaml -o src/types/api.ts',
+              '```',
+              '',
+              '**axis-backend:**',
+              '```bash',
+              'openapi-generator-cli generate -i ../axis-infra/api/openapi.yaml -g spring -o ./generated',
+              '```',
+              '',
+              '**axis-ai:**',
+              '```bash',
+              'datamodel-codegen --input ../axis-infra/api/ai-internal-api.yaml --output src/schemas.py',
+              '```',
+              '',
+              '> 이 PR이 머지되기 전에 관련 레포 PR을 함께 준비해주세요.',
+            ].join('\n');
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: body
+              body,
             });
+        env:
+          CHANGED_FILES: ${{ steps.check-changes.outputs.files }}
