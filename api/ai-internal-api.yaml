@@ -1,0 +1,397 @@
+openapi: 3.0.3
+info:
+  title: AXIS AI Internal API
+  description: |
+    SpringBoot ↔ Python AI 서버 내부 통신용 API 계약서
+
+    > 이 API는 axis-backend(SpringBoot)에서만 호출합니다.
+    > 외부(Frontend)에서 직접 접근 불가.
+
+    **타입 자동 생성:**
+    - Python AI: `datamodel-codegen --input api/ai-internal-api.yaml --output src/schemas.py`
+    - SpringBoot: `openapi-generator-cli generate -i api/ai-internal-api.yaml -g spring`
+  version: 1.0.0
+  contact:
+    name: SKALA AI 13조
+
+servers:
+  - url: http://localhost:8001
+    description: Local AI server
+  - url: http://ai:8001
+    description: Docker network (내부 통신용)
+
+tags:
+  - name: pipeline
+    description: 파이프라인 실행
+  - name: search
+    description: 검색
+  - name: weak-signal
+    description: 약한 신호 감지
+  - name: system
+    description: 시스템
+
+paths:
+  /health:
+    get:
+      tags: [system]
+      summary: AI 서버 헬스체크
+      operationId: aiHealthCheck
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /pipeline/run:
+    post:
+      tags: [pipeline]
+      summary: 수집 파이프라인 실행
+      description: |
+        크롤링 → 전처리 → 품질 게이트 → 신뢰도 게이트 → 중복 제거 → 임베딩 → Qdrant 적재
+        실행 주기: 1시간마다 (SpringBoot Scheduler에서 호출)
+      operationId: runCollectionPipeline
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [peer_ids, trigger_type]
+              properties:
+                peer_ids:
+                  type: array
+                  items:
+                    type: string
+                  example: ["samsung_sds", "lg_cns"]
+                trigger_type:
+                  type: string
+                  enum: [scheduled, manual]
+                  example: scheduled
+      responses:
+        '202':
+          description: 파이프라인 비동기 실행 시작
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineRunResponse'
+        '409':
+          description: 이미 실행 중
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /pipeline/delivery:
+    post:
+      tags: [pipeline]
+      summary: 전달 파이프라인 실행
+      description: |
+        PostgreSQL 이슈 카드 조회 → 시사점 생성 → SC 검증 → Slack 발송
+        실행 주기: 매일 오전 8:30 (SpringBoot Scheduler에서 호출)
+      operationId: runDeliveryPipeline
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                target_date:
+                  type: string
+                  format: date
+                  description: 브리핑 대상 날짜 (미입력 시 오늘)
+                  example: "2026-04-20"
+      responses:
+        '202':
+          description: 전달 파이프라인 비동기 실행 시작
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineRunResponse'
+        '409':
+          description: 이미 실행 중
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /search:
+    post:
+      tags: [search]
+      summary: 하이브리드 검색
+      description: BGE-M3 Dense+Sparse RRF → BGE-reranker-v2-m3 리랭킹
+      operationId: hybridSearch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  type: string
+                  example: LG CNS 팔란티어 파트너십
+                peer_id:
+                  type: string
+                  nullable: true
+                  example: lg_cns
+                filters:
+                  $ref: '#/components/schemas/SearchFilters'
+                top_k:
+                  type: integer
+                  default: 10
+                  minimum: 1
+                  maximum: 50
+      responses:
+        '200':
+          description: 검색 결과
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResult'
+
+  /gen-search:
+    post:
+      tags: [search]
+      summary: Generative Search (RAG)
+      description: 하이브리드 검색 + GPT-4o 생성 (환각 방지 SC 검증 포함)
+      operationId: generativeSearch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  type: string
+                  example: 삼성SDS가 최근 6개월간 AI 분야에서 한 주요 행보는?
+                session_id:
+                  type: string
+                  nullable: true
+                  description: 대화 컨텍스트 유지용 세션 ID
+                history:
+                  type: array
+                  nullable: true
+                  items:
+                    $ref: '#/components/schemas/ChatMessage'
+                  description: 이전 대화 기록
+      responses:
+        '200':
+          description: 생성형 검색 결과
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenSearchResult'
+
+  /weak-signal/run:
+    post:
+      tags: [weak-signal]
+      summary: 약한 신호 감지기 실행
+      description: 채용공고 증감 분석 → 기술 스택 변화 탐지 → 전략 신호 추출
+      operationId: runWeakSignalDetector
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                peer_ids:
+                  type: array
+                  items:
+                    type: string
+                  example: ["samsung_sds", "lg_cns"]
+                snapshot_week:
+                  type: string
+                  format: date
+                  description: 분석 기준 주 (미입력 시 이번 주)
+      responses:
+        '200':
+          description: 약한 신호 탐지 결과
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeakSignalResult'
+
+components:
+  schemas:
+    # ── 공통 ──────────────────────────────────────────────
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, error]
+        models_loaded:
+          type: object
+          properties:
+            bge_m3:
+              type: boolean
+            bge_reranker:
+              type: boolean
+        db_connected:
+          type: boolean
+        qdrant_connected:
+          type: boolean
+
+    ErrorResponse:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: string
+
+    # ── 파이프라인 ─────────────────────────────────────────
+    PipelineRunResponse:
+      type: object
+      required: [run_id, status]
+      properties:
+        run_id:
+          type: string
+          description: 비동기 실행 ID (로그 추적용)
+        status:
+          type: string
+          enum: [started, queued]
+        message:
+          type: string
+
+    # ── 검색 ──────────────────────────────────────────────
+    SearchFilters:
+      type: object
+      properties:
+        event_types:
+          type: array
+          items:
+            type: string
+            enum: [partnership, ma, personnel, tech, regulation, new_biz]
+        importance:
+          type: array
+          items:
+            type: string
+            enum: [urgent, notable, reference]
+        date_from:
+          type: string
+          format: date
+        date_to:
+          type: string
+          format: date
+
+    SearchHit:
+      type: object
+      required: [rdb_id, title, score]
+      properties:
+        rdb_id:
+          type: integer
+          description: raw_articles.id FK
+        qdrant_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        summary:
+          type: string
+        peer_id:
+          type: string
+        event_type:
+          type: string
+        importance:
+          type: string
+        published_at:
+          type: string
+          format: date-time
+        score:
+          type: number
+          format: float
+          description: RRF 결합 점수
+        rerank_score:
+          type: number
+          format: float
+          nullable: true
+
+    SearchResult:
+      type: object
+      required: [hits, total]
+      properties:
+        hits:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchHit'
+        total:
+          type: integer
+        query_embedding_ms:
+          type: integer
+        search_ms:
+          type: integer
+        rerank_ms:
+          type: integer
+
+    ChatMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+
+    GenSearchResult:
+      type: object
+      required: [answer, citations, session_id]
+      properties:
+        answer:
+          type: object
+          properties:
+            summary:
+              type: string
+            detail:
+              type: string
+            implication:
+              type: string
+            follow_up_questions:
+              type: array
+              items:
+                type: string
+        citations:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchHit'
+        session_id:
+          type: string
+        sc_passed:
+          type: boolean
+          description: Self-Consistency 검증 통과 여부
+        sc_score:
+          type: number
+          format: float
+
+    # ── 약한 신호 ──────────────────────────────────────────
+    WeakSignalResult:
+      type: object
+      properties:
+        signals:
+          type: array
+          items:
+            type: object
+            properties:
+              peer_id:
+                type: string
+              signal_type:
+                type: string
+                enum: [hiring_surge, tech_stack_new, tech_stack_drop, org_expansion]
+              description:
+                type: string
+              evidence:
+                type: object
+              detected_at:
+                type: string
+                format: date-time
+        snapshot_week:
+          type: string
+          format: date

@@ -1,0 +1,68 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+mlruns/
+mlartifacts/
+
+# Java / Spring
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+.gradle/
+out/
+*.iml
+
+# Node / Frontend
+node_modules/
+.next/
+.nuxt/
+.cache/
+*.tsbuildinfo
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# IDE
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Logs
+*.log
+logs/
+
+# Docker volumes
+pgdata/
+qdrant_storage/
+
+# Secrets
+*.pem
+*.key
+*.p12
+secrets/
