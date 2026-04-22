@@ -6,12 +6,15 @@ info:
 
     모든 응답은 `{ success, data, timestamp }` 래퍼 구조를 사용합니다.
 
+    **인증:** 로그인 후 발급받은 JWT를 `Authorization: Bearer {token}` 헤더에 포함합니다.
+    `/health`, `/api/auth/login`, `/api/auth/signup` 은 인증 불필요.
+
     **타입 자동 생성:**
     - Frontend: `npx openapi-typescript api/openapi.yaml -o src/types/api.ts`
     - SpringBoot: `openapi-generator-cli generate -i api/openapi.yaml -g spring`
 
     > 이 파일을 변경할 경우 반드시 팀 공지 후 각 레포 자동 생성을 재실행하세요.
-  version: 1.0.0
+  version: 1.1.0
   contact:
     name: SKALA AI 13조
 
@@ -22,23 +25,34 @@ servers:
     description: Production
 
 tags:
+  - name: auth
+    description: 인증
   - name: issues
     description: 이슈 카드
   - name: search
     description: AI 대화형 검색
   - name: peers
     description: Peer사
+  - name: weak-signals
+    description: 약한 신호
   - name: alerts
     description: 알림 설정
+  - name: pipeline
+    description: 파이프라인 (관리자용)
   - name: system
     description: 시스템
 
+security:
+  - BearerAuth: []
+
 paths:
+  # ── 시스템 ────────────────────────────────────────────────
   /health:
     get:
       tags: [system]
       summary: 헬스체크
       operationId: healthCheck
+      security: []
       responses:
         '200':
           description: OK
@@ -51,14 +65,36 @@ paths:
                 data: { status: "UP" }
                 timestamp: "2026-04-20T08:30:00Z"
 
-  /api/pipeline/status:
-    get:
-      tags: [system]
-      summary: 파이프라인 상태 조회
-      operationId: getPipelineStatus
+  # ── 인증 ─────────────────────────────────────────────────
+  /api/auth/signup:
+    post:
+      tags: [auth]
+      summary: 회원가입
+      description: 내부 사용자 계정 생성. 관리자가 신규 팀원에게 계정을 발급할 때 사용.
+      operationId: signup
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, name]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@sk.com
+                password:
+                  type: string
+                  minLength: 8
+                  example: "password123!"
+                name:
+                  type: string
+                  example: 홍길동
       responses:
-        '200':
-          description: 파이프라인 실행 상태
+        '201':
+          description: 회원가입 성공
           content:
             application/json:
               schema:
@@ -67,8 +103,144 @@ paths:
                   - type: object
                     properties:
                       data:
-                        $ref: '#/components/schemas/PipelineStatus'
+                        $ref: '#/components/schemas/UserProfile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: 이미 존재하는 이메일
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
+  /api/auth/login:
+    post:
+      tags: [auth]
+      summary: 로그인
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@sk.com
+                password:
+                  type: string
+                  example: "password123!"
+      responses:
+        '200':
+          description: 로그인 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [access_token, refresh_token, user]
+                        properties:
+                          access_token:
+                            type: string
+                            description: JWT Access Token (24시간 유효)
+                          refresh_token:
+                            type: string
+                            description: Refresh Token (7일 유효)
+                          user:
+                            $ref: '#/components/schemas/UserProfile'
+        '401':
+          description: 이메일 또는 비밀번호 불일치
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/logout:
+    post:
+      tags: [auth]
+      summary: 로그아웃
+      description: 서버 측 refresh token 무효화.
+      operationId: logout
+      responses:
+        '200':
+          description: 로그아웃 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/auth/refresh:
+    post:
+      tags: [auth]
+      summary: Access Token 갱신
+      description: Refresh Token으로 새 Access Token을 발급받습니다.
+      operationId: refreshToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: 토큰 갱신 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [access_token]
+                        properties:
+                          access_token:
+                            type: string
+                            description: 새 JWT Access Token (24시간 유효)
+        '401':
+          description: 유효하지 않거나 만료된 Refresh Token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/me:
+    get:
+      tags: [auth]
+      summary: 내 정보 조회
+      operationId: getMe
+      responses:
+        '200':
+          description: 현재 로그인 사용자 정보
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── 이슈 카드 ──────────────────────────────────────────────
   /api/issues:
     get:
       tags: [issues]
@@ -88,6 +260,18 @@ paths:
           in: query
           schema:
             $ref: '#/components/schemas/EventTypeEnum'
+        - name: date_from
+          in: query
+          schema:
+            type: string
+            format: date
+            example: "2026-04-01"
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date
+            example: "2026-04-20"
         - name: limit
           in: query
           schema:
@@ -124,6 +308,8 @@ paths:
                             type: integer
                           offset:
                             type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /api/issues/today:
     get:
@@ -132,7 +318,7 @@ paths:
       operationId: getTodayBriefing
       responses:
         '200':
-          description: 오늘의 이슈 카드 목록 (urgent 우선 정렬)
+          description: 오늘의 이슈 카드 목록 (urgent → notable → reference 순)
           content:
             application/json:
               schema:
@@ -142,6 +328,7 @@ paths:
                     properties:
                       data:
                         type: object
+                        required: [date, urgent, notable, reference]
                         properties:
                           date:
                             type: string
@@ -158,6 +345,8 @@ paths:
                             type: array
                             items:
                               $ref: '#/components/schemas/IssueCard'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /api/issues/{id}:
     get:
@@ -183,17 +372,17 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/IssueCard'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
-          description: 이슈 카드 없음
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
 
+  # ── 검색 ──────────────────────────────────────────────────
   /api/search:
     post:
       tags: [search]
-      summary: AI 대화형 검색
+      summary: AI 대화형 검색 (Generative Search)
+      description: BGE-M3 하이브리드 검색 + GPT-4o 생성. SC 검증 포함.
       operationId: search
       requestBody:
         required: true
@@ -208,10 +397,12 @@ paths:
                   example: LG CNS 팔란티어 파트너십 현황
                 peer_id:
                   type: string
+                  nullable: true
                   example: lg_cns
                 session_id:
                   type: string
-                  description: 대화 컨텍스트 유지용 세션 ID
+                  nullable: true
+                  description: 대화 컨텍스트 유지용 세션 ID (후속 질문 시 포함)
       responses:
         '200':
           description: 검색 결과
@@ -224,6 +415,8 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/SearchResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /api/search/suggestions:
     get:
@@ -253,7 +446,58 @@ paths:
                             type: array
                             items:
                               type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
+  /api/search/history:
+    get:
+      tags: [search]
+      summary: 검색 히스토리 조회
+      description: 현재 사용자의 최근 검색 기록을 반환합니다.
+      operationId: getSearchHistory
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 50
+      responses:
+        '200':
+          description: 검색 히스토리
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/SearchHistoryItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    delete:
+      tags: [search]
+      summary: 검색 히스토리 전체 삭제
+      operationId: clearSearchHistory
+      responses:
+        '200':
+          description: 삭제 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── Peer사 ────────────────────────────────────────────────
   /api/peers:
     get:
       tags: [peers]
@@ -273,6 +517,8 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/PeerCompany'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /api/peers/{peerId}/issues:
     get:
@@ -286,6 +532,10 @@ paths:
           schema:
             type: string
             example: samsung_sds
+        - name: event_type
+          in: query
+          schema:
+            $ref: '#/components/schemas/EventTypeEnum'
         - name: limit
           in: query
           schema:
@@ -298,7 +548,7 @@ paths:
             default: 0
       responses:
         '200':
-          description: 이슈 타임라인
+          description: Peer사별 이슈 타임라인
           content:
             application/json:
               schema:
@@ -317,7 +567,67 @@ paths:
                               $ref: '#/components/schemas/IssueCard'
                           total:
                             type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
+  # ── 약한 신호 ──────────────────────────────────────────────
+  /api/weak-signals:
+    get:
+      tags: [weak-signals]
+      summary: 약한 신호 목록 조회
+      description: |
+        채용공고 급증·신규 직군 출현 등 아직 보도되지 않은 전략 변화 신호.
+        매주 월요일 오전 9시 자동 갱신.
+      operationId: listWeakSignals
+      parameters:
+        - name: peer_id
+          in: query
+          schema:
+            type: string
+            example: lg_cns
+        - name: strength
+          in: query
+          schema:
+            type: string
+            enum: [weak, medium, strong]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: 약한 신호 목록
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/WeakSignal'
+                          total:
+                            type: integer
+                          last_updated_at:
+                            type: string
+                            format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── 알림 설정 ──────────────────────────────────────────────
   /api/alerts/settings:
     get:
       tags: [alerts]
@@ -335,6 +645,9 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/AlertSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
     put:
       tags: [alerts]
       summary: 알림 설정 변경
@@ -357,8 +670,163 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/AlertSettings'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/alerts/test:
+    post:
+      tags: [alerts]
+      summary: 테스트 알림 발송
+      description: 현재 Slack 설정이 올바른지 확인하기 위한 테스트 메시지 발송.
+      operationId: sendTestAlert
+      responses:
+        '200':
+          description: 테스트 알림 발송 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '400':
+          description: Slack Webhook URL 미설정
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── 파이프라인 (관리자용) ────────────────────────────────────
+  /api/pipeline/status:
+    get:
+      tags: [pipeline]
+      summary: 파이프라인 상태 조회
+      operationId: getPipelineStatus
+      responses:
+        '200':
+          description: 파이프라인 실행 상태
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PipelineStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/pipeline/trigger:
+    post:
+      tags: [pipeline]
+      summary: 수동 파이프라인 실행 (관리자용)
+      description: 스케줄 대기 없이 즉시 수집 파이프라인을 실행합니다.
+      operationId: triggerPipeline
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                peer_ids:
+                  type: array
+                  items:
+                    type: string
+                  description: 수집 대상 Peer사 ID (미입력 시 전체)
+                  example: ["samsung_sds", "lg_cns"]
+      responses:
+        '202':
+          description: 파이프라인 실행 시작
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          run_id:
+                            type: string
+                            description: 실행 추적용 ID
+                          message:
+                            type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: 이미 실행 중인 파이프라인 존재
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 로그인 후 발급받은 JWT Access Token
+
+  responses:
+    Unauthorized:
+      description: 인증 필요 (토큰 없음 또는 만료)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: UNAUTHORIZED
+              message: 인증이 필요합니다.
+            timestamp: "2026-04-20T08:30:00Z"
+
+    Forbidden:
+      description: 권한 없음
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: FORBIDDEN
+              message: 접근 권한이 없습니다.
+            timestamp: "2026-04-20T08:30:00Z"
+
+    NotFound:
+      description: 리소스 없음
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: NOT_FOUND
+              message: 요청한 리소스를 찾을 수 없습니다.
+            timestamp: "2026-04-20T08:30:00Z"
+
+    BadRequest:
+      description: 잘못된 요청 (입력값 오류)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: INVALID_INPUT
+              message: 입력값이 올바르지 않습니다.
+            timestamp: "2026-04-20T08:30:00Z"
+
   schemas:
     # ── 공통 래퍼 ──────────────────────────────────────────
     ApiResponse:
@@ -383,25 +851,58 @@ components:
           example: false
         error:
           type: object
+          required: [code, message]
           properties:
             code:
               type: string
+              example: NOT_FOUND
             message:
               type: string
+              example: 요청한 리소스를 찾을 수 없습니다.
         timestamp:
           type: string
           format: date-time
 
-    # ── Enum ───────────────────────────────────────────────
+    # ── Enum ──────────────────────────────────────────────
     ImportanceEnum:
       type: string
       enum: [urgent, notable, reference]
+      description: |
+        - urgent: 긴급 (중요도 점수 80 이상)
+        - notable: 주목 (50~79)
+        - reference: 참고 (50 미만)
 
     EventTypeEnum:
       type: string
       enum: [partnership, ma, personnel, tech, regulation, new_biz]
+      description: |
+        - partnership: 파트너십·제휴
+        - ma: M&A·투자·IPO
+        - personnel: 인사·조직 개편
+        - tech: 기술 발표·제품 출시
+        - regulation: 규제·정책
+        - new_biz: 신규 사업 진출
 
-    # ── 도메인 스키마 ───────────────────────────────────────
+    # ── 사용자 ────────────────────────────────────────────
+    UserProfile:
+      type: object
+      required: [id, email, name]
+      properties:
+        id:
+          type: integer
+          example: 1
+        email:
+          type: string
+          format: email
+          example: user@sk.com
+        name:
+          type: string
+          example: 홍길동
+        created_at:
+          type: string
+          format: date-time
+
+    # ── 이슈 카드 ─────────────────────────────────────────
     IssueCard:
       type: object
       required: [id, peer_id, title, summary_lines, importance, created_at]
@@ -424,6 +925,7 @@ components:
             type: string
           minItems: 1
           maxItems: 3
+          description: 3줄 요약
         event_type:
           $ref: '#/components/schemas/EventTypeEnum'
         importance:
@@ -431,6 +933,8 @@ components:
         importance_score:
           type: number
           format: float
+          minimum: 0
+          maximum: 100
         implication:
           $ref: '#/components/schemas/Implication'
         sources:
@@ -440,14 +944,17 @@ components:
         validation_pass:
           type: boolean
           nullable: true
+          description: SC 검증 통과 여부
         is_human_reviewed:
           type: boolean
+          default: false
         created_at:
           type: string
           format: date-time
 
     Implication:
       type: object
+      description: SK AX 관점의 시사점 (AI 초안, SC 검증 통과)
       properties:
         why_important:
           type: string
@@ -459,20 +966,26 @@ components:
           type: array
           items:
             type: string
+          description: 후속 확인이 필요한 질문
         suggested_actions:
           type: array
           items:
             type: string
+          description: SK AX에게 권장되는 액션 아이템
         confidence:
           type: number
           format: float
           minimum: 0
           maximum: 1
+          description: 0.6 미만이면 '근거 불충분' 레이블 표시
 
     Source:
       type: object
       required: [title, url, published_at]
       properties:
+        index:
+          type: integer
+          description: 인용 번호 ([1], [2] 형태로 본문에서 참조)
         title:
           type: string
         url:
@@ -487,6 +1000,7 @@ components:
           type: string
           enum: [High, Medium, Low, Unverified]
 
+    # ── 검색 ─────────────────────────────────────────────
     SearchResponse:
       type: object
       required: [answer, citations, session_id]
@@ -500,6 +1014,7 @@ components:
               type: string
             implication:
               type: string
+              description: SK AX 관점 시사점
             follow_up_questions:
               type: array
               items:
@@ -510,7 +1025,28 @@ components:
             $ref: '#/components/schemas/Source'
         session_id:
           type: string
+          description: 후속 질문 시 이 값을 포함해서 요청
+        sc_passed:
+          type: boolean
+          description: Self-Consistency 검증 통과 여부
 
+    SearchHistoryItem:
+      type: object
+      required: [id, query, created_at]
+      properties:
+        id:
+          type: integer
+        query:
+          type: string
+          example: LG CNS 팔란티어 파트너십
+        session_id:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    # ── Peer사 ───────────────────────────────────────────
     PeerCompany:
       type: object
       required: [id, name]
@@ -525,31 +1061,80 @@ components:
           type: array
           items:
             type: string
+          description: 모니터링 키워드 목록
         is_active:
           type: boolean
+          default: true
 
+    # ── 약한 신호 ────────────────────────────────────────
+    WeakSignal:
+      type: object
+      required: [id, peer_id, signal_type, strength, description, detected_at]
+      properties:
+        id:
+          type: integer
+        peer_id:
+          type: string
+          example: lg_cns
+        signal_type:
+          type: string
+          enum: [hiring_surge, tech_stack_new, tech_stack_drop, org_expansion]
+          description: |
+            - hiring_surge: 특정 기술 채용공고 급증 (지난 4주 평균 대비 3배 이상)
+            - tech_stack_new: 신규 기술 스택 출현 (3개월 내 첫 등장)
+            - tech_stack_drop: 기존 기술 스택 급감
+            - org_expansion: 특정 사업부 채용 비중 급증
+        strength:
+          type: string
+          enum: [weak, medium, strong]
+        description:
+          type: string
+          example: LG CNS 팔란티어 관련 채용 4주간 1건 → 5건 증가
+        evidence:
+          type: object
+          description: 근거 데이터 (기간, 수치, 출처 링크 등)
+          additionalProperties: true
+        confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        detected_at:
+          type: string
+          format: date-time
+        snapshot_week:
+          type: string
+          format: date
+          description: 분석 기준 주 (월요일 날짜)
+
+    # ── 알림 ────────────────────────────────────────────
     AlertSettings:
       type: object
       properties:
         slack_enabled:
           type: boolean
+          default: false
         slack_webhook_url:
           type: string
           format: uri
+          nullable: true
         briefing_time:
           type: string
           example: "08:30"
-          description: 일일 브리핑 발송 시각 (HH:mm)
+          description: 일일 브리핑 발송 시각 (HH:mm, KST)
         notify_importance:
           type: array
           items:
             $ref: '#/components/schemas/ImportanceEnum'
           description: 알림 받을 중요도 등급
+          example: [urgent, notable]
         notify_event_types:
           type: array
           items:
             $ref: '#/components/schemas/EventTypeEnum'
+          description: 알림 받을 이벤트 타입 (빈 배열이면 전체)
 
+    # ── 파이프라인 ───────────────────────────────────────
     PipelineStatus:
       type: object
       properties:
@@ -565,6 +1150,7 @@ components:
               enum: [idle, running, error]
             last_count:
               type: integer
+              description: 마지막 실행에서 수집된 기사 수
         delivery:
           type: object
           properties:
@@ -577,3 +1163,4 @@ components:
               enum: [idle, running, error]
             last_count:
               type: integer
+              description: 마지막 실행에서 생성된 이슈 카드 수
