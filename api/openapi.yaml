@@ -14,7 +14,15 @@ info:
     - SpringBoot: `openapi-generator-cli generate -i api/openapi.yaml -g spring`
 
     > 이 파일을 변경할 경우 반드시 팀 공지 후 각 레포 자동 생성을 재실행하세요.
-  version: 1.1.0
+
+    **v3 변경 (1차 미팅 확정):**
+    - 노출도 산식: LLM 5축 → 결정적 산식. `ImportanceEnum`(urgent/notable/reference) 폐기, `ExposureBandEnum`(high/medium/low) 도입.
+    - 트렌드 섹터 5종(`SectorEnum`) 신설.
+    - 환각 방지: SC 검증 → `EvidenceChain` 4종 첨부(source_links / provenance / financial_refs / mbb_refs). SC는 `/api/search`(generative)에만 잔존.
+    - 알림: Slack Webhook → 이메일(SMTP) 전환. `AlertSettings.slack_*` 필드 폐기.
+    - Peer 4사 확정: samsung_sds / lg_cns / hyundai_autoever / posco_dx.
+    - 약한 신호(`/api/weak-signals`)는 W7까지 보류 (deprecated 마킹).
+  version: 1.2.0
   contact:
     name: SKALA AI 13조
 
@@ -250,10 +258,21 @@ paths:
         - name: peer_id
           in: query
           schema:
-            type: string
-            example: samsung_sds
+            $ref: '#/components/schemas/PeerIdEnum'
+        - name: exposure_band
+          in: query
+          description: v3 노출도 밴드 필터
+          schema:
+            $ref: '#/components/schemas/ExposureBandEnum'
+        - name: sector
+          in: query
+          description: v3 트렌드 섹터 필터
+          schema:
+            $ref: '#/components/schemas/SectorEnum'
         - name: importance
           in: query
+          deprecated: true
+          description: v1 호환 — v3에서는 exposure_band 사용
           schema:
             $ref: '#/components/schemas/ImportanceEnum'
         - name: event_type
@@ -315,10 +334,11 @@ paths:
     get:
       tags: [issues]
       summary: 오늘의 브리핑 조회
+      description: v3 — 노출도 밴드(high → medium → low) 순으로 그룹핑된 동향 카드 반환.
       operationId: getTodayBriefing
       responses:
         '200':
-          description: 오늘의 이슈 카드 목록 (urgent → notable → reference 순)
+          description: 오늘의 동향 카드 목록 (high → medium → low 순)
           content:
             application/json:
               schema:
@@ -328,20 +348,20 @@ paths:
                     properties:
                       data:
                         type: object
-                        required: [date, urgent, notable, reference]
+                        required: [date, high, medium, low]
                         properties:
                           date:
                             type: string
                             format: date
-                          urgent:
+                          high:
                             type: array
                             items:
                               $ref: '#/components/schemas/IssueCard'
-                          notable:
+                          medium:
                             type: array
                             items:
                               $ref: '#/components/schemas/IssueCard'
-                          reference:
+                          low:
                             type: array
                             items:
                               $ref: '#/components/schemas/IssueCard'
@@ -530,12 +550,21 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-            example: samsung_sds
+            $ref: '#/components/schemas/PeerIdEnum'
         - name: event_type
           in: query
           schema:
             $ref: '#/components/schemas/EventTypeEnum'
+        - name: sector
+          in: query
+          description: v3 트렌드 섹터 필터
+          schema:
+            $ref: '#/components/schemas/SectorEnum'
+        - name: exposure_band
+          in: query
+          description: v3 노출도 밴드 필터
+          schema:
+            $ref: '#/components/schemas/ExposureBandEnum'
         - name: limit
           in: query
           schema:
@@ -576,11 +605,15 @@ paths:
   /api/weak-signals:
     get:
       tags: [weak-signals]
-      summary: 약한 신호 목록 조회
+      summary: 약한 신호 목록 조회 (W7 활성 예정 — 현재 미구현)
       description: |
         채용공고 급증·신규 직군 출현 등 아직 보도되지 않은 전략 변화 신호.
         매주 월요일 오전 9시 자동 갱신.
+
+        **상태**: v3에서 weak_signal_agent 보류 (axis-ai/_deprecated/). W7(7주차)에 재구현 예정.
+        호출 시 빈 배열 반환 가능.
       operationId: listWeakSignals
+      deprecated: true
       parameters:
         - name: peer_id
           in: query
@@ -679,17 +712,19 @@ paths:
     post:
       tags: [alerts]
       summary: 테스트 알림 발송
-      description: 현재 Slack 설정이 올바른지 확인하기 위한 테스트 메시지 발송.
+      description: |
+        v3 — 현재 이메일(SMTP) 설정이 올바른지 확인하기 위한 테스트 메일 발송.
+        (v1의 Slack Webhook 발송은 폐기.)
       operationId: sendTestAlert
       responses:
         '200':
-          description: 테스트 알림 발송 성공
+          description: 테스트 이메일 발송 성공
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiResponse'
         '400':
-          description: Slack Webhook URL 미설정
+          description: SMTP 설정 미완료 또는 수신자 미지정
           content:
             application/json:
               schema:
@@ -866,11 +901,39 @@ components:
     # ── Enum ──────────────────────────────────────────────
     ImportanceEnum:
       type: string
-      enum: [urgent, notable, reference]
+      deprecated: true
+      enum: [urgent, notable, reference, high, medium, low]
       description: |
-        - urgent: 긴급 (중요도 점수 80 이상)
-        - notable: 주목 (50~79)
-        - reference: 참고 (50 미만)
+        v1 호환 — v3에서는 ExposureBandEnum(high/medium/low) 사용.
+        DB(issue_cards.importance) 컬럼은 v3 진입 후 high/medium/low를 저장.
+        - (v1) urgent / notable / reference
+        - (v3) high / medium / low
+
+    ExposureBandEnum:
+      type: string
+      enum: [high, medium, low]
+      description: |
+        v3 노출도 밴드 — 결정적 산식 기반.
+        exposure_score = 0.40·cluster_size + 0.30·credibility_max + 0.20·peer_mention + 0.10·tier1_diversity
+        - high:   ≥ 0.70
+        - medium: 0.40 ~ 0.70
+        - low:    < 0.40
+
+    SectorEnum:
+      type: string
+      enum: [security, ai_tech, large_deal, sk_ax_biz, other]
+      description: |
+        v3 트렌드 섹터 5종 (1차 미팅 확정).
+        - security: 보안
+        - ai_tech: AI 기술
+        - large_deal: 대형 수주
+        - sk_ax_biz: SK AX 사업
+        - other: 기타
+
+    PeerIdEnum:
+      type: string
+      enum: [samsung_sds, lg_cns, hyundai_autoever, posco_dx]
+      description: 모니터링 대상 Peer 4사 (v3 확정).
 
     EventTypeEnum:
       type: string
@@ -905,14 +968,14 @@ components:
     # ── 이슈 카드 ─────────────────────────────────────────
     IssueCard:
       type: object
-      required: [id, peer_id, title, summary_lines, importance, created_at]
+      description: 동향 카드 — v3 진입 후 'issue card' 명칭은 호환을 위해 유지.
+      required: [id, peer_id, title, summary_lines, created_at]
       properties:
         id:
           type: string
           example: IC-20260420-001
         peer_id:
-          type: string
-          example: samsung_sds
+          $ref: '#/components/schemas/PeerIdEnum'
         cluster_id:
           type: integer
           nullable: true
@@ -928,23 +991,42 @@ components:
           description: 3줄 요약
         event_type:
           $ref: '#/components/schemas/EventTypeEnum'
-        importance:
-          $ref: '#/components/schemas/ImportanceEnum'
-        importance_score:
+        sector:
+          $ref: '#/components/schemas/SectorEnum'
+        exposure_band:
+          $ref: '#/components/schemas/ExposureBandEnum'
+        exposure_score:
           type: number
           format: float
           minimum: 0
+          maximum: 1
+          description: v3 결정적 노출도 산식 (0~1)
+        importance:
+          allOf:
+            - $ref: '#/components/schemas/ImportanceEnum'
+          deprecated: true
+          description: v1 호환 — v3에서는 exposure_band 사용
+        importance_score:
+          type: number
+          format: float
+          deprecated: true
+          minimum: 0
           maximum: 100
+          description: v1 호환 — v3에서는 exposure_score(0~1) 사용
         implication:
           $ref: '#/components/schemas/Implication'
         sources:
           type: array
           items:
             $ref: '#/components/schemas/Source'
+        evidence_chain:
+          $ref: '#/components/schemas/EvidenceChain'
         validation_pass:
           type: boolean
           nullable: true
-          description: SC 검증 통과 여부
+          description: |
+            v3 — Evidence Chain 4종 첨부 통과 여부.
+            (v1의 SC 검증 통과 여부에서 의미 전환)
         is_human_reviewed:
           type: boolean
           default: false
@@ -954,7 +1036,9 @@ components:
 
     Implication:
       type: object
-      description: SK AX 관점의 시사점 (AI 초안, SC 검증 통과)
+      description: |
+        SK AX 관점의 시사점 (AI 초안).
+        v3 — Evidence Chain 4종 첨부로 환각 방지 (SC 검증 폐기, /gen-search에만 잔존).
       properties:
         why_important:
           type: string
@@ -999,6 +1083,89 @@ components:
         credibility_grade:
           type: string
           enum: [High, Medium, Low, Unverified]
+        credibility_score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: v3 — 0~1 범위 신뢰도 점수 (grade와 별개로 노출)
+
+    # ── 검증 체인 (v3 §3.2, §5.6) ─────────────────────────
+    EvidenceChain:
+      type: object
+      description: |
+        v3 검증 4종 — 모든 동향 카드에 자동 첨부.
+        누락 시 pass=false + human_review 플래그.
+      properties:
+        source_links:
+          type: array
+          items:
+            type: object
+            properties:
+              title: { type: string }
+              source_name: { type: string }
+              url: { type: string }
+              credibility_score: { type: number, format: float }
+        provenance:
+          type: object
+          properties:
+            raw_article_ids:
+              type: array
+              items: { type: integer }
+            cluster_id: { type: integer }
+            llm_model: { type: string, example: "gpt-4o" }
+            prompt_version: { type: string, example: "ic-v3.0" }
+            evidence_version: { type: string, example: "v3.0" }
+            run_at: { type: string, format: date-time }
+        financial_refs:
+          type: array
+          description: 분기별 재무 변화 ref (DART 공시번호·IR 페이지 포함)
+          items:
+            type: object
+            properties:
+              period: { type: string, example: "2026Q1" }
+              metric: { type: string }
+              metric_ko: { type: string }
+              value_krwbn: { type: number, format: float, nullable: true }
+              value_pct: { type: number, format: float, nullable: true }
+              delta_pct_qoq: { type: number, format: float, nullable: true }
+              delta_pct_yoy: { type: number, format: float, nullable: true }
+              dart_rcept_no: { type: string, nullable: true }
+              ir_page: { type: integer, nullable: true }
+              narrative: { type: string }
+        mbb_refs:
+          type: array
+          description: 컨설팅사 보고서 자동 매칭 (W5 활성)
+          items:
+            type: object
+        financial_link:
+          type: object
+          properties:
+            linked: { type: boolean }
+            reason: { type: string }
+            segment:
+              type: object
+              nullable: true
+              properties:
+                id: { type: string }
+                name_ko: { type: string }
+                match_keyword_hits: { type: integer }
+            highlights:
+              type: array
+              items: { type: string }
+            headcount_delta:
+              type: object
+              nullable: true
+        evidence_version:
+          type: string
+          example: "v3.0"
+        pass:
+          type: boolean
+          description: 4종 모두 첨부됐는지
+        missing:
+          type: array
+          items: { type: string }
+          description: pass=false 시 누락 항목
 
     # ── 검색 ─────────────────────────────────────────────
     SearchResponse:
@@ -1052,8 +1219,7 @@ components:
       required: [id, name]
       properties:
         id:
-          type: string
-          example: samsung_sds
+          $ref: '#/components/schemas/PeerIdEnum'
         name:
           type: string
           example: 삼성SDS
@@ -1107,27 +1273,36 @@ components:
           format: date
           description: 분석 기준 주 (월요일 날짜)
 
-    # ── 알림 ────────────────────────────────────────────
+    # ── 알림 (v3 — Slack 폐기, 이메일 전환) ────────────────────
     AlertSettings:
       type: object
       properties:
-        slack_enabled:
+        email_enabled:
           type: boolean
           default: false
-        slack_webhook_url:
-          type: string
-          format: uri
-          nullable: true
+          description: v3 — 이메일 브리핑 활성화 여부
+        email_recipients:
+          type: array
+          items:
+            type: string
+            format: email
+          description: 브리핑 수신자 이메일 목록
+          example: ["user1@sk.com", "user2@sk.com"]
         briefing_time:
           type: string
           example: "08:30"
           description: 일일 브리핑 발송 시각 (HH:mm, KST)
-        notify_importance:
+        notify_exposure_bands:
           type: array
           items:
-            $ref: '#/components/schemas/ImportanceEnum'
-          description: 알림 받을 중요도 등급
-          example: [urgent, notable]
+            $ref: '#/components/schemas/ExposureBandEnum'
+          description: v3 — 알림 받을 노출도 밴드
+          example: [high, medium]
+        notify_sectors:
+          type: array
+          items:
+            $ref: '#/components/schemas/SectorEnum'
+          description: v3 — 알림 받을 트렌드 섹터 (빈 배열이면 전체)
         notify_event_types:
           type: array
           items:

@@ -88,8 +88,10 @@ paths:
       tags: [pipeline]
       summary: 전달 파이프라인 실행
       description: |
-        PostgreSQL 이슈 카드 조회 → 시사점 생성 → SC 검증 → Slack 발송
+        PostgreSQL 동향 카드 조회 → EvidenceAgent 검증 첨부 확인 → 이메일 본문 구성 → 발송
         실행 주기: 매일 오전 8:30 (SpringBoot Scheduler에서 호출)
+
+        v3 변경: SC 검증·Slack → 검증 첨부·이메일.
       operationId: runDeliveryPipeline
       requestBody:
         required: true
@@ -191,9 +193,14 @@ paths:
   /weak-signal/run:
     post:
       tags: [weak-signal]
-      summary: 약한 신호 감지기 실행
-      description: 채용공고 증감 분석 → 기술 스택 변화 탐지 → 전략 신호 추출
+      summary: 약한 신호 감지기 실행 (W7 활성 예정 — 현재 미구현)
+      description: |
+        채용공고 증감 분석 → 기술 스택 변화 탐지 → 전략 신호 추출.
+
+        **상태**: v3에서 weak_signal_agent 보류 (axis-ai/_deprecated/). W7(7주차)에 재구현 예정.
+        호출 시 빈 결과 또는 501 응답 가능.
       operationId: runWeakSignalDetector
+      deprecated: true
       requestBody:
         required: true
         content:
@@ -270,11 +277,25 @@ components:
           items:
             type: string
             enum: [partnership, ma, personnel, tech, regulation, new_biz]
-        importance:
+        sectors:
           type: array
+          description: v3 트렌드 섹터 4종 + other (1차 미팅 확정)
           items:
             type: string
-            enum: [urgent, notable, reference]
+            enum: [security, ai_tech, large_deal, sk_ax_biz, other]
+        exposure_band:
+          type: array
+          description: v3 노출도 밴드 (긴급/주목 폐기, 결정적 산식 기반)
+          items:
+            type: string
+            enum: [high, medium, low]
+        importance:
+          type: array
+          deprecated: true
+          description: v1 호환 — v3에서는 exposure_band 사용
+          items:
+            type: string
+            enum: [urgent, notable, reference, high, medium, low]
         date_from:
           type: string
           format: date
@@ -300,8 +321,21 @@ components:
           type: string
         event_type:
           type: string
+        sector:
+          type: string
+          description: v3 트렌드 섹터
+          enum: [security, ai_tech, large_deal, sk_ax_biz, other]
+        exposure_score:
+          type: number
+          format: float
+          description: v3 결정적 노출도 산식 (0~1)
+        exposure_band:
+          type: string
+          enum: [high, medium, low]
         importance:
           type: string
+          deprecated: true
+          description: v1 호환 (v3에서는 exposure_band 사용)
         published_at:
           type: string
           format: date-time
@@ -313,6 +347,71 @@ components:
           type: number
           format: float
           nullable: true
+
+    # ── 검증 체인 (v3 §3.2, §5.6) ─────────────────────────
+    EvidenceChain:
+      type: object
+      description: v3 검증 4종 — 모든 동향 카드에 자동 첨부
+      properties:
+        source_links:
+          type: array
+          items:
+            type: object
+            properties:
+              title: { type: string }
+              source_name: { type: string }
+              url: { type: string }
+              credibility_score: { type: number, format: float }
+        provenance:
+          type: object
+          properties:
+            raw_article_ids:
+              type: array
+              items: { type: integer }
+            cluster_id: { type: integer }
+            llm_model: { type: string, example: "gpt-4o" }
+            prompt_version: { type: string, example: "ic-v3.0" }
+            evidence_version: { type: string, example: "v3.0" }
+            run_at: { type: string, format: date-time }
+        financial_refs:
+          type: array
+          description: 분기별 재무 변화 ref (DART 공시번호·IR 페이지 포함)
+          items:
+            type: object
+            properties:
+              period: { type: string, example: "2026Q1" }
+              metric: { type: string }
+              metric_ko: { type: string }
+              value_krwbn: { type: number, format: float, nullable: true }
+              value_pct: { type: number, format: float, nullable: true }
+              delta_pct_qoq: { type: number, format: float, nullable: true }
+              delta_pct_yoy: { type: number, format: float, nullable: true }
+              dart_rcept_no: { type: string, nullable: true }
+              ir_page: { type: integer, nullable: true }
+              narrative: { type: string }
+        mbb_refs:
+          type: array
+          description: 컨설팅사 보고서 자동 매칭 (W5)
+          items:
+            type: object
+        financial_link:
+          type: object
+          properties:
+            linked: { type: boolean }
+            reason: { type: string }
+            segment:
+              type: object
+              nullable: true
+              properties:
+                id: { type: string }
+                name_ko: { type: string }
+                match_keyword_hits: { type: integer }
+            highlights:
+              type: array
+              items: { type: string }
+            headcount_delta:
+              type: object
+              nullable: true
 
     SearchResult:
       type: object
