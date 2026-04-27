@@ -54,8 +54,13 @@ CREATE INDEX IF NOT EXISTS idx_raw_articles_url
     ON raw_articles (url);
 
 -- ============================================================
--- 3. issue_cards — AI가 생성한 이슈 카드
+-- 3. issue_cards — AI가 생성한 이슈 카드 (v3에서 "동향 카드"로 리네임 예정)
 -- ============================================================
+-- v3 변경사항:
+--   - importance 컬럼: v3에서 exposure_band(high/medium/low)를 그대로 저장 (값 호환)
+--   - implication JSONB: v3 메타데이터 (sector, sectors, exposure_score, exposure_band,
+--     signals, evidence_chain) 통합 저장. 향후 evidence_chain 테이블로 분리 마이그레이션 예정
+--   - validation_pass / validation_sc_score: SC 검증 → EvidenceAgent의 검증 첨부 결과로 의미 전환
 CREATE TABLE IF NOT EXISTS issue_cards (
     id                  VARCHAR(50)  PRIMARY KEY,     -- 'IC-20260420-001' 형식
     peer_id             VARCHAR(50)  NOT NULL REFERENCES peer_companies(id),
@@ -63,12 +68,12 @@ CREATE TABLE IF NOT EXISTS issue_cards (
     title               TEXT         NOT NULL,
     summary_lines       TEXT[]       DEFAULT '{}',    -- 3줄 요약
     event_type          VARCHAR(50),                  -- partnership/ma/personnel/tech/regulation/new_biz
-    importance          VARCHAR(20),                  -- urgent/notable/reference
-    importance_score    FLOAT,
-    implication         JSONB,                        -- 시사점 초안 (why_important, potential_impact 등)
+    importance          VARCHAR(20),                  -- v1: urgent/notable/reference, v3: high/medium/low (exposure_band)
+    importance_score    FLOAT,                        -- v3: exposure_score (0~1, 결정적 산식)
+    implication         JSONB,                        -- v3: {sector, sectors, exposure_score, exposure_band, signals, evidence_chain}
     sources             JSONB,                        -- 출처 목록
-    validation_pass     BOOLEAN,
-    validation_sc_score FLOAT,                        -- Self-Consistency 검증 점수
+    validation_pass     BOOLEAN,                      -- v3: 검증 정보 4종 자동 첨부 통과 여부
+    validation_sc_score FLOAT,                        -- v3: 1.0 (pass) / 0.0 (fail) — SC 검증 폐기, 의미 전환
     is_human_reviewed   BOOLEAN      DEFAULT FALSE,
     created_at          TIMESTAMPTZ  DEFAULT NOW()
 );
@@ -142,9 +147,64 @@ CREATE TABLE IF NOT EXISTS crawl_logs (
 );
 
 -- ============================================================
--- 초기 데이터
+-- 8. peer_financials — Peer사 분기·연간 재무 시계열 (v3 §5.1)
+-- ============================================================
+-- IR PDF / DART 공시에서 추출한 매출·영업이익·사업부별 매출·AI 비중·헤드카운트.
+-- FinancialLinkerAgent가 뉴스 카드와 연결하여 evidence_chain.financial_refs에 첨부.
+-- PoC: data/peer_financials/{peer_id}.json 기반. 마이그레이션 후 이 테이블로 전환.
+CREATE TABLE IF NOT EXISTS peer_financials (
+    id                  BIGSERIAL    PRIMARY KEY,
+    peer_id             VARCHAR(50)  NOT NULL REFERENCES peer_companies(id),
+    period              VARCHAR(10)  NOT NULL,           -- 'YYYYQn' (예: '2026Q1')
+    report_date         DATE,                            -- 공시·발표일
+    dart_rcept_no       VARCHAR(40),                     -- DART 공시번호 (검증 추적용)
+    ir_page             INT,                             -- IR 자료 페이지 번호
+    revenue_total_krwbn FLOAT,                           -- 전체 매출 (억원)
+    operating_profit_krwbn FLOAT,                        -- 영업이익 (억원)
+    segment_revenue     JSONB        DEFAULT '{}',       -- {segment_id: 매출_억원}
+    ai_revenue_share_pct FLOAT,                          -- AI 매출 비중 (%)
+    headcount           JSONB        DEFAULT '{}',       -- {total, rd, ai_engineers_est}
+    raw_payload         JSONB,                           -- 파싱 원본 / IRParserAgent 후처리 결과
+    source              VARCHAR(20)  DEFAULT 'stub_v0',  -- stub_v0 / dart / ir_pdf / manual
+    created_at          TIMESTAMPTZ  DEFAULT NOW(),
+    UNIQUE (peer_id, period)
+);
+
+CREATE INDEX IF NOT EXISTS idx_peer_financials_peer_period
+    ON peer_financials (peer_id, period);
+
+-- ============================================================
+-- 9. evidence_chain — 검증 체인 4종 (v3 §3.2, §5.6)
+-- ============================================================
+-- 모든 이슈카드의 4종 검증 정보 (source_links / provenance / financial_refs / mbb_refs).
+-- 현재는 issue_cards.implication JSONB 안에 통합 저장 중 — 본 테이블로 분리 마이그레이션 예정.
+-- API: GET /api/evidence/{issue_card_id} 가 이 테이블을 조회.
+CREATE TABLE IF NOT EXISTS evidence_chain (
+    id                  BIGSERIAL    PRIMARY KEY,
+    issue_card_id       VARCHAR(50)  NOT NULL REFERENCES issue_cards(id) ON DELETE CASCADE,
+    source_links        JSONB        DEFAULT '[]',       -- 원문 URL + 출처명 + 신뢰도
+    provenance          JSONB        DEFAULT '{}',       -- raw_article_ids, llm_model, prompt_version, run_at
+    financial_refs      JSONB        DEFAULT '[]',       -- {period, metric, value, delta_qoq, delta_yoy, dart_rcept_no, ir_page}
+    mbb_refs            JSONB        DEFAULT '[]',       -- 컨설팅사 보고서 자동 매칭 (W5)
+    financial_link      JSONB,                           -- {linked, segment, highlights, headcount_delta}
+    evidence_version    VARCHAR(20)  DEFAULT 'v3.0',
+    pass                BOOLEAN      DEFAULT FALSE,      -- 4종 첨부 통과 여부
+    missing             TEXT[]       DEFAULT '{}',       -- 누락 항목 — pass=false 시 human_review
+    created_at          TIMESTAMPTZ  DEFAULT NOW(),
+    UNIQUE (issue_card_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_evidence_chain_card
+    ON evidence_chain (issue_card_id);
+CREATE INDEX IF NOT EXISTS idx_evidence_chain_pass
+    ON evidence_chain (pass);
+
+-- ============================================================
+-- 초기 데이터 — Peer사 4사 (v3 확정)
 -- ============================================================
 INSERT INTO peer_companies (id, name, keywords) VALUES
-    ('samsung_sds', '삼성SDS', ARRAY['삼성SDS', '삼성 SDS', 'Samsung SDS']),
-    ('lg_cns',      'LG CNS',  ARRAY['LG CNS', 'LGCNS'])
+    ('samsung_sds',      '삼성SDS',     ARRAY['삼성SDS', '삼성 SDS', 'Samsung SDS']),
+    ('lg_cns',           'LG CNS',      ARRAY['LG CNS', 'LGCNS']),
+    ('hyundai_autoever', '현대오토에버', ARRAY['현대오토에버', '오토에버', 'Hyundai AutoEver']),
+    ('posco_dx',         '포스코DX',    ARRAY['포스코DX', '포스코 DX', 'POSCO DX'])
 ON CONFLICT (id) DO NOTHING;

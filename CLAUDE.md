@@ -78,12 +78,13 @@ PostgreSQL (원문 아카이브)    Qdrant (벡터 검색엔진)
 6. SpringBoot → React (응답)
 ```
 
-### 통신 흐름 예시 — 오전 8:30 자동 브리핑
+### 통신 흐름 예시 — 오전 8:30 자동 브리핑 (v3: 이메일 발송)
 
 ```
-1. SpringBoot 스케줄러 → POST http://ai:8001/pipeline/run
-2. Python AI → 크롤링 → 전처리 → 이슈 카드 생성 → DB 저장
-3. SpringBoot → PostgreSQL에서 이슈 카드 조회 → Slack 발송
+1. SpringBoot 스케줄러 → POST http://ai:8001/pipeline/run (1시간마다)
+2. Python AI → 크롤링 → credibility → dedup → classify → issue_card → evidence → DB 저장
+3. SpringBoot 스케줄러 → POST http://ai:8001/pipeline/delivery (오전 8:30)
+4. Python AI → 동향 카드 + 검증 첨부 4종 조회 → 이메일 본문 구성 → 발송
 ```
 
 ---
@@ -175,17 +176,20 @@ docker compose up -d postgres qdrant  # DB만 올리고
 ### 저장소 사용 원칙
 - 크롤링된 원문 → PostgreSQL 전량 저장 (Gate 통과 여부 무관)
 - Gate 1(품질) + Gate 2(신뢰도) + Gate 3(중복) 통과한 대표 기사만 → Qdrant
-- Qdrant 페이로드: rdb_id(FK), peer_id, event_type, importance, pub_date, cluster_id, title, summary
+- Qdrant 페이로드: rdb_id(FK), peer_id, event_type, sector, exposure_band, exposure_score, pub_date, cluster_id, title, summary
+- 동향 카드 검증 첨부 4종(source_links / provenance / financial_refs / mbb_refs)은 `evidence_chain` 테이블에 별도 저장
 
 ---
 
 ## Peer사 정보
 
-### 모니터링 대상
+### 모니터링 대상 (v3 — 1차 미팅 확정)
 | ID | 회사명 | 경쟁 강도 | 비고 |
 |---|---|---|---|
 | samsung_sds | 삼성SDS | 🔴 매우 높음 | AX 풀스택 전략, OpenAI 리셀러 1호 |
 | lg_cns | LG CNS | 🔴 매우 높음 | 팔란티어 파트너십, 에이전트웍스 |
+| hyundai_autoever | 현대오토에버 | 🟡 높음 | 모빌리티 SI |
+| posco_dx | 포스코DX | 🟡 높음 | 산업 DX |
 
 ### 이벤트 타입 Taxonomy (6개 고정)
 ```
@@ -197,12 +201,28 @@ regulation    규제·정책
 new_biz       신규 사업 진출
 ```
 
-### 중요도 등급
+### 트렌드 섹터 (v3 — 1차 미팅 확정 5종)
+
 ```
-urgent      긴급 (점수 80 이상)
-notable     주목 (점수 50~79)
-reference   참고 (점수 50 미만)
+security      보안
+ai_tech       AI 기술
+large_deal    대형 수주
+sk_ax_biz     SK AX 사업
+other         기타
 ```
+
+### 노출도 밴드 (v3 — 결정적 산식)
+
+```
+exposure_score = 0.40·cluster_size + 0.30·credibility_max
+               + 0.20·peer_mention + 0.10·tier1_diversity
+
+high     ≥ 0.70
+medium   0.40 ~ 0.70
+low      < 0.40
+```
+
+> v1의 urgent/notable/reference는 폐기 (deprecated). 호환을 위해 API 스키마에서만 표시 유지.
 
 ---
 
