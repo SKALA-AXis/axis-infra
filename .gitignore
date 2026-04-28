@@ -1,7 +1,11 @@
 # Environment
 .env
 .env.local
+.env.cloud
 .env.*.local
+!.env.example
+!.env.local.example
+!.env.cloud.example
 
 # Python
 __pycache__/
