@@ -30,26 +30,76 @@ axis-infra/                     ← 이 레포 (Single Source of Truth)
 
 ---
 
-## 빠른 시작
+## 🚀 실행 방법 (두 가지 모드)
+
+axis-infra 의 docker-compose 는 **Cloud / Local 두 가지 DB 모드**를 한 파일로 지원합니다. `.env` 파일 + `--profile` 플래그 조합으로 전환합니다.
+
+| 모드 | PostgreSQL | Qdrant | 사용 환경 변수 파일 | 컨테이너 기동 범위 |
+|---|---|---|---|---|
+| **Cloud** (기본) | Supabase | Qdrant Cloud | `.env` | backend / ai / frontend (postgres·qdrant 컨테이너 X) |
+| **Local** | docker postgres | docker qdrant | `.env.local` | postgres / qdrant / backend / ai / frontend |
+
+> Cloud 모드에서는 `postgres` · `qdrant` 서비스가 `profiles: ["local"]` 로 묶여 있어 자동으로 제외됩니다.
+
+### Mode 1 — Cloud 모드 (기본)
+
+Supabase Postgres + Qdrant Cloud 에 backend / ai 가 직접 붙는 구성. 팀 공용 DB라 데모·PR 검증 용이.
 
 ```bash
 # 1. 레포 클론
-git clone https://github.com/skala-ai-13/axis-infra.git
+git clone https://github.com/SKALA-AXis/axis-infra.git
 cd axis-infra
 
-# 2. 환경변수 설정
+# 2. .env 작성 (template 참고; Supabase DSN, Qdrant Cloud URL/API key 입력)
 cp .env.example .env
-# .env 파일을 열어 OPENAI_API_KEY 등 실제 값 입력
+#   필수: DATABASE_URL, SPRING_DATASOURCE_URL/USERNAME/PASSWORD,
+#         QDRANT_HOST(https://...cloud.qdrant.io), QDRANT_API_KEY,
+#         OPENAI_API_KEY, NAVER_*, DART_API_KEY, KIPRIS_API_KEY
 
-# 3. 전체 서비스 실행 (처음 실행 시 이미지 빌드에 시간이 걸립니다)
+# 3. 전체 서비스 기동 (postgres·qdrant 컨테이너는 안 뜸)
 docker compose up -d
 
-# 4. 로그 확인
-docker compose logs -f
-
-# 로컬 개발 시 DB·Qdrant만 올리기
-docker compose up -d postgres qdrant
+# 4. 로그
+docker compose logs -f ai backend
 ```
+
+### Mode 2 — Local 모드 (오프라인 / 비용 절감)
+
+postgres + qdrant 컨테이너를 같이 띄우고 backend/ai 가 같은 네트워크의 컨테이너에 붙는 구성.
+
+```bash
+# 1. .env.local 작성
+cp .env.local.example .env.local
+#   DATABASE_URL=postgresql://axuser:axpass@postgres:5432/axis
+#   SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/axis
+#   QDRANT_HOST=qdrant   QDRANT_API_KEY=  (비워둠)
+
+# 2. profile=local + --env-file 플래그로 기동 (둘 다 필수)
+docker compose --profile local --env-file .env.local up -d
+
+# 3. DB·Qdrant 만 띄우고 backend·ai 는 호스트에서 개발 모드로 돌리기
+docker compose --profile local --env-file .env.local up -d postgres qdrant
+#   이후 axis-ai: uv run python run_pipeline_once.py --env local
+#        axis-backend: ./gradlew bootRun --args='--spring.profiles.active=local'
+```
+
+### 환경 설정 체크리스트 (신규 팀원)
+
+- [ ] `.env` (Cloud) 받기 — 노션·1Password 등에서 공유, **절대 커밋 금지**
+- [ ] (옵션) Local 모드 쓸 거면 `.env.local` 작성
+- [ ] `db/schema.sql` 마이그레이션은 SpringBoot Flyway 가 자동 적용 — 직접 `psql -f` 할 필요 없음
+- [ ] CI 검증 항목: SQL 스키마 + OpenAPI 유효성 + API 스펙 변경 PR 코멘트 ([.github/workflows/validate.yml](.github/workflows/validate.yml))
+
+### 모드별 빠른 비교
+
+| 작업 | Cloud | Local |
+|---|---|---|
+| 시작 명령 | `docker compose up -d` | `docker compose --profile local --env-file .env.local up -d` |
+| Postgres | Supabase pooler:6543 (sslmode=require) | docker postgres:5432 |
+| Qdrant | https Cloud | http localhost (api_key 비움) |
+| LLM 비용 | 동일 | 동일 (OPENAI_API_KEY) |
+| 데이터 영속성 | Supabase 영구 | 컨테이너 volume |
+| 협업 | ✅ 팀 공유 | ❌ 로컬 격리 |
 
 ---
 
