@@ -18,7 +18,7 @@ flowchart TB
     %% ── 외부 사용자 / 개발자 ──────────────────────────────
     User([👤 전략기획 담당자])
     Dev([👨‍💻 Developer])
-    Notify([💬 Slack 채널<br/>📧 이메일 v3])
+    Mail([📧 이메일 수신함<br/>전략기획팀])
 
     %% ── 외부 데이터 / SaaS ───────────────────────────────
     subgraph SRC["🌐 크롤링 소스 (Track A · Track B)"]
@@ -92,7 +92,7 @@ flowchart TB
     ALB --> BE
     BE -->|"in-cluster<br/>ai-internal-api.yaml"| AI
     AI -->|크롤링 fetch| SRC
-    BE -->|"Slack Webhook (현재)<br/>이메일 (v3 계획)"| Notify
+    BE -->|"평일 08:30 브리핑 발송"| Mail
 
     %% ── 데이터 영속화 / LLM (굵은 실선) ──────────────────
     BE ==>|"JDBC<br/>sslmode=require"| SB
@@ -129,7 +129,7 @@ flowchart TB
     classDef obs fill:#F0FDFA,stroke:#0D9488,stroke-width:2px,color:#134E4A
     classDef cloud fill:#F8FAFC,stroke:#0F172A,stroke-width:2px,color:#0F172A
 
-    class User,Dev,Notify user
+    class User,Dev,Mail user
     class FE fe
     class BE be
     class AI ai
@@ -144,7 +144,7 @@ flowchart TB
 
 | 선 종류 | 의미 | 사용 예 |
 |---|---|---|
-| `─→` 실선 | 사용자 요청 트래픽 · 외부 fetch · 알림 발송 (동기 HTTP) | User→R53, BE→AI, AI→Naver, BE→Slack |
+| `─→` 실선 | 사용자 요청 트래픽 · 외부 fetch · 알림 발송 (동기 HTTP) | User→R53, BE→AI, AI→Naver, BE→Email |
 | `═→` 굵은 실선 | 데이터 영속화 · 외부 LLM 호출 | BE/AI→Supabase, AI→Qdrant/OpenAI, MLflow→S3 |
 | `-.→` 점선 | CI/CD · 모니터링 (W6+ 계획, 현재 미구현) | GH→Jenkins, ArgoCD→Pods, AI→Prometheus |
 
@@ -155,7 +155,7 @@ flowchart TB
 | 레이어 | 기술 | 책임 | 현재 상태 |
 |---|---|---|---|
 | Frontend | React 18 + Vite + TypeScript + Radix UI | 대시보드 UI | docker-compose 운영, W6+ K8s |
-| Backend | Spring Boot 3.x · Java 17 · Flyway · WebClient | REST API · JWT · 스케줄러 · Slack Webhook 발송 | 이메일 발송은 v3 계획 |
+| Backend | Spring Boot 3.x · Java 17 · Flyway · WebClient · Spring Mail | REST API · JWT · 스케줄러 · 이메일 브리핑 발송 | 평일 08:30 자동 발송 (Slack 폐기) |
 | AI Server | Python 3.11 · FastAPI · LangGraph 1.1.8 · uv | 크롤링 · 7노드 분석 파이프라인 · RAG | SQLAlchemy 2.0 + psycopg2 로 Supabase 접근 |
 | RDB | PostgreSQL 16 (Supabase Managed) | 원문 · 이슈카드 · evidence_chain | Transaction Pooler:6543 (sslmode=require) |
 | Vector DB | Qdrant 1.9 (Cloud) | 하이브리드 검색 (Dense+Sparse RRF) | `axis_main` 3개월 TTL · `axis_history` 12개월 TTL |
