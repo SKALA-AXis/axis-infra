@@ -2,7 +2,12 @@
 
 > Figma 작업용 단일 레퍼런스. **이 문서가 SoT** — 인프라 변경 시 함께 갱신.
 > 작성: 2026-04-30 · 적용 범위: axis-infra / axis-backend / axis-ai / axis-frontend
-> 표현 방식: 한 장 통합 다이어그램(현재 + K8s + CI/CD 미래상 모두 반영)
+> 표현 방식: 한 장 통합 다이어그램 (실선=현재 구현 / 점선·점박스=W6+ K8s·CI/CD 계획)
+>
+> **현재(Now) vs 계획(Planned) 구분**
+>
+> - 실선 박스·실선 화살표 = 현재 docker-compose 로 동작 중
+> - 점선 보더 박스 / 점선 화살표 = K8s + Jenkins + ArgoCD 도입 후 (W6+)
 
 ---
 
@@ -13,7 +18,7 @@ flowchart TB
     %% ── 외부 사용자 / 개발자 ──────────────────────────────
     User([👤 전략기획 담당자])
     Dev([👨‍💻 Developer])
-    Mail([📧 이메일 수신함])
+    Notify([💬 Slack 채널<br/>📧 이메일 v3])
 
     %% ── 외부 데이터 / SaaS ───────────────────────────────
     subgraph SRC["🌐 크롤링 소스 (Track A · Track B)"]
@@ -29,15 +34,15 @@ flowchart TB
     subgraph SAAS["☁️ Managed SaaS"]
         direction LR
         SB[(🟢 Supabase<br/>PostgreSQL Pooler<br/>aws-1-ap-northeast-2:6543)]
-        QC[(🔴 Qdrant Cloud<br/>axis_main · axis_history)]
+        QC[(🔴 Qdrant Cloud<br/>axis_main 3개월·axis_history 12개월)]
         OA[🤖 OpenAI GPT-4o]
-        S3[(📦 S3<br/>IR PDF · 모델)]
+        S3[(📦 S3<br/>IR PDF · 모델 아티팩트)]
     end
 
-    subgraph GH_GROUP["🐙 GitHub (4 레포)"]
+    subgraph GH_GROUP["🐙 GitHub Repos"]
         direction TB
         GH[axis-infra · axis-backend<br/>axis-ai · axis-frontend]
-        GHOPS[axis-gitops<br/>kustomize / helm]
+        GHOPS[axis-gitops<br/>kustomize / helm — 계획]
     end
 
     %% ── AWS Cloud ────────────────────────────────────────
@@ -57,18 +62,18 @@ flowchart TB
 
                 subgraph NS_APP["📦 namespace: axis-app"]
                     direction TB
-                    FE["⚛️ frontend Deployment<br/>React 18 + Vite<br/>replicas=2 · HPA"]
-                    BE["🍃 backend Deployment<br/>Spring Boot 3 · Java 17<br/>replicas=2 · HPA"]
-                    AI["🐍 ai Deployment<br/>Python 3.11 · FastAPI<br/>LangGraph · BGE-M3<br/>replicas=2 · HPA"]
+                    FE["⚛️ frontend Deployment<br/>React 18 + Vite + Radix UI<br/>replicas: 2 (HPA 예정)"]
+                    BE["🍃 backend Deployment<br/>Spring Boot 3 · Java 17 · Flyway<br/>replicas: 2 (HPA 예정)"]
+                    AI["🐍 ai Deployment<br/>Python 3.11 · FastAPI · LangGraph<br/>BGE-M3 · BGE-reranker-v2-m3<br/>replicas: 2 (HPA 예정)"]
                 end
 
-                subgraph NS_CICD["🚀 namespace: axis-cicd"]
+                subgraph NS_CICD["🚀 namespace: axis-cicd (W6+ 계획)"]
                     direction TB
                     JK["🟠 Jenkins<br/>Master + Agents"]
                     AR["🐙 ArgoCD<br/>GitOps Controller"]
                 end
 
-                subgraph NS_OBS["📊 namespace: monitoring"]
+                subgraph NS_OBS["📊 namespace: monitoring (W6+ 계획)"]
                     direction TB
                     PR[Prometheus]
                     GR[Grafana]
@@ -86,32 +91,32 @@ flowchart TB
     ALB --> FE
     ALB --> BE
     BE -->|"in-cluster<br/>ai-internal-api.yaml"| AI
+    AI -->|크롤링 fetch| SRC
+    BE -->|"Slack Webhook (현재)<br/>이메일 (v3 계획)"| Notify
 
-    %% ── 데이터 (실선 굵게) ──────────────────────────────
-    BE ==>|JDBC sslmode=require| SB
-    AI ==>|SQLAlchemy| SB
-    AI ==>|HTTPS + JWT| QC
-    AI ==>|Chat / Embedding| OA
-    AI ==> SRC
-    AI -.이메일 발송.-> Mail
-    ML --> S3
+    %% ── 데이터 영속화 / LLM (굵은 실선) ──────────────────
+    BE ==>|"JDBC<br/>sslmode=require"| SB
+    AI ==>|"SQLAlchemy + psycopg2"| SB
+    AI ==>|"HTTPS + api-key"| QC
+    AI ==>|"Chat / Embedding"| OA
+    ML ==>|"artifacts"| S3
 
-    %% ── CI/CD (점선) ────────────────────────────────────
+    %% ── CI/CD (점선 — W6+ 계획) ──────────────────────────
     Dev -->|git push| GH
     GH -.webhook.-> JK
-    JK -->|build · test · scan| ECR
-    JK -->|bump image tag| GHOPS
+    JK -.build · test · scan.-> ECR
+    JK -.bump image tag.-> GHOPS
     GHOPS -.git poll.-> AR
     AR -.sync.-> FE
     AR -.sync.-> BE
     AR -.sync.-> AI
 
-    %% ── 모니터링 (점선) ─────────────────────────────────
+    %% ── 모니터링 (점선 — W6+ 계획) ──────────────────────
     AI -.metrics.-> PR
     BE -.metrics.-> PR
     FE -.logs.-> LK
-    PR -.-> GR
-    LK -.-> GR
+    PR -.dashboard.-> GR
+    LK -.dashboard.-> GR
 
     %% ── 스타일 ───────────────────────────────────────────
     classDef user fill:#F3F4F6,stroke:#1F2937,stroke-width:2px,color:#1F2937
@@ -124,7 +129,7 @@ flowchart TB
     classDef obs fill:#F0FDFA,stroke:#0D9488,stroke-width:2px,color:#134E4A
     classDef cloud fill:#F8FAFC,stroke:#0F172A,stroke-width:2px,color:#0F172A
 
-    class User,Dev,Mail user
+    class User,Dev,Notify user
     class FE fe
     class BE be
     class AI ai
@@ -137,29 +142,30 @@ flowchart TB
 
 ### 다이어그램 범례
 
-| 선 종류 | 의미 |
-|---|---|
-| `─→` 실선 | 사용자 요청 트래픽 (동기 HTTP) |
-| `═→` 굵은 실선 | 데이터 영속화 / 외부 LLM 호출 |
-| `-.→` 점선 | CI/CD 배포 흐름 · 모니터링 메트릭 (비동기) |
+| 선 종류 | 의미 | 사용 예 |
+|---|---|---|
+| `─→` 실선 | 사용자 요청 트래픽 · 외부 fetch · 알림 발송 (동기 HTTP) | User→R53, BE→AI, AI→Naver, BE→Slack |
+| `═→` 굵은 실선 | 데이터 영속화 · 외부 LLM 호출 | BE/AI→Supabase, AI→Qdrant/OpenAI, MLflow→S3 |
+| `-.→` 점선 | CI/CD · 모니터링 (W6+ 계획, 현재 미구현) | GH→Jenkins, ArgoCD→Pods, AI→Prometheus |
 
 ---
 
 ## 2. 컴포넌트 스택 (한 페이지 요약)
 
-| 레이어 | 기술 | 책임 | 비고 |
+| 레이어 | 기술 | 책임 | 현재 상태 |
 |---|---|---|---|
-| Frontend | React 18 + Vite + TypeScript + Radix UI | 대시보드 UI | replicas=2, HPA cpu 70% |
-| Backend | Spring Boot 3.x + Java 17 + Flyway 9 | REST API · JWT · 스케줄러 · 이메일 | replicas=2, HPA cpu 70% |
-| AI Server | Python 3.11 + FastAPI + LangGraph 1.1 + uv | 크롤링 · 7노드 분석 파이프라인 · RAG | replicas=2, HPA cpu 80% |
-| RDB | PostgreSQL 16 (Supabase Managed) | 원문 · 이슈카드 · evidence_chain | Transaction Pooler:6543 |
-| Vector DB | Qdrant 1.9 (Cloud) | 하이브리드 검색 (Dense+Sparse RRF) | `axis_main` 3M / `axis_history` 12M TTL |
-| LLM | OpenAI GPT-4o | 분류 · 카드 · Generative Search | 일평균 ~₩2,150 |
-| 임베딩 / 재랭킹 | BGE-M3 + BGE-reranker-v2-m3 | 로컬 추론 (FlagEmbedding) | AI Pod 내장 |
-| 컨테이너 | Docker → Kubernetes | 5 컨테이너 → K8s Deployment | 현재 docker-compose, W6+ K8s |
-| CI | GitHub Actions → Jenkins | 빌드 · 테스트 · 이미지 push | Jenkins on K8s (axis-cicd ns) |
-| CD | (수동) → ArgoCD | GitOps · 무중단 배포 | `axis-gitops` 레포 watch |
-| 모니터링 | MLflow + Prometheus + Grafana + Loki | 모델 실험 · 서비스 메트릭 · 로그 | `monitoring` namespace |
+| Frontend | React 18 + Vite + TypeScript + Radix UI | 대시보드 UI | docker-compose 운영, W6+ K8s |
+| Backend | Spring Boot 3.x · Java 17 · Flyway · WebClient | REST API · JWT · 스케줄러 · Slack Webhook 발송 | 이메일 발송은 v3 계획 |
+| AI Server | Python 3.11 · FastAPI · LangGraph 1.1.8 · uv | 크롤링 · 7노드 분석 파이프라인 · RAG | SQLAlchemy 2.0 + psycopg2 로 Supabase 접근 |
+| RDB | PostgreSQL 16 (Supabase Managed) | 원문 · 이슈카드 · evidence_chain | Transaction Pooler:6543 (sslmode=require) |
+| Vector DB | Qdrant 1.9 (Cloud) | 하이브리드 검색 (Dense+Sparse RRF) | `axis_main` 3개월 TTL · `axis_history` 12개월 TTL |
+| LLM | OpenAI GPT-4o | 분류 · 카드 생성 · Generative Search | 일일 비용 목표: ≤ ₩5,000 |
+| 임베딩 / 재랭킹 | BGE-M3 + BGE-reranker-v2-m3 | 로컬 추론 (FlagEmbedding, MIT) | AI Pod 내장 — 외부 호출 없음 |
+| 스케줄러 | Spring `@Scheduled` (cron) | 매시 수집 · 평일 08:30 브리핑 · 월 09:00 약한신호 | `SchedulerConfig.java` |
+| 컨테이너 | Docker Compose → Kubernetes | 5 컨테이너 → K8s Deployment | **현재**: docker-compose / **W6+**: K8s 3 AZ |
+| CI | GitHub Actions → Jenkins | 빌드 · 테스트 · 이미지 푸시 | **현재**: GH Actions / **W6+**: Jenkins on K8s |
+| CD | (수동 배포) → ArgoCD | GitOps · 무중단 배포 | **현재**: 수동 / **W6+**: `axis-gitops` watch |
+| 모니터링 | (없음) → MLflow + Prometheus + Grafana + Loki | 모델 실험 · 메트릭 · 로그 | **W6+ 계획** — 현재 미구축 |
 
 > ADR 참조: [SpringBoot](adr/0001-springboot-selection.md) · [Qdrant](adr/0002-qdrant-selection.md) · [BGE-M3](adr/0003-bge-m3-selection.md) · [파이프라인 분리](adr/0004-pipeline-separation.md) · [이중 저장소](adr/0005-two-storage-design.md) · [Flyway](adr/0006-flyway-introduction.md)
 
@@ -169,7 +175,9 @@ flowchart TB
 
 ### 3.1 전체 레이아웃 (스크린샷 1번 패턴 차용)
 
-```
+> 아래 ASCII 는 **Figma 캔버스 배치 가이드**입니다. §1 mermaid 와 컴포넌트 위치는 동일하지만, ASCII 는 추가로 Public/Private 서브넷과 AZ 컬럼 분배(예: AZ-c 에 Jenkins/ArgoCD 우선 배치)까지 표현합니다 — 본 mermaid 는 namespace 단위로만 그룹화.
+
+```text
 ┌────────────────────────────────────────────────────────────────────────────┐
 │  👤 User ──→ Route 53 ──→ CloudFront ──→ ALB              👨‍💻 Developer    │
 │                                                              ↓             │
@@ -256,7 +264,15 @@ flowchart TB
 3. **K8s 박스가 3 AZ를 가로지르게** — Pod 들이 AZ 어디든 떠도 됨을 시각적으로 표현 (스크린샷의 "Kubernetes Engine" 박스 패턴)
 4. **트래픽 흐름은 두께·색으로 구분** — 사용자 요청(파랑 실선) / 데이터 영속화(녹색 굵은 실선) / CI/CD(주황 점선) / 모니터링(회색 점선)
 5. **외부 SaaS 는 Cloud 박스 밖으로** — 시각적으로 "우리 인프라 외부" 임을 명확히 (스크린샷에서 elastic/MongoDB/weaviate 가 하단에 별도)
-6. **트래픽·비용 캡션 우하단** — 첫 번째 스크린샷처럼 월간 사용자 / API 호출량 / LLM 비용 추정치 작은 글씨로
+6. **트래픽·비용 캡션 우하단** — 첫 번째 스크린샷처럼 작은 글씨로 다음 수치 표기
+
+   | 항목 | 추정치 | 근거 |
+   |---|---|---|
+   | 활성 사용자 | ~30명 (사내) | SK AX 사업전략팀 규모 |
+   | 일일 크롤링 | ~500건 | Naver/DART/RSS 등 |
+   | Qdrant 삽입 | ~50건/일 | Gate 1·2·3 통과 후 |
+   | LLM 호출 비용 | 목표 ≤ ₩5,000/일 | CLAUDE.md 성능 목표 |
+   | 이슈카드 생성 E2E | 목표 ≤ 30초 | CLAUDE.md 4주차 목표 |
 
 ---
 
