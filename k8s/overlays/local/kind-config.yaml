@@ -1,0 +1,23 @@
+# kind 클러스터 설정 — single node + NodePort 매핑.
+#
+# 사용:
+#   kind create cluster --name axis-local --config k8s/overlays/local/kind-config.yaml
+#
+# 효과:
+#   · 호스트의 localhost:30300 → kind 컨테이너:30300 → axis-frontend Pod
+#   · 호스트의 localhost:30880 → kind 컨테이너:30880 → axis-backend Pod
+#
+# minikube · docker-desktop 에서는 본 파일 불필요:
+#   · minikube ip 가 kind 의 호스트와 다른 IP 라 `minikube service` 또는 `kubectl port-forward` 사용
+#   · docker-desktop k8s 는 NodePort 가 자동으로 호스트 localhost 에 매핑됨
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30300
+        hostPort: 30300
+        protocol: TCP
+      - containerPort: 30880
+        hostPort: 30880
+        protocol: TCP

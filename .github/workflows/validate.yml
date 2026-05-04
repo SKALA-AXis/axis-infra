@@ -59,6 +59,32 @@ jobs:
       - name: Validate ai-internal-api.yaml
         run: swagger-cli validate api/ai-internal-api.yaml
 
+  validate-k8s-manifests:
+    name: Validate K8s Manifests (kustomize + kubeconform)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubectl (kustomize 내장)
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.34.1'
+
+      - name: Install kubeconform
+        run: |
+          curl -sL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz \
+            | tar -xz -C /usr/local/bin kubeconform
+
+      - name: Build base + validate
+        run: |
+          kubectl kustomize k8s/base > /tmp/axis-base.yaml
+          kubeconform -strict -summary /tmp/axis-base.yaml
+
+      - name: Build overlays/local + validate
+        run: |
+          kubectl kustomize k8s/overlays/local > /tmp/axis-local.yaml
+          kubeconform -strict -summary /tmp/axis-local.yaml
+
   notify-spec-change:
     name: Notify API Spec Change
     runs-on: ubuntu-latest
