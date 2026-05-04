@@ -73,13 +73,23 @@ kubectl config use-context docker-desktop
 
 ## 적용 절차
 
-### 1) 자격증명 채우기
+### 1) 자격증명 — `.env` 가 SSoT
 
 ```bash
-cd axis-infra/k8s/overlays/local
-$EDITOR secret.local.yaml          # OPENAI_API_KEY 등 실값
-# (in-cluster postgres 모드면 DB 비밀번호는 그대로 유지 — postgres.yaml 과 동기)
+# axis-infra 디렉토리에서:
+cp .env.example .env             # 또는 .env.local.example .env.local
+$EDITOR .env                      # OPENAI_API_KEY · Supabase 비밀번호 등 실값
+make secret                       # .env → k8s/overlays/local/secret.local.yaml 자동 생성
 ```
+
+`secret.local.yaml` 자체는 `.gitignore` 처리 — 실값이 git 에 노출되지 않음.
+직접 편집 금지 (`make secret` 재실행 시 덮어씀). `.env` 가 단일 진실원.
+
+| 모드 | source | 비고 |
+|---|---|---|
+| Cloud DB (default · 권장) | `.env` (Supabase + Qdrant Cloud 자격증명) | `make secret` 가 .env 우선 사용 |
+| In-cluster DB | `.env.local` (postgres:5432 hostname 가정) | `.env` 없을 때만 .env.local 사용 |
+| placeholder | (둘 다 없을 때) | `secret.local.yaml.example` 자동 복사 — Pod 시작은 가능, 외부 호출 fail |
 
 ### 2) 컨테이너 이미지 빌드
 

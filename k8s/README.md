@@ -67,10 +67,13 @@ grep -rn "REPLACE_" k8s/base/ | grep -v "secret.example.yaml" | grep -v "# "
 ## 적용 순서
 
 ```bash
-# 1) 자격증명 채우기 (1회)
+# 1) 자격증명 채우기 (1회) — base 는 EKS 가정이라 별도 secret.yaml 작성
 cp k8s/base/secret.example.yaml k8s/base/secret.yaml
 $EDITOR k8s/base/secret.yaml          # REPLACE_* 모두 실값으로
-echo 'k8s/base/secret.yaml' >> .gitignore  # 커밋 금지 보장
+# secret.yaml 은 .gitignore 처리됨 (확인: git check-ignore -v k8s/base/secret.yaml)
+
+# 로컬 모드 (overlays/local) 는 별도 흐름 — .env 가 SSoT 이고 'make secret' 자동 생성.
+# 자세히는 overlays/local/README.md 참조.
 
 # 2) 매니페스트 안 placeholder 치환 (REPLACE_ACCOUNT 등)
 #    실제로는 overlay 또는 envsubst 로 자동화 권장

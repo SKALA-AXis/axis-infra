@@ -71,8 +71,11 @@ qdrant_storage/
 *.p12
 secrets/
 
-# K8s — secret 실값 (secret.example.yaml / secret.local.yaml 만 커밋)
+# K8s — secret 실값 (.example 파일만 git 에 커밋)
+# secret.local.yaml 은 scripts/env-to-secret.sh 가 .env 에서 자동 생성.
+# 후속 overlay (eks-staging / eks-prod) 추가 시 동일 패턴 추가.
 k8s/base/secret.yaml
-k8s/overlays/**/secret.yaml
-k8s/overlays/**/secret.local.yaml.real
-k8s/overlays/**/secret.real.yaml
+k8s/overlays/local/secret.yaml
+k8s/overlays/local/secret.local.yaml
+k8s/overlays/local/secret.local.yaml.real
+k8s/overlays/local/secret.real.yaml

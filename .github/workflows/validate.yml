@@ -80,6 +80,9 @@ jobs:
           kubectl kustomize k8s/base > /tmp/axis-base.yaml
           kubeconform -strict -summary /tmp/axis-base.yaml
 
+      - name: Prepare secret.local.yaml (CI 용 placeholder)
+        run: cp k8s/overlays/local/secret.local.yaml.example k8s/overlays/local/secret.local.yaml
+
       - name: Build overlays/local + validate
         run: |
           kubectl kustomize k8s/overlays/local > /tmp/axis-local.yaml

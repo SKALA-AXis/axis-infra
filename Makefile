@@ -61,13 +61,17 @@ load-ai:
 
 load: load-frontend load-backend load-ai  ## 3 이미지 kind 로드
 
-secret:  ## secret.local.yaml 채우기 안내 (없으면 example 복사)
-	@if [ ! -f k8s/overlays/local/secret.local.yaml ]; then \
-		echo "⚠ k8s/overlays/local/secret.local.yaml 없음 — 이미 commit 된 템플릿 그대로 사용됩니다."; \
-		echo "  실값 (OPENAI_API_KEY 등) 으로 변경하려면 직접 편집:"; \
-		echo "  \$$EDITOR k8s/overlays/local/secret.local.yaml"; \
+secret:  ## .env (또는 .env.local) 에서 secret.local.yaml 자동 생성
+	@if [ -f .env ]; then \
+		./scripts/env-to-secret.sh .env > k8s/overlays/local/secret.local.yaml; \
+		echo "✓ secret.local.yaml 생성 — source: .env"; \
+	elif [ -f .env.local ]; then \
+		./scripts/env-to-secret.sh .env.local > k8s/overlays/local/secret.local.yaml; \
+		echo "✓ secret.local.yaml 생성 — source: .env.local (in-cluster DB 모드)"; \
 	else \
-		echo "✓ secret.local.yaml 존재"; \
+		cp k8s/overlays/local/secret.local.yaml.example k8s/overlays/local/secret.local.yaml; \
+		echo "⚠ .env 없음 — secret.local.yaml.example 복사 (placeholder 값)"; \
+		echo "  실 동작 위해: cp .env.example .env → 실값 편집 → make secret"; \
 	fi
 
 apply:  ## kustomize overlays/local 적용
@@ -120,7 +124,7 @@ validate-base:  ## kustomize build base + kubeconform schema 검증
 	docker run --rm -v /tmp/axis-base.yaml:/tmp/all.yaml \
 		ghcr.io/yannh/kubeconform:latest -strict -summary /tmp/all.yaml
 
-validate-local:  ## kustomize build overlays/local + kubeconform
+validate-local: secret  ## kustomize build overlays/local + kubeconform (secret 자동 생성)
 	kubectl kustomize k8s/overlays/local > /tmp/axis-local.yaml
 	docker run --rm -v /tmp/axis-local.yaml:/tmp/all.yaml \
 		ghcr.io/yannh/kubeconform:latest -strict -summary /tmp/all.yaml
