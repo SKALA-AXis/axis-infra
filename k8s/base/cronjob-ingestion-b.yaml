@@ -1,0 +1,62 @@
+# Track B · 매일 02:00 공시·특허·재무.
+#   · 재무 PDF 파싱 등 무거운 작업 — timeout 1시간 허용.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: axis-cron-ingestion-b
+  namespace: axis
+  labels:
+    app.kubernetes.io/component: cron
+    app.kubernetes.io/part-of: axis
+spec:
+  schedule: "0 2 * * *"
+  timeZone: "Asia/Seoul"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: cron
+            cron: ingestion-b
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: axis-cron-sa
+          containers:
+            - name: trigger
+              image: curlimages/curl:8.5.0
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  curl -fsSL --max-time 60 \
+                    -X POST \
+                    -H "Content-Type: application/json" \
+                    -H "Authorization: Bearer ${CRON_INTERNAL_TOKEN}" \
+                    "http://axis-backend:8080/api/pipeline/trigger?track=B"
+              env:
+                - name: CRON_INTERNAL_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: axis-secrets
+                      key: CRON_INTERNAL_TOKEN
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  cpu: 100m
+                  memory: 64Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 65534

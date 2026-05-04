@@ -1,0 +1,20 @@
+# axis-ai Service.
+#   · ClusterIP — 외부 노출 절대 금지.
+#   · NetworkPolicy 가 backend pod 만 접근 허용 (networkpolicy.yaml 참조).
+apiVersion: v1
+kind: Service
+metadata:
+  name: axis-ai
+  namespace: axis
+  labels:
+    app: axis-ai
+    tier: business
+spec:
+  type: ClusterIP
+  selector:
+    app: axis-ai
+  ports:
+    - name: http
+      port: 8001
+      targetPort: http
+      protocol: TCP

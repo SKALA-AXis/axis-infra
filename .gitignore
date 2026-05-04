@@ -70,3 +70,9 @@ qdrant_storage/
 *.key
 *.p12
 secrets/
+
+# K8s — secret 실값 (secret.example.yaml / secret.local.yaml 만 커밋)
+k8s/base/secret.yaml
+k8s/overlays/**/secret.yaml
+k8s/overlays/**/secret.local.yaml.real
+k8s/overlays/**/secret.real.yaml

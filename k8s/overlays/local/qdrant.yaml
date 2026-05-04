@@ -1,0 +1,92 @@
+# 옵션 — in-cluster Qdrant.
+# kustomization.yaml 의 resources 에서 주석 해제 후 사용.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qdrant
+  namespace: axis
+  labels:
+    app: qdrant
+    tier: data
+spec:
+  type: ClusterIP
+  selector:
+    app: qdrant
+  ports:
+    - name: http
+      port: 6333
+      targetPort: 6333
+    - name: grpc
+      port: 6334
+      targetPort: 6334
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qdrant-data
+  namespace: axis
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qdrant
+  namespace: axis
+  labels:
+    app: qdrant
+    tier: data
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: qdrant
+  template:
+    metadata:
+      labels:
+        app: qdrant
+        tier: data
+    spec:
+      containers:
+        - name: qdrant
+          image: qdrant/qdrant:v1.9.4
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 6333
+            - name: grpc
+              containerPort: 6334
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          volumeMounts:
+            - name: storage
+              mountPath: /qdrant/storage
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: qdrant-data

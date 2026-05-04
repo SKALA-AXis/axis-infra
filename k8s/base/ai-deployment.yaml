@@ -1,0 +1,95 @@
+# axis-ai Deployment.
+#   · 메모리 집약 (BGE-M3 ~2Gi + Reranker ~1Gi + 워킹셋)
+#   · 절대 ×2 금지 — 같은 PVC 에 동시 write 시 race condition 위험 + 메모리 비용
+#   · HPA 미사용 — 콜드스타트 1~3분 (BGE-M3 모델 다운로드)
+#   · maxSurge=0 으로 동시 2 Pod 실행 회피
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: axis-ai
+  namespace: axis
+  labels:
+    app: axis-ai
+    tier: business
+    app.kubernetes.io/part-of: axis
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: axis-ai
+  template:
+    metadata:
+      labels:
+        app: axis-ai
+        tier: business
+        app.kubernetes.io/part-of: axis
+    spec:
+      serviceAccountName: axis-ai-sa
+      containers:
+        - name: ai
+          image: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-ai:REPLACE_TAG
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8001
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: axis-config
+            - secretRef:
+                name: axis-secrets
+          resources:
+            requests:
+              cpu: 1500m
+              memory: 4Gi
+            limits:
+              cpu: 2000m
+              memory: 6Gi
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 60  # 약 5분 — BGE-M3 + Reranker 다운로드/로드 시간 확보
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: axis-images
+              mountPath: /data/images
+              # ai 는 이미지 write 권한 필요 (read-only X)
+            - name: model-cache
+              mountPath: /root/.cache/huggingface
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: false  # 모델 다운로드·임시 파일
+      volumes:
+        - name: axis-images
+          persistentVolumeClaim:
+            claimName: axis-images
+            # ai 는 read-only X
+        - name: model-cache
+          # BGE-M3 + Reranker 모델 캐시. Pod 재시작마다 재다운로드 (1~3분).
+          # v1: PVC RWX 로 전환하여 노드 간 공유 가능.
+          emptyDir:
+            sizeLimit: 8Gi

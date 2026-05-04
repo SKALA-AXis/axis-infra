@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: axis-frontend
+  namespace: axis
+spec:
+  replicas: 1  # 로컬 단일 노드 — 1개로 충분
+  template:
+    spec:
+      containers:
+        - name: web
+          image: axis-frontend:dev
+          imagePullPolicy: Never  # 로컬 빌드 이미지만 사용
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi

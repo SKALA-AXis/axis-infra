@@ -1,0 +1,96 @@
+# axis-backend Deployment.
+#   · Spring Boot 3 / Java 17 / 8080
+#   · Healthcheck: backend 의 custom HealthController (/health) — Actuator probes 미활성
+#   · @Scheduled 가 살아 있어 멀티 replica 시 cron 중복 트리거.
+#     해결책: (A) ShedLock 도입 (B3 미완료 시 임시 replicas: 1), (B) K8s CronJob 으로 이전 (D6=b)
+#     아래 설정은 (B) 가정 — 즉 backend 의 @Scheduled 는 제거되었다는 전제로 replicas: 2.
+#     B3 코드 변경 전에 적용하려면 replicas 를 1 로 낮추기.
+#   · /api/images/{id} 서빙을 위해 axis-images 볼륨 mount (read-only).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: axis-backend
+  namespace: axis
+  labels:
+    app: axis-backend
+    tier: business
+    app.kubernetes.io/part-of: axis
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: axis-backend
+  template:
+    metadata:
+      labels:
+        app: axis-backend
+        tier: business
+        app.kubernetes.io/part-of: axis
+    spec:
+      serviceAccountName: axis-backend-sa
+      containers:
+        - name: api
+          image: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-backend:REPLACE_TAG
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: axis-config
+            - secretRef:
+                name: axis-secrets
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:MaxRAMPercentage=75 -XX:+UseG1GC"
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 30  # 약 2.5분까지 부팅 허용
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: axis-images
+              mountPath: /data/images
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: false  # JAR 임시 디렉토리 쓰기 필요
+      volumes:
+        # 이미지 파일은 axis-ai 가 write 한 EFS PVC 또는 AWS EFS 기반 PVC 와 매핑.
+        # 여기선 PVC 이름만 명시 — pvc.yaml 분리 또는 overlay 에서 정의.
+        - name: axis-images
+          persistentVolumeClaim:
+            claimName: axis-images
+            readOnly: true

@@ -1,0 +1,33 @@
+# axis-config — 비밀이 아닌 설정만. 자격증명은 secret.yaml 참조.
+# 값에 placeholder 가 있으면 환경별 overlay 또는 실 배포 전에 치환.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: axis-config
+  namespace: axis
+data:
+  # ── backend (Spring Boot)
+  SPRING_PROFILES_ACTIVE: "prod"
+  AI_SERVER_URL: "http://axis-ai:8001"
+
+  # ── ai (FastAPI / LangGraph) — Qdrant Cloud
+  # 실제 URL 은 환경별 overlay 또는 secret 으로 옮길지 결정 필요.
+  QDRANT_HOST: "https://REPLACE_QDRANT_CLUSTER_ID.qdrant.io"
+  QDRANT_PORT: "6333"
+  # 참고: ai 의 listen 포트는 Dockerfile 의 --port 8001 하드코드.
+  # 향후 코드가 환경변수로 받게 되면 AI_SERVER_PORT 키 추가.
+
+  # ── 카드 뉴스 이미지 공유 볼륨
+  IMAGE_STORAGE_PATH: "/data/images"
+
+  # ── 메일 발송 (D8b=a — axis-ai 가 발송. backend 는 SMTP_* 미사용)
+  SMTP_HOST: "smtp.sendgrid.net"
+  SMTP_PORT: "587"
+  SMTP_FROM: "axis-briefing@example.co.kr"
+  BRIEFING_RECIPIENTS: "pm@example.co.kr,executive@example.co.kr"
+  BRIEFING_TIME: "08:30"
+
+  # ── frontend (Vite — 빌드타임 baked-in)
+  # 본 ConfigMap 의 VITE_API_BASE_URL 은 빌드 인자로만 사용 (런타임 주입 X).
+  # D12 결정 후 런타임 config.js 패턴 도입 시 의미 변경.
+  VITE_API_BASE_URL: "https://axis.skax.internal"

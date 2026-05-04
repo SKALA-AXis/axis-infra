@@ -1,0 +1,141 @@
+# 로컬 K8s overlay (kind / minikube / docker-desktop / k3d)
+#
+# base 와의 차이:
+#   · 이미지: 로컬 빌드 (axis-{service}:dev), imagePullPolicy: Never
+#   · 리소스: 노트북 부담 줄이려 절반으로
+#   · PVC: RWO + local-path StorageClass (kind/minikube 기본) — single node 가정
+#   · Service: frontend/backend 를 NodePort 로 노출 (Ingress 대체)
+#   · Ingress / HPA / NetworkPolicy: 삭제 (로컬 클러스터 미지원/불필요)
+#   · CronJob: suspend=true (로컬에선 수동 trigger 권장)
+#
+# DB 모드:
+#   · default — Supabase + Qdrant Cloud 사용 (인터넷 + .env 의 자격증명 필요)
+#   · in-cluster — postgres.yaml + qdrant.yaml 도 resources 에 추가
+#
+# 사용:
+#   1) cp secret.local.yaml.example secret.local.yaml 후 더미/실값 채움
+#   2) docker build 로 axis-{frontend,backend,ai}:dev 이미지 생성
+#   3) kind/minikube 면 이미지 로드 (README-local.md)
+#   4) kubectl apply -k k8s/overlays/local
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - secret.local.yaml
+  # in-cluster DB 사용 시 아래 주석 해제:
+  # - postgres.yaml
+  # - qdrant.yaml
+
+patches:
+  # ── Deployment image / pullPolicy / 리소스 절감
+  - path: patches/deployment-frontend.yaml
+  - path: patches/deployment-backend.yaml
+  - path: patches/deployment-ai.yaml
+
+  # ── PVC: RWO + local-path
+  - path: patches/pvc-local.yaml
+
+  # ── Service: frontend/backend NodePort (Ingress 대체)
+  # JSON 6902 patch — strategic merge 가 ports list 안의 nodePort 를 누락시켜서 직접 path 지정.
+  - target:
+      kind: Service
+      name: axis-frontend
+    patch: |-
+      - op: replace
+        path: /spec/type
+        value: NodePort
+      - op: add
+        path: /spec/ports/0/nodePort
+        value: 30300
+  - target:
+      kind: Service
+      name: axis-backend
+    patch: |-
+      - op: replace
+        path: /spec/type
+        value: NodePort
+      - op: add
+        path: /spec/ports/0/nodePort
+        value: 30880
+
+  # ── CronJob 4개: 모두 suspend
+  - path: patches/cronjob-suspend.yaml
+    target:
+      kind: CronJob
+
+  # ── Ingress 제거 (ALB Controller 없음 → NodePort 로 대체)
+  - target:
+      kind: Ingress
+      name: axis
+    patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: axis
+        namespace: axis
+
+  # ── HPA 2개 제거 (metrics-server 보장 X)
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: axis-frontend
+    patch: |-
+      $patch: delete
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: axis-frontend
+        namespace: axis
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: axis-backend
+    patch: |-
+      $patch: delete
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: axis-backend
+        namespace: axis
+
+  # ── NetworkPolicy 4개 제거 (kindnet/minikube 기본 CNI 미지원)
+  - target:
+      kind: NetworkPolicy
+      name: default-deny-ingress
+    patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: default-deny-ingress
+        namespace: axis
+  - target:
+      kind: NetworkPolicy
+      name: allow-frontend-from-ingress
+    patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: allow-frontend-from-ingress
+        namespace: axis
+  - target:
+      kind: NetworkPolicy
+      name: allow-backend
+    patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: allow-backend
+        namespace: axis
+  - target:
+      kind: NetworkPolicy
+      name: allow-ai-from-backend
+    patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: allow-ai-from-backend
+        namespace: axis

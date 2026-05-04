@@ -1,0 +1,42 @@
+# axis 네임스페이스 + 리소스 한도 + 기본 limit/request.
+# Pod Security Standards baseline 강제, restricted warn.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: axis
+  labels:
+    app.kubernetes.io/part-of: axis
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: axis-quota
+  namespace: axis
+spec:
+  hard:
+    requests.cpu: "8"
+    requests.memory: 16Gi
+    limits.cpu: "16"
+    limits.memory: 32Gi
+    pods: "30"
+    persistentvolumeclaims: "5"
+    services: "10"
+---
+# 명시적 resources 가 없는 Pod 가 들어왔을 때의 fallback.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: axis-defaults
+  namespace: axis
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: "500m"
+        memory: "512Mi"
+      defaultRequest:
+        cpu: "100m"
+        memory: "128Mi"

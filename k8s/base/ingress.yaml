@@ -1,0 +1,74 @@
+# AWS ALB Ingress.
+#   · 사내망 only (D4 권장) — alb.ingress.kubernetes.io/scheme: internal
+#   · TLS termination at ALB — ACM 인증서 ARN 필요
+#   · target-type=ip 로 Pod IP 직접 (faster failover, 빠른 health drain)
+#   · /api/* + /actuator/* + /swagger-ui (개발 시) → backend
+#   · / (그 외) → frontend (SPA)
+#   · axis-ai 는 등록하지 않음 — NetworkPolicy + 미등록으로 이중 차단
+#
+# 전제:
+#   · AWS Load Balancer Controller 설치 (helm install aws-load-balancer-controller)
+#   · ACM 인증서 발급 + 검증 완료
+#   · Route53 호스팅 영역 + alias record 또는 ExternalDNS 자동 생성
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: axis
+  namespace: axis
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internal
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:ap-northeast-2:REPLACE_ACCOUNT:certificate/REPLACE_CERT_UUID
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    alb.ingress.kubernetes.io/healthcheck-port: traffic-port
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: '15'
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: '5'
+    alb.ingress.kubernetes.io/healthy-threshold-count: '2'
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: '3'
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=60
+spec:
+  rules:
+    - host: axis.skax.internal
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: axis-backend
+                port:
+                  number: 8080
+          - path: /actuator
+            pathType: Prefix
+            backend:
+              service:
+                name: axis-backend
+                port:
+                  number: 8080
+          # 개발/스테이징 단계 only — 운영 overlay (overlays/eks-prod 등) 에서 제거 권장.
+          # 외부 ALB 에 노출되면 API 명세가 인터넷에 공개됨.
+          - path: /swagger-ui
+            pathType: Prefix
+            backend:
+              service:
+                name: axis-backend
+                port:
+                  number: 8080
+          - path: /api-docs
+            pathType: Prefix
+            backend:
+              service:
+                name: axis-backend
+                port:
+                  number: 8080
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: axis-frontend
+                port:
+                  number: 3000

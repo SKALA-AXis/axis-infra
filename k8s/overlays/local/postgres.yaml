@@ -1,0 +1,98 @@
+# 옵션 — in-cluster PostgreSQL.
+# kustomization.yaml 의 resources 에서 주석 해제 후 사용.
+#
+# 인터넷 차단 환경 / Supabase 자격증명 없이 로컬 시연만 할 때 활용.
+# 실 데이터 영속화 — PVC postgres-data (1Gi).
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: axis
+  labels:
+    app: postgres
+    tier: data
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+  ports:
+    - name: pg
+      port: 5432
+      targetPort: 5432
+      protocol: TCP
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: axis
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: axis
+  labels:
+    app: postgres
+    tier: data
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+        tier: data
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: pg
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: axis
+            - name: POSTGRES_USER
+              value: axuser
+            - name: POSTGRES_PASSWORD
+              value: axpass
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "axuser", "-d", "axis"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "axuser", "-d", "axis"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres-data

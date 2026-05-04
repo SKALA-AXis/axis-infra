@@ -1,0 +1,21 @@
+# 카드 뉴스 이미지 공유 PVC.
+#   · ReadWriteMany — axis-ai (write) + axis-backend (read) 동시 mount 필요.
+#   · AWS 환경에서는 EFS CSI Driver 필요 (helm install aws-efs-csi-driver).
+#   · StorageClass 는 환경별 overlay 에서 patch 또는 클러스터 default RWX SC 사용.
+#
+# v0 단계 (단일 노드·테스트) 에서는 hostPath 또는 local-path-provisioner 로 대체 가능.
+# 그 경우 accessModes 가 ReadWriteOnce 로 좁혀지면 backend 가 같은 노드에 스케줄링 강제 필요 (nodeAffinity).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: axis-images
+  namespace: axis
+  labels:
+    app.kubernetes.io/part-of: axis
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: REPLACE_RWX_STORAGE_CLASS  # 예: efs-sc · azurefile · nfs-client

@@ -1,0 +1,53 @@
+# axis-infra/k8s/base — 모든 리소스 단일 인덱스.
+#
+# 사용법:
+#   1) `cp secret.example.yaml secret.yaml` 후 실값 채움.
+#   2) overlay 또는 본 base 직접 사용:
+#        kubectl apply -k k8s/base
+#   3) PLACEHOLDER 검증: 매니페스트 안 REPLACE_* 가 모두 치환됐는지 확인.
+#
+# 환경별 overlay (staging / prod) 는 후속 단계 — 본 base 만 v0 에서 작성.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: axis
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: axis
+      app.kubernetes.io/managed-by: kustomize
+    includeSelectors: false  # selector 변형 방지 (Deployment selector 와 mismatch 방지)
+
+resources:
+  # 네임스페이스 + 한도
+  - namespace.yaml
+  # ServiceAccount
+  - serviceaccounts.yaml
+  # 설정
+  - configmap.yaml
+  # 자격증명 (axis-secrets) 은 본 base 의 resources 에 포함하지 않는다.
+  # 이유: overlay 가 환경별로 다른 Secret 을 추가할 때 ID 충돌이 발생.
+  # 운영 절차:
+  #   · cloud:  cp secret.example.yaml secret.yaml → 실값 채움 → kubectl apply -f secret.yaml
+  #   · local:  overlays/local/secret.local.yaml (overlay 의 resources 에서 추가)
+  #   · 운영:   ExternalSecret CRD 로 교체 (D14=c)
+  # 즉 secret.example.yaml 은 템플릿일 뿐, 직접 적용되지 않는다.
+  # 스토리지
+  - axis-images-pvc.yaml
+  # 워크로드
+  - frontend-deployment.yaml
+  - frontend-service.yaml
+  - hpa-frontend.yaml
+  - backend-deployment.yaml
+  - backend-service.yaml
+  - hpa-backend.yaml
+  - ai-deployment.yaml
+  - ai-service.yaml
+  # 외부 진입
+  - ingress.yaml
+  # 보안
+  - networkpolicy.yaml
+  # 스케줄러
+  - cronjob-ingestion-a.yaml
+  - cronjob-ingestion-b.yaml
+  - cronjob-delivery.yaml
+  - cronjob-weak-signal.yaml

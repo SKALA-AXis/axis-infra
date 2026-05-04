@@ -1,0 +1,9 @@
+# 모든 CronJob 일괄 suspend.
+# kustomization.yaml 에서 target.kind=CronJob 으로 모든 4개에 적용.
+# metadata.name 은 무시되고 target 매칭으로 결정.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: dummy  # target 으로 매칭되는 모든 CronJob 에 spec patch 만 적용됨
+spec:
+  suspend: true

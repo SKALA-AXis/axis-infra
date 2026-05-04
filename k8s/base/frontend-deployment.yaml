@@ -1,0 +1,75 @@
+# axis-frontend Deployment.
+#   · 컨테이너 포트 3000 (nginx.conf 의 listen 3000 과 일치)
+#   · VITE_API_BASE_URL 은 빌드타임 baked-in — D12 결정 후 런타임 패턴으로 전환 가능
+#   · 정적 SPA 라 가벼움
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: axis-frontend
+  namespace: axis
+  labels:
+    app: axis-frontend
+    tier: presentation
+    app.kubernetes.io/part-of: axis
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: axis-frontend
+  template:
+    metadata:
+      labels:
+        app: axis-frontend
+        tier: presentation
+        app.kubernetes.io/part-of: axis
+    spec:
+      serviceAccountName: axis-frontend-sa
+      containers:
+        - name: web
+          image: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-frontend:REPLACE_TAG
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          # VITE_API_BASE_URL 은 빌드 시 baked. 런타임 주입 의미 X — 문서화 목적으로만 ConfigMap 참조.
+          env:
+            - name: VITE_API_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: axis-config
+                  key: VITE_API_BASE_URL
+                  optional: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: false  # nginx 임시 파일 쓰기 필요

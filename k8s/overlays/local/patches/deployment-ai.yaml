@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: axis-ai
+  namespace: axis
+spec:
+  strategy:
+    type: Recreate  # RWO PVC + emptyDir 모델 캐시 → 동시 2 Pod 불가
+    rollingUpdate: null
+  template:
+    spec:
+      containers:
+        - name: ai
+          image: axis-ai:dev
+          imagePullPolicy: Never
+          resources:
+            # 로컬 노트북 부담 — base 의 4Gi/6Gi 는 BGE-M3 + Reranker 풀 로드 시.
+            # 로컬에선 임베딩 모델만 (Reranker 생략 가능) → 3Gi 면 충분.
+            requests:
+              cpu: 1000m
+              memory: 3Gi
+            limits:
+              cpu: 1500m
+              memory: 5Gi

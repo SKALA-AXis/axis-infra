@@ -1,0 +1,17 @@
+# 로컬 single-node 가정 — RWO + local-path StorageClass.
+#
+# 주의: ai 와 backend 가 같은 PVC 를 mount 해야 하는데 RWO 라 한 노드에 배치되어야 함.
+#       single node 면 자동으로 같은 노드 → OK.
+#       multi-node (e.g., kind --config 로 worker 추가) 면 nodeAffinity 필요.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: axis-images
+  namespace: axis
+spec:
+  accessModes:
+    - ReadWriteOnce  # RWX 에서 RWO 로 격하 (로컬 환경 대부분 RWX 미지원)
+  storageClassName: standard  # kind/minikube/docker-desktop 의 default SC
+  resources:
+    requests:
+      storage: 2Gi  # 로컬은 작게

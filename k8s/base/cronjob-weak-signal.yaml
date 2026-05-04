@@ -1,0 +1,64 @@
+# Weak Signal · 월 09:00 약신호 감지 (W7+).
+#   · 현재는 suspend: true — W7 활성 시 false 로 변경.
+#   · ai 측 WeakSignalSupervisor 미구현 상태에서 호출 시 500 또는 stub 응답.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: axis-cron-weak-signal
+  namespace: axis
+  labels:
+    app.kubernetes.io/component: cron
+    app.kubernetes.io/part-of: axis
+spec:
+  schedule: "0 9 * * 1"
+  timeZone: "Asia/Seoul"
+  suspend: true  # W7 활성 시 false
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 600
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: cron
+            cron: weak-signal
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: axis-cron-sa
+          containers:
+            - name: trigger
+              image: curlimages/curl:8.5.0
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  curl -fsSL --max-time 60 \
+                    -X POST \
+                    -H "Content-Type: application/json" \
+                    -H "Authorization: Bearer ${CRON_INTERNAL_TOKEN}" \
+                    "http://axis-backend:8080/api/weak-signal/trigger"
+              env:
+                - name: CRON_INTERNAL_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: axis-secrets
+                      key: CRON_INTERNAL_TOKEN
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  cpu: 100m
+                  memory: 64Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 65534

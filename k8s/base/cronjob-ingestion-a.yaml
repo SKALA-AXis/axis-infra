@@ -1,0 +1,64 @@
+# Track A · 매시간 뉴스 인제스션.
+#   · backend 의 /api/pipeline/trigger?track=A 호출 (B1 코드 변경 후 동작).
+#   · concurrencyPolicy: Forbid — 직전 Job 안 끝났으면 새 Job 미생성.
+#   · 인증: CRON_INTERNAL_TOKEN (B7 + D7=a) — backend 가 Authorization 헤더 검증.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: axis-cron-ingestion-a
+  namespace: axis
+  labels:
+    app.kubernetes.io/component: cron
+    app.kubernetes.io/part-of: axis
+spec:
+  schedule: "0 * * * *"
+  timeZone: "Asia/Seoul"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 1800  # 30분 timeout
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: cron
+            cron: ingestion-a
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: axis-cron-sa
+          containers:
+            - name: trigger
+              image: curlimages/curl:8.5.0
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  curl -fsSL --max-time 60 \
+                    -X POST \
+                    -H "Content-Type: application/json" \
+                    -H "Authorization: Bearer ${CRON_INTERNAL_TOKEN}" \
+                    "http://axis-backend:8080/api/pipeline/trigger?track=A"
+              env:
+                - name: CRON_INTERNAL_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: axis-secrets
+                      key: CRON_INTERNAL_TOKEN
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  cpu: 100m
+                  memory: 64Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 65534

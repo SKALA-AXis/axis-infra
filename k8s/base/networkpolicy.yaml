@@ -1,0 +1,86 @@
+# NetworkPolicy 매트릭스.
+#   기본 default-deny ingress + 명시적 allow.
+#   egress 는 모두 허용 (외부 SaaS 호출 필요: Supabase / Qdrant Cloud / OpenAI / DART / Naver / KIPRIS / Saramin / SMTP / S3).
+#
+# 전제:
+#   · NetworkPolicy 지원 CNI 활성 (EKS 의 VPC CNI 의 NetworkPolicy 활성 또는 Calico/Cilium 설치).
+#   · 기본 VPC CNI 는 NetworkPolicy 미지원 — 별도 설정 필수.
+#
+# 검증: 외부 pod 에서 `kubectl exec ... -- curl axis-ai:8001/health` 가 차단되어야 정상.
+---
+# 1) default-deny — axis 네임스페이스 모든 Pod 의 ingress 거부 (이후 룰로 명시 허용)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: axis
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+# 2) frontend ← ALB Ingress Controller (kube-system 의 aws-load-balancer-controller)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-from-ingress
+  namespace: axis
+spec:
+  podSelector:
+    matchLabels:
+      app: axis-frontend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: TCP
+          port: 3000
+---
+# 3) backend ← ALB + 같은 네임스페이스의 CronJob
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend
+  namespace: axis
+spec:
+  podSelector:
+    matchLabels:
+      app: axis-backend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: cron
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# 4) ai ← backend ONLY (외부·다른 namespace 모두 차단)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ai-from-backend
+  namespace: axis
+spec:
+  podSelector:
+    matchLabels:
+      app: axis-ai
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: axis-backend
+      ports:
+        - protocol: TCP
+          port: 8001

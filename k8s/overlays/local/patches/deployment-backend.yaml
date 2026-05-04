@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: axis-backend
+  namespace: axis
+spec:
+  replicas: 1  # @Scheduled 중복 방지 + 로컬 단일 노드
+  strategy:
+    type: Recreate  # RWO PVC 라 동시 mount 불가 — RollingUpdate 시 새 Pod 가 PVC 못 잡음
+    rollingUpdate: null
+  template:
+    spec:
+      containers:
+        - name: api
+          image: axis-backend:dev
+          imagePullPolicy: Never
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          env:
+            # 로컬에서는 JVM heap 도 줄임
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:MaxRAMPercentage=70 -XX:+UseSerialGC"
