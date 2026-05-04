@@ -11,14 +11,15 @@
 
 | 저장소 | 용도 | 보존 | 비고 |
 |---|---|---|---|
-| **PostgreSQL (Supabase)** | 원문 보존·감사·재처리 | 6개월 | 9개 테이블 |
+| **PostgreSQL (Supabase)** | 원문 보존·감사·재처리 | 6개월 | 10개 테이블 |
 | **Qdrant `axis_main`** | 검색엔진 (3개월 hot) | 90d TTL | Dense+Sparse 페이로드는 메타만 |
 | **Qdrant `axis_history`** | 시그널 히스토리 (1년 cold) | 365d TTL | 약신호 분석 전용 |
+| **공유 볼륨 (`IMAGE_STORAGE_PATH`)** | 카드 뉴스 이미지 파일 | 6개월 (대응 raw_articles 와 동기) | `axis-images` named volume — ai write, backend read-only |
 | **`data/peer_financials/*.json`** | 재무 stub (PoC) | — | `peer_financials` 테이블 마이그 후 폐기 |
 
 ---
 
-## 1. PostgreSQL — 9 테이블
+## 1. PostgreSQL — 10 테이블
 
 ### 1.1 `peer_companies` — 모니터링 대상 4사
 
@@ -266,15 +267,22 @@ issue_card 1:1 — `UNIQUE(issue_card_id)` + `ON DELETE CASCADE`.
 
 ### 3.5 `raw_articles.metadata`
 
-크롤러별 부가 필드 + 공통 `url_hash`:
+크롤러별 부가 필드 + 공통 `url_hash` + 이미지 파이프라인 임시 보관용 키:
 
 ```json
 {
   "url_hash": "a1b2c3...",
   "naver_doc_id": "...",
-  "rss_guid": "..."
+  "rss_guid": "...",
+  "image_source_url": "https://..."
 }
 ```
+
+| 키 | 채우는 주체 | 읽는 주체 | 역할 |
+|---|---|---|---|
+| `url_hash` | CrawlAgent | (모든 단계) | URL SHA-256 — `raw_articles.url` UNIQUE 보조 |
+| `naver_doc_id` / `rss_guid` 등 | 소스별 CrawlAgent | (디버깅) | 출처 추적용 부가 필드 |
+| `image_source_url` | CrawlAgent (og:image / twitter:image / 본문 첫 `<img>`) | ImageFetchAgent | 카드 단계 이전에 이미지 URL 만 임시 보관. ImageFetchAgent 가 다운로드 후 `article_images` 로 정식 이전. CrawlAgent 단계에서 추출 실패해도 다음 cycle 재시도 가능 |
 
 ---
 
@@ -284,6 +292,8 @@ issue_card 1:1 — `UNIQUE(issue_card_id)` + `ON DELETE CASCADE`.
 CrawlAgent          → INSERT raw_articles (peer_id, source_*, title, content, url,
                                           credibility_score, metadata, status='RAW')
                       ※ credibility_score 는 소스 tier 기반으로 크롤러가 미리 채움
+                      ※ og:image / twitter:image / 본문 첫 <img> 추출 →
+                         metadata.image_source_url 임시 저장 (ImageFetchAgent 가 읽음)
 CredibilityAgent    → UPDATE raw_articles (credibility_grade,
                                           status: 'SKIPPED_CREDIBILITY' if score < 0.5)
                       ※ score 는 변경하지 않음 — grade·status 만 update
@@ -297,6 +307,13 @@ FinancialLinkAgent  → 카드 dict 에 financial_refs / financial_link 채움 (
 IssueCardAgent      → INSERT issue_cards (id, title, summary_lines, implication, sources, ...)
 EvidenceAgent       → INSERT evidence_chain (4종 + pass + missing)
                     → UPSERT 시 issue_cards.implication / validation_pass / validation_sc_score 갱신
+ImageFetchAgent     → evidence.pass=true 인 카드만 대상 · fail-soft (실패해도 카드는 살림)
+                    → metadata.image_source_url 다운로드 (HEAD 사전 검증 + SSRF 차단 + 5MB 상한)
+                    → 공유 볼륨 IMAGE_STORAGE_PATH/<peer_id>/<yyyy-mm>/<sha256>.<ext> 저장
+                    → INSERT article_images (issue_card_id, source_url, source_url_hash UNIQUE,
+                                             storage_path 상대경로, content_type, width, height,
+                                             image_hash, alt_text, attribution, ...)
+                    ※ ON CONFLICT (source_url_hash) DO NOTHING — 중복 다운로드 차단
 IndexerAgent        → evidence.pass=true 인 카드만 대상으로 필터
 (vector_index_node)   → Qdrant axis_main upsert (payload + dense+sparse vector)
                     → UPDATE raw_articles (qdrant_vector_id, importance 재기록)
@@ -304,7 +321,9 @@ IndexerAgent        → evidence.pass=true 인 카드만 대상으로 필터
 DeliveryAgent (08:30):
 CardSelectorAgent   → SELECT issue_cards JOIN evidence_chain WHERE pass=true
                                         AND created_at > now()-24h
-BriefingAgent       → 본문 생성 (수신자 role 별 fan-out)
+                    ※ backend 의 IssueCardService 도 같은 시점에 article_images JOIN
+                       (issue_card_id 로 lookup) → 응답에 image_url 첨부
+BriefingAgent       → 본문 생성 (수신자 role 별 fan-out) · 카드별 image_url 인라인
 EmailAgent          → SMTP 발송 + INSERT briefing_history (※ DDL 미정의 — 아래 5번 참조)
 
 PatternDetect (W7+ MON 09:00):
@@ -325,3 +344,4 @@ PatternDetect (W7+ MON 09:00):
 - **`issue_cards.implication` JSONB 와 `evidence_chain` 테이블이 dual-write 중**. 분리 마이그레이션은 BE 측에서 evidence_chain 전용 컬럼 분리 후 진행 예정 ([article_store.py:182-183](../../axis-ai/src/db/article_store.py#L182-L183)).
 - **v1 잔재 컬럼**: `raw_articles.importance_level` (urgent/notable/reference) 와 `issue_cards.importance` (동일) 는 v3 에서 exposure_band (high/medium/low) 로 의미 전환 — 컬럼명 그대로 두고 값만 호환 저장. 추후 rename 마이그레이션 후보.
 - **`issue_cards.validation_sc_score`**: SC 검증이 폐기된 v3 에서는 단순히 1.0/0.0 플래그로 의미 축소 — `validation_pass` 와 중복. 정리 후보.
+- **`article_images` 의 파일 실체는 클러스터/PG 외부**: 공유 볼륨 (`IMAGE_STORAGE_PATH`) 에 저장. backend/ai 컨테이너가 같은 볼륨 마운트되어 있어야 동작. v1 에서 S3 + CloudFront 로 마이그 검토 — 그땐 `storage_backend` 컬럼 추가 가능성.
