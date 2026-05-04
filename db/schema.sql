@@ -200,6 +200,45 @@ CREATE INDEX IF NOT EXISTS idx_evidence_chain_pass
     ON evidence_chain (pass);
 
 -- ============================================================
+-- 10. article_images — 카드 뉴스 이미지 메타 (v3 W4 추가, V2 migration)
+-- ============================================================
+-- 이미지 파일은 공유 볼륨 (IMAGE_STORAGE_PATH) 에 저장.
+-- DB 는 storage_path (relative) + 메타데이터만 보관.
+--   write: axis-ai (ImageFetchAgent — 별도 PR 예정)
+--   read:  axis-backend (ImageController)
+CREATE TABLE IF NOT EXISTS article_images (
+    id                  BIGSERIAL    PRIMARY KEY,
+
+    article_id          BIGINT       REFERENCES raw_articles(id) ON DELETE SET NULL,
+    cluster_id          BIGINT,
+    issue_card_id       VARCHAR(50)  REFERENCES issue_cards(id) ON DELETE SET NULL,
+
+    source_url          TEXT         NOT NULL,
+    source_url_hash     VARCHAR(64)  NOT NULL UNIQUE,    -- SHA-256(source_url)
+
+    storage_path        TEXT         NOT NULL,           -- IMAGE_STORAGE_PATH 기준 상대 경로
+    content_type        VARCHAR(50),                     -- image/jpeg | image/png | image/webp
+    width               INT,
+    height              INT,
+    file_size_bytes     INT,
+    image_hash          VARCHAR(64),                     -- SHA-256(파일 콘텐츠)
+
+    alt_text            TEXT,
+    attribution         TEXT,                            -- 예: "제공: 한경"
+    license_status      VARCHAR(20)  DEFAULT 'unknown',  -- unknown | attributed | public_domain | unsafe
+
+    fetched_at          TIMESTAMPTZ,
+    created_at          TIMESTAMPTZ  DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_article_images_card
+    ON article_images (issue_card_id);
+CREATE INDEX IF NOT EXISTS idx_article_images_cluster
+    ON article_images (cluster_id);
+CREATE INDEX IF NOT EXISTS idx_article_images_hash
+    ON article_images (image_hash);
+
+-- ============================================================
 -- 초기 데이터 — Peer사 4사 (v3 확정)
 -- ============================================================
 INSERT INTO peer_companies (id, name, keywords) VALUES

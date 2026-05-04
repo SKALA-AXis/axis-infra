@@ -50,8 +50,12 @@ services:
       SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
       AI_SERVER_URL: ${AI_SERVER_URL:-http://ai:8001}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
+      IMAGE_STORAGE_PATH: ${IMAGE_STORAGE_PATH:-/data/images}
     ports:
       - "8080:8080"
+    volumes:
+      # 카드 뉴스 이미지 — axis-ai가 write, backend는 read-only
+      - axis-images:/data/images:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
       interval: 15s
@@ -76,8 +80,12 @@ services:
       DART_API_KEY: ${DART_API_KEY}
       KIPRIS_API_KEY: ${KIPRIS_API_KEY}
       SARAMIN_API_KEY: ${SARAMIN_API_KEY}
+      IMAGE_STORAGE_PATH: ${IMAGE_STORAGE_PATH:-/data/images}
     ports:
       - "8001:8001"
+    volumes:
+      # 카드 뉴스 이미지 — ImageFetchAgent가 다운로드해서 적재 (write)
+      - axis-images:/data/images
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8001/health || exit 1"]
       interval: 15s
@@ -102,6 +110,8 @@ services:
 volumes:
   postgres_data:
   qdrant_data:
+  # 카드 뉴스 이미지 공유 볼륨 — ai(write) ↔ backend(read)
+  axis-images:
 
 networks:
   default:

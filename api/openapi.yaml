@@ -801,6 +801,56 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /api/images/{id}:
+    get:
+      tags: [images]
+      summary: 카드 뉴스 이미지 바이너리 반환
+      description: |
+        이슈 카드의 대표 이미지를 바이너리로 반환한다.
+        파일은 axis-ai (ImageFetchAgent) 가 공유 볼륨(IMAGE_STORAGE_PATH)에 저장하고,
+        backend 가 그 경로를 read-only 로 서빙한다. 응답에 1년 캐시 헤더가 붙는다.
+      operationId: getImage
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: article_images.id
+      responses:
+        '200':
+          description: 이미지 바이너리
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: "public, max-age=31536000 (1년 immutable 캐시)"
+            Content-Type:
+              schema:
+                type: string
+              description: 이미지 MIME (image/jpeg | image/png | image/webp)
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+            image/png:
+              schema: { type: string, format: binary }
+            image/webp:
+              schema: { type: string, format: binary }
+        '400':
+          description: 잘못된 storage_path (path-traversal 차단)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 이미지 ID 없음 또는 파일 부재
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   securitySchemes:
     BearerAuth:
@@ -1033,6 +1083,22 @@ components:
         created_at:
           type: string
           format: date-time
+        image_url:
+          type: string
+          nullable: true
+          description: |
+            카드 대표 이미지 URL (예: "/api/images/123"). 이미지 없으면 null.
+            Backend 의 ImageController 가 공유 볼륨에서 파일을 읽어 서빙한다.
+          example: /api/images/123
+        image_attribution:
+          type: string
+          nullable: true
+          description: '이미지 출처 표기 (예: "제공: 한경"). 카드 본문/이메일 푸터에 함께 노출.'
+          example: "제공: 한경"
+        image_alt:
+          type: string
+          nullable: true
+          description: 이미지 alt 텍스트 — 접근성 및 이메일 클라이언트가 이미지 차단 시 노출.
 
     Implication:
       type: object

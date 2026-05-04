@@ -16,8 +16,11 @@ services:
       SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
       AI_SERVER_URL: http://ai:8001
       SPRING_PROFILES_ACTIVE: prod
+      IMAGE_STORAGE_PATH: ${IMAGE_STORAGE_PATH:-/data/images}
     ports:
       - "8080:8080"
+    volumes:
+      - axis-images:/data/images:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
       interval: 15s
@@ -42,8 +45,11 @@ services:
       DART_API_KEY: ${DART_API_KEY}
       KIPRIS_API_KEY: ${KIPRIS_API_KEY}
       SARAMIN_API_KEY: ${SARAMIN_API_KEY}
+      IMAGE_STORAGE_PATH: ${IMAGE_STORAGE_PATH:-/data/images}
     expose:
       - "8001"
+    volumes:
+      - axis-images:/data/images
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8001/health || exit 1"]
       interval: 15s
@@ -64,6 +70,10 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+
+volumes:
+  # 카드 뉴스 이미지 공유 볼륨 — ai(write) ↔ backend(read)
+  axis-images:
 
 networks:
   default:
