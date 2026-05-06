@@ -23,15 +23,23 @@
 
 ### 1.1 `peer_companies` — 모니터링 대상 4사
 
-> schema.sql 의 `INSERT ... ON CONFLICT DO NOTHING` 으로 4사 시드. AI 코드는 read-only.
+> schema.sql 의 `INSERT ... ON CONFLICT DO NOTHING` 으로 4사 + 자사 (SK AX) 시드. AI 코드는 read-only.
 
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
-| `id` (PK) | VARCHAR(50) | `samsung_sds` · `lg_cns` · `hyundai_autoever` · `posco_dx` |
+| `id` (PK) | VARCHAR(50) | `samsung_sds` · `lg_cns` · `hyundai_autoever` · `posco_dx` · `sk_ax` |
 | `name` | VARCHAR(100) | 한글 표기명 |
 | `keywords` | TEXT[] | 검색 키워드 배열 |
+| `role` | VARCHAR(10) | `peer` (경쟁사 4사) \| `self` (SK AX 자사). V5 추가. CHECK 제약. |
 | `is_active` | BOOLEAN | 활성 여부 |
 | `created_at` | TIMESTAMPTZ | |
+
+**인덱스**: `(role)` — 파이프라인이 role 별 분기 시 필터링용
+
+> **role 의미 (도메인)**
+> - `peer` — 모니터링 대상 경쟁사. 풀 파이프라인 (raw_articles → issue_cards → evidence_chain) 진행
+> - `self` — 자사 (SK AX). MVP 단계에서 발주처 내부 데이터 부재로 외부 공개 정보 (뉴스·공시·채용) 만 크롤링하여 비교 baseline 으로 활용. **issue_card 생성 안 함** — raw_articles 까지만 적재
+> - axis-ai 영향: `IssueCardAgent` 가 `peer_companies.role` 조회하여 `role='self'` 면 카드 생성 skip. `ExposureScoreAgent` 도 self 인 경우 `peer_mention_rate=0` 강제.
 
 ### 1.2 `raw_articles` — 크롤링 원문 전량 (6개월 보관)
 
@@ -423,6 +431,17 @@ PatternDetect (W7+ MON 09:00):
 - ~~`article_images.image_hash`~~ DROP — INSERT/SELECT 0 건 (source_url_hash 가 UNIQUE 키).
 - ~~`article_images.license_status`~~ DROP — 기본값 'unknown' 외 INSERT 없음.
 - ~~`idx_raw_articles_url`~~, ~~`idx_evidence_chain_card`~~, ~~`idx_article_images_hash`~~ DROP — UNIQUE 자동 인덱스와 중복 / 컬럼 폐기.
+
+### V5 (2026-05-06) 자사 (SK AX) 비교 baseline 도입
+
+- `peer_companies.role` 컬럼 추가 (`peer` | `self` CHECK 제약, default `peer`)
+- `sk_ax` 시드 추가 (role='self', keywords: SK AX · SKAX · 에스케이에이엑스 · SK 에이엑스)
+- `idx_peer_companies_role` 인덱스 추가 (파이프라인의 role 분기 빈번)
+- **axis-ai 동반 변경 필요 (별도 PR)**:
+  - `IssueCardAgent` — `role='self'` 면 카드 생성 skip (자사 카드는 만들지 않음)
+  - `ExposureScoreAgent` — `role='self'` 일 때 `peer_mention_rate=0` 강제 (자기 언급 부풀림 차단)
+  - 크롤러 config — `peer_id='sk_ax'` 키워드 추가하여 raw_articles 적재
+- **의도**: MVP 단계에서 발주처 내부 정보 부재 → 외부 공개 정보로 비교 baseline 확보. `PeersView` 5사 비교 시 사용 (frontend 변경은 W6+ 보류)
 
 ### 남은 항목 (코드 변경 동반 — 별도 PR)
 
