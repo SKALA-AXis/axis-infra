@@ -13,7 +13,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: default-deny-ingress
-  namespace: axis
+  namespace: skala3-finalproj-class3-team13
 spec:
   podSelector: {}
   policyTypes:
@@ -24,7 +24,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-frontend-from-ingress
-  namespace: axis
+  namespace: skala3-finalproj-class3-team13
 spec:
   podSelector:
     matchLabels:
@@ -45,7 +45,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-backend
-  namespace: axis
+  namespace: skala3-finalproj-class3-team13
 spec:
   podSelector:
     matchLabels:
@@ -69,7 +69,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-ai-from-backend
-  namespace: axis
+  namespace: skala3-finalproj-class3-team13
 spec:
   podSelector:
     matchLabels:

@@ -7,7 +7,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: axis-images
-  namespace: axis
+  namespace: skala3-finalproj-class3-team13
 spec:
   accessModes:
     - ReadWriteOnce  # RWX 에서 RWO 로 격하 (로컬 환경 대부분 RWX 미지원)

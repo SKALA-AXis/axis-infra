@@ -9,7 +9,7 @@
 # 환경별 overlay (staging / prod) 는 후속 단계 — 본 base 만 v0 에서 작성.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: axis
+namespace: skala3-finalproj-class3-team13
 
 labels:
   - pairs:

@@ -4,7 +4,7 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: axis-cron-ingestion-b
-  namespace: axis
+  namespace: skala3-finalproj-class3-team13
   labels:
     app.kubernetes.io/component: cron
     app.kubernetes.io/part-of: axis

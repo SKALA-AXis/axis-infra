@@ -46,7 +46,7 @@ flowchart TB
             subgraph EKS["⎈ EKS · 2 AZ"]
                 direction TB
 
-                subgraph NSAPP["📦 axis-app"]
+                subgraph NSAPP["📦 skala3-finalproj-class3-team13"]
                     direction TB
 
                     FE["⚛️ Frontend<br/>React 18"]
@@ -75,7 +75,7 @@ flowchart TB
                     end
                 end
 
-                subgraph NSOPS["🛠️ axis-ops · W6+"]
+                subgraph NSOPS["🛠️ ops · W6+ (별도 EKS 자체 운영 시)"]
                     direction LR
                     AR[🐙 ArgoCD]
                     PR[📈 Prometheus]
@@ -188,7 +188,7 @@ flowchart TB
 
 | 결정 | 선택 | 이유 |
 |---|---|---|
-| **클러스터 수** | EKS 1개 (axis-app + axis-ops 두 namespace) | 사내 30명 규모. 멀티 클러스터는 운영 부담만 큼 |
+| **클러스터 수** | SKALA 공유 K8s 1개 — 단일 namespace `skala3-finalproj-class3-team13` (별도 namespace 생성 금지) | 발주처 정책. 자체 EKS 띄울 시에만 ops namespace 추가 (W6+) |
 | **AZ 수** | 2 AZ (a, c) | 30명 사용자에 3 AZ 는 과잉. RDS 가 Supabase managed 이므로 stateful 부담 없음 |
 | **CI/CD** | GitHub Actions + ArgoCD (Jenkins 채택 안 함) | GH Actions 가 이미 4 레포 모두에 동작 중. Jenkins 도입은 학습 외 실익 없음 |
 | **모니터링** | Prometheus + Grafana + CloudWatch Logs (Loki 채택 안 함) | EKS 컨트롤플레인 로그가 이미 CWL 로 가니 Loki 중복. 메트릭만 자체 운영 |
@@ -215,7 +215,7 @@ flowchart TB
 | 스케줄러 | Spring `@Scheduled` (cron) | 매시 수집 · 평일 08:30 브리핑 · 월 09:00 약한신호 | `SchedulerConfig.java` (Java 측 단일 트리거) |
 | 컨테이너 | Docker Compose → EKS | 5 컨테이너 → K8s Deployment | **현재**: docker-compose / **W6+**: EKS 2 AZ |
 | CI | GitHub Actions | 빌드 · 테스트 · 이미지 푸시 → ECR | 4 레포 각각 동작 중 (Jenkins 도입 안 함) |
-| CD | (수동 배포) → ArgoCD | GitOps · `axis-gitops` watch | **W6+**: ArgoCD on `axis-ops` namespace |
+| CD | (수동 배포) → ArgoCD | GitOps · `axis-gitops` watch | **W6+ (자체 EKS 한정)**: ArgoCD 별도 namespace. SKALA 클러스터에선 적용 X |
 | 모니터링 | (없음) → Prometheus + Grafana + CloudWatch Logs | 메트릭 + 로그 (Loki·MLflow 도입 안 함) | **W6+ 계획** |
 
 > ADR 참조: [SpringBoot](adr/0001-springboot-selection.md) · [Qdrant](adr/0002-qdrant-selection.md) · [BGE-M3](adr/0003-bge-m3-selection.md) · [파이프라인 분리](adr/0004-pipeline-separation.md) · [이중 저장소](adr/0005-two-storage-design.md) · [Flyway](adr/0006-flyway-introduction.md) · [Slack 폐기](adr/0007-slack-deprecation.md) *(작성 예정)*
@@ -236,7 +236,7 @@ flowchart TB
 │                              ▼                                  ▼          │
 │  ┌─ ☁️ AWS · ap-northeast-2 ──── 🔒 VPC ─────────────────┐  📦 ECR         │
 │  │   ⎈ EKS · 2 AZ (a · c)                                │                 │
-│  │   ┌─ 📦 axis-app ─────────────────────────────────┐  │                 │
+│  │   ┌─ 📦 skala3-finalproj-class3-team13 ────────────┐  │                 │
 │  │   │                                                │  │                 │
 │  │   │  ⚛️ FE Pod         🍃 BE Pod (@Scheduled)     │  │                 │
 │  │   │                       │                        │  │                 │
@@ -252,7 +252,7 @@ flowchart TB
 │  │   │     │  🔍 weak_signal_graph (월 09:00)       │  │  │                 │
 │  │   │     └───────────────────────────────────────┘  │  │                 │
 │  │   └────────────────────────────────────────────────┘  │                 │
-│  │   ┌─ 🛠️ axis-ops · W6+ ─┐                              │                 │
+│  │   ┌─ 🛠️ ops (자체 EKS 시) · W6+ ─┐                       │                 │
 │  │   │ 🐙 ArgoCD · 📈 Prom · 📊 Grafana                   │                 │
 │  │   └──────────────────────┘                            │                 │
 │  └────────────────────────────────────────────────────────┘                 │
@@ -316,7 +316,7 @@ flowchart TB
 3. **ingestion_graph 의 7노드는 가로 시퀀스** — 좌→우 7노드 박스 + 화살표. 노드 번호는 보더 컬러 원 + 흰 숫자
 4. **Evidence Chain 4종은 evidence(6) 노드에서 분기** — 옅은 보더 (`#B45309`) 로 묶어 "여기에 환각 방지 장치가 있다" 시각적 강조. ingestion_graph 박스 안 또는 바로 옆
 5. **delivery / search / weak_signal 은 압축 박스** — 각 한 박스에 노드 시퀀스를 한두 줄 텍스트로 (ingestion 의 디테일 보존, 다른 graph 는 라벨만)
-6. **점선 보더 박스** — `axis-ops` namespace 와 CI/CD 흐름은 `[6, 4]` dash, 보더 컬러 `#94A3B8`. "현재 미구축, W6+" 가 한눈에 보이게
+6. **점선 보더 박스** — ops namespace (자체 EKS 시) 와 CI/CD 흐름은 `[6, 4]` dash, 보더 컬러 `#94A3B8`. "현재 미구축, W6+" 가 한눈에 보이게
 7. **트래픽 흐름은 두께·색으로 구분**
    - 사용자 (파랑 실선) / 영속화·외부 fetch (보라 굵은 실선) / @Scheduled 트리거 (회색 점선) / CI/CD (주황 점선) / 모니터링 (청록 점선)
 8. **외부 SaaS 는 Cloud 박스 밖으로** — Supabase / Qdrant / OpenAI / S3 를 VPC 박스 외부 하단에 별도 zone 으로. 캔버스 한 번만 등장 ("우리 인프라가 아님" + 중복 제거)

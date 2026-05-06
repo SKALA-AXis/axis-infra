@@ -74,7 +74,7 @@ patches:
       kind: Ingress
       metadata:
         name: axis
-        namespace: axis
+        namespace: skala3-finalproj-class3-team13
 
   # ── HPA 2개 제거 (metrics-server 보장 X)
   - target:
@@ -86,7 +86,7 @@ patches:
       kind: HorizontalPodAutoscaler
       metadata:
         name: axis-frontend
-        namespace: axis
+        namespace: skala3-finalproj-class3-team13
   - target:
       kind: HorizontalPodAutoscaler
       name: axis-backend
@@ -96,7 +96,7 @@ patches:
       kind: HorizontalPodAutoscaler
       metadata:
         name: axis-backend
-        namespace: axis
+        namespace: skala3-finalproj-class3-team13
 
   # ── NetworkPolicy 4개 제거 (kindnet/minikube 기본 CNI 미지원)
   - target:
@@ -108,7 +108,7 @@ patches:
       kind: NetworkPolicy
       metadata:
         name: default-deny-ingress
-        namespace: axis
+        namespace: skala3-finalproj-class3-team13
   - target:
       kind: NetworkPolicy
       name: allow-frontend-from-ingress
@@ -118,7 +118,7 @@ patches:
       kind: NetworkPolicy
       metadata:
         name: allow-frontend-from-ingress
-        namespace: axis
+        namespace: skala3-finalproj-class3-team13
   - target:
       kind: NetworkPolicy
       name: allow-backend
@@ -128,7 +128,7 @@ patches:
       kind: NetworkPolicy
       metadata:
         name: allow-backend
-        namespace: axis
+        namespace: skala3-finalproj-class3-team13
   - target:
       kind: NetworkPolicy
       name: allow-ai-from-backend
@@ -138,4 +138,4 @@ patches:
       kind: NetworkPolicy
       metadata:
         name: allow-ai-from-backend
-        namespace: axis
+        namespace: skala3-finalproj-class3-team13
