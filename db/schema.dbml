@@ -1,0 +1,335 @@
+// ============================================================
+// AXIS — DBML (ERD 시각화용)
+// 사용법: 전체 복사 → https://dbdiagram.io/d 에 붙여넣기
+// 동기화 원본: axis-infra/db/schema.sql (V4 기준, 13 테이블 / 145 컬럼)
+// ============================================================
+
+Project axis {
+  database_type: 'PostgreSQL'
+  Note: '''
+    AXIS — Peer 기업 모니터링 AI 브리핑 시스템
+    SK AX 사업전략팀 · SKALA AI 13조 (2026-04-16 ~ 2026-06-23)
+    Peer 4사 (삼성SDS · LG CNS · 현대오토에버 · 포스코DX) 의 전략적 변화 자동 감지.
+  '''
+}
+
+
+// ─── 1. Peer 원천 데이터 ──────────────────────────────────────
+
+Table peer_companies {
+  id varchar(50) [pk, note: '예: samsung_sds, lg_cns']
+  name varchar(100) [not null]
+  keywords "text[]" [default: `'{}'`, note: '수집 키워드 배열']
+  is_active boolean [default: true]
+  created_at timestamptz [default: `now()`]
+
+  Note: '모니터링 대상 Peer 4사. schema.sql INSERT 로 시드 적재.'
+}
+
+Table raw_articles {
+  id bigserial [pk]
+  peer_id varchar(50) [not null, ref: > peer_companies.id]
+  source_tier smallint [not null, note: '1~5 출처 등급']
+  source_name varchar(100) [not null]
+  title text [not null]
+  content text
+  url text [not null, unique, note: '멱등성 보장 키']
+  published_at timestamptz [not null]
+  collected_at timestamptz [default: `now()`]
+  credibility_score float
+  credibility_grade varchar(20) [note: 'High/Medium/Low/Unverified']
+  cluster_id bigint
+  is_representative boolean [default: false]
+  processing_status varchar(30) [default: 'RAW', note: 'RAW/CLUSTERED_REP/DUPE/CLASSIFIED/SKIPPED_*']
+  importance_score float [note: 'v3 exposure_score (0~1)']
+  metadata jsonb [default: `'{}'`]
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    (peer_id, published_at) [name: 'idx_raw_articles_peer_published']
+    processing_status [name: 'idx_raw_articles_status']
+    cluster_id [name: 'idx_raw_articles_cluster']
+  }
+
+  Note: '크롤링 원문 전량 아카이브 (6개월 보존). url UNIQUE 자동 인덱스.'
+}
+
+Table job_postings {
+  id bigserial [pk]
+  peer_id varchar(50) [not null, ref: > peer_companies.id]
+  job_title text [not null]
+  department varchar(100)
+  tech_stack "text[]" [default: `'{}'`]
+  snapshot_week date [not null, note: '월요일 기준 주간 스냅샷']
+  is_new boolean [default: true]
+  url text
+  collected_at timestamptz [default: `now()`]
+
+  indexes {
+    (peer_id, snapshot_week) [name: 'idx_job_postings_peer_week']
+  }
+
+  Note: '채용공고 (W7+ 약한 신호 감지용)'
+}
+
+Table peer_financials {
+  id bigserial [pk]
+  peer_id varchar(50) [not null, ref: > peer_companies.id]
+  period varchar(10) [not null, note: 'YYYYQn — 예: 2026Q1']
+  report_date date
+  dart_rcept_no varchar(40) [note: 'DART 공시번호']
+  ir_page int
+  revenue_total_krwbn float [note: '총 매출 (억원)']
+  operating_profit_krwbn float [note: '영업이익 (억원)']
+  segment_revenue jsonb [default: `'{}'`, note: '{segment_id: 매출_억원}']
+  ai_revenue_share_pct float
+  headcount jsonb [default: `'{}'`, note: '{total, rd, ai_engineers_est}']
+  raw_payload jsonb
+  source varchar(20) [default: 'stub_v0', note: 'stub_v0|dart|ir_pdf|manual']
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    (peer_id, period) [unique, name: 'unique_peer_period']
+  }
+
+  Note: 'Peer 분기·연간 재무 시계열 — FinancialLinkerAgent 가 카드와 매칭'
+}
+
+Table mbb_baseline {
+  id bigserial [pk]
+  source varchar(50) [not null, note: 'McKinsey|BCG|Bain|Kearney|...']
+  report_id varchar(100)
+  title text [not null]
+  published_date date
+  url text
+  summary text
+  sectors "text[]" [default: `'{}'`]
+  keywords "text[]" [default: `'{}'`]
+  raw_payload jsonb [default: `'{}'`]
+  is_active boolean [default: true]
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    (source, published_date) [name: 'idx_mbb_baseline_source_date']
+    is_active [name: 'idx_mbb_baseline_active']
+  }
+
+  Note: '컨설팅 보고서 baseline — EvidenceAgent 가 evidence_chain.mbb_refs 첨부'
+}
+
+
+// ─── 2. AI 분석 결과 ─────────────────────────────────────────
+
+Table issue_cards {
+  id varchar(50) [pk, note: 'IC-YYYYMMDD-NNN 형식']
+  peer_id varchar(50) [not null, ref: > peer_companies.id]
+  cluster_id bigint
+  title text [not null]
+  summary_lines "text[]" [default: `'{}'`, note: '정확히 3줄']
+  event_type varchar(50) [note: 'partnership|ma|personnel|tech|regulation|new_biz']
+  importance varchar(20) [note: 'v3: high|medium|low (exposure_band)']
+  importance_score float [note: 'v3 exposure_score']
+  implication jsonb [note: '{sector, sectors, exposure_score, exposure_band, signals, evidence_chain}']
+  sources jsonb
+  validation_pass boolean
+  validation_sc_score float [note: 'v3: 1.0(pass) | 0.0(fail)']
+  is_human_reviewed boolean [default: false]
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    (peer_id, created_at) [name: 'idx_issue_cards_peer_created']
+    importance [name: 'idx_issue_cards_importance']
+    event_type [name: 'idx_issue_cards_event_type']
+  }
+
+  Note: 'AI 가 cluster 단위로 생성한 동향 카드'
+}
+
+Table evidence_chain {
+  id bigserial [pk]
+  issue_card_id varchar(50) [not null, unique, ref: - issue_cards.id, note: '1:1, ON DELETE CASCADE']
+  source_links jsonb [default: `'[]'`]
+  provenance jsonb [default: `'{}'`, note: 'raw_article_ids 배열 포함 — raw_articles 역참조']
+  financial_refs jsonb [default: `'[]'`, note: 'dart_rcept_no 로 peer_financials 매칭']
+  mbb_refs jsonb [default: `'[]'`, note: 'mbb_baseline.id 매칭 (W5 활성)']
+  financial_link jsonb
+  evidence_version varchar(20) [default: 'v3.0']
+  pass boolean [default: false, note: '4종 모두 첨부 통과 여부']
+  missing "text[]" [default: `'{}'`]
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    pass [name: 'idx_evidence_chain_pass']
+  }
+
+  Note: '''
+    검증 체인 4종 (source_links / provenance / financial_refs / mbb_refs).
+    issue_card_id UNIQUE 자동 인덱스.
+
+    JSONB 안의 논리적 참조 (FK 강제 X):
+      - provenance.raw_article_ids[] → raw_articles.id
+      - financial_refs[].dart_rcept_no → peer_financials.dart_rcept_no
+      - mbb_refs[].id → mbb_baseline.id
+  '''
+}
+
+Table article_images {
+  id bigserial [pk]
+  article_id bigint [ref: > raw_articles.id, note: 'ON DELETE SET NULL']
+  cluster_id bigint
+  issue_card_id varchar(50) [ref: > issue_cards.id, note: 'ON DELETE SET NULL — backend lookup 키']
+  source_url text [not null, note: 'og:image / twitter:image / 본문 첫 <img>']
+  source_url_hash varchar(64) [not null, unique, note: 'SHA-256(source_url) — 중복 차단']
+  storage_path text [not null, note: 'IMAGE_STORAGE_PATH 기준 상대 경로']
+  content_type varchar(50) [note: 'image/jpeg|png|webp']
+  width int
+  height int
+  file_size_bytes int [note: '≤5MB']
+  alt_text text
+  attribution text [note: '예: 제공: 한경']
+  fetched_at timestamptz
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    issue_card_id [name: 'idx_article_images_card']
+    cluster_id [name: 'idx_article_images_cluster']
+  }
+
+  Note: '카드 뉴스 이미지 메타. 파일 실체는 공유 볼륨에 저장.'
+}
+
+
+// ─── 3. 메일 전달 ────────────────────────────────────────────
+
+Table recipients {
+  id bigserial [pk]
+  email varchar(255) [not null, unique]
+  name varchar(100)
+  role varchar(20) [not null, note: 'pm | executive | admin']
+  impact_threshold smallint [not null, default: 3, note: '1~5 — PM=3, 임원=4']
+  locale varchar(10) [default: 'ko-KR']
+  is_active boolean [default: true]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+
+  indexes {
+    (is_active, role) [name: 'idx_recipients_active']
+  }
+
+  Note: '메일 수신자 — CardSelectorAgent 가 role 별 차등 필터링'
+}
+
+Table briefing_history {
+  id bigserial [pk]
+  recipient_id bigint [not null, ref: > recipients.id, note: 'ON DELETE RESTRICT']
+  briefing_date date [not null]
+  run_id varchar(50) [note: '한 cycle 식별자']
+  card_count int [not null, default: 0]
+  card_ids "text[]" [default: `'{}'`, note: '배열 원소 → issue_cards.id (FK X, 배열 참조)']
+  subject text
+  body_preview text [note: '본문 첫 200자']
+  status varchar(20) [not null, note: 'sent | failed | skipped']
+  smtp_response text
+  error_msg text
+  retry_count smallint [default: 0]
+  sent_at timestamptz [default: `now()`]
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    (recipient_id, briefing_date) [name: 'idx_briefing_history_recipient_date']
+    run_id [name: 'idx_briefing_history_run']
+    status [name: 'idx_briefing_history_status']
+  }
+
+  Note: '''
+    평일 08:30 EmailAgent 발송 이력. DLQ + 운영 알림 단일 소스.
+
+    배열 안의 논리적 참조 (FK X):
+      - card_ids[] → issue_cards.id
+  '''
+}
+
+
+// ─── 4. 운영·평가 로그 ───────────────────────────────────────
+
+Table pipeline_logs {
+  id bigserial [pk]
+  pipeline_step varchar(50) [not null, note: 'crawl|credibility|dedup|classify|...']
+  peer_id varchar(50) [ref: > peer_companies.id, note: 'logical FK — 전체 단계면 NULL']
+  input_count int
+  output_count int
+  elapsed_ms int
+  llm_tokens_used int
+  error_msg text
+  created_at timestamptz [default: `now()`]
+
+  Note: 'AI 파이프라인 단계별 실행 통계 (운영 모니터링)'
+}
+
+Table crawl_logs {
+  id bigserial [pk]
+  peer_id varchar(50) [not null, ref: > peer_companies.id, note: 'logical FK']
+  source_name varchar(100) [not null]
+  started_at timestamptz [not null]
+  finished_at timestamptz
+  total_count int [default: 0]
+  success_count int [default: 0]
+  skipped_count int [default: 0]
+  error_msg text
+  created_at timestamptz [default: `now()`]
+
+  Note: '크롤러 소스별 실행 결과 (IP block 감지·운영 알람)'
+}
+
+Table golden_set {
+  id bigserial [pk]
+  query text [not null]
+  expected_card_ids "text[]" [default: `'{}'`, note: '배열 원소 → issue_cards.id (FK X)']
+  annotator varchar(50)
+  difficulty varchar(10) [note: 'easy | hard']
+  created_at timestamptz [default: `now()`]
+
+  Note: '''
+    RAG 평가용 골든셋 (W6 활성 예정).
+
+    배열 안의 논리적 참조 (FK X):
+      - expected_card_ids[] → issue_cards.id
+  '''
+}
+
+
+// ─── Logical Refs (SQL FK 없지만 의미적 연결) ──────────────────
+// schema.sql 에 명시된 FK 외에, 도메인 흐름상 연결되는 관계를
+// dbdiagram ERD 가시성을 위해 별도 ref 로 추가.
+// PG 에는 강제되지 않음 — 코드 레벨에서 일관성 유지.
+
+Ref: "issue_cards"."cluster_id" > "raw_articles"."cluster_id"
+Ref: "article_images"."cluster_id" > "raw_articles"."cluster_id"
+
+
+// ─── 영역 그룹핑 (dbdiagram 시각화 색상 분리) ──────────────────
+
+TableGroup "1. Peer 원천 데이터" {
+  peer_companies
+  raw_articles
+  job_postings
+  peer_financials
+  mbb_baseline
+}
+
+TableGroup "2. AI 분석 결과" {
+  issue_cards
+  evidence_chain
+  article_images
+}
+
+TableGroup "3. 메일 전달" {
+  recipients
+  briefing_history
+}
+
+TableGroup "4. 운영·평가 로그" {
+  pipeline_logs
+  crawl_logs
+  golden_set
+}

@@ -37,9 +37,7 @@ CREATE TABLE IF NOT EXISTS raw_articles (
     cluster_id          BIGINT,
     is_representative   BOOLEAN      DEFAULT FALSE,
     processing_status   VARCHAR(30)  DEFAULT 'RAW',   -- RAW/EMBEDDED/SKIPPED_QUALITY/SKIPPED_CREDIBILITY/CLUSTERED_DUPE/ERROR
-    importance_level    VARCHAR(20),                  -- urgent/notable/reference
-    importance_score    FLOAT,
-    qdrant_vector_id    UUID,
+    importance_score    FLOAT,                        -- v3 exposure_score (결정적 산식, 0~1)
     metadata            JSONB        DEFAULT '{}',
     created_at          TIMESTAMPTZ  DEFAULT NOW()
 );
@@ -50,8 +48,7 @@ CREATE INDEX IF NOT EXISTS idx_raw_articles_status
     ON raw_articles (processing_status);
 CREATE INDEX IF NOT EXISTS idx_raw_articles_cluster
     ON raw_articles (cluster_id);
-CREATE INDEX IF NOT EXISTS idx_raw_articles_url
-    ON raw_articles (url);
+-- url 컬럼은 UNIQUE 제약으로 PG 가 자동 인덱스 생성 — 별도 인덱스 불필요.
 
 -- ============================================================
 -- 3. issue_cards — AI가 생성한 이슈 카드 (v3에서 "동향 카드"로 리네임 예정)
@@ -194,8 +191,7 @@ CREATE TABLE IF NOT EXISTS evidence_chain (
     UNIQUE (issue_card_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_evidence_chain_card
-    ON evidence_chain (issue_card_id);
+-- issue_card_id 는 UNIQUE 제약으로 PG 가 자동 인덱스 생성 — 별도 인덱스 불필요.
 CREATE INDEX IF NOT EXISTS idx_evidence_chain_pass
     ON evidence_chain (pass);
 
@@ -221,11 +217,9 @@ CREATE TABLE IF NOT EXISTS article_images (
     width               INT,
     height              INT,
     file_size_bytes     INT,
-    image_hash          VARCHAR(64),                     -- SHA-256(파일 콘텐츠)
 
     alt_text            TEXT,
     attribution         TEXT,                            -- 예: "제공: 한경"
-    license_status      VARCHAR(20)  DEFAULT 'unknown',  -- unknown | attributed | public_domain | unsafe
 
     fetched_at          TIMESTAMPTZ,
     created_at          TIMESTAMPTZ  DEFAULT NOW()
@@ -235,8 +229,93 @@ CREATE INDEX IF NOT EXISTS idx_article_images_card
     ON article_images (issue_card_id);
 CREATE INDEX IF NOT EXISTS idx_article_images_cluster
     ON article_images (cluster_id);
-CREATE INDEX IF NOT EXISTS idx_article_images_hash
-    ON article_images (image_hash);
+
+-- ============================================================
+-- 11. recipients — 메일 수신자 (Flyway V3, W5 추가)
+-- ============================================================
+-- CardSelectorAgent 가 role 별 impact_threshold 로 차등 필터링.
+-- PM = impact ≥ 3 전체 / 임원 = impact ≥ 4 핵심.
+CREATE TABLE IF NOT EXISTS recipients (
+    id                  BIGSERIAL    PRIMARY KEY,
+
+    email               VARCHAR(255) NOT NULL UNIQUE,
+    name                VARCHAR(100),
+    role                VARCHAR(20)  NOT NULL,           -- pm | executive | admin
+    impact_threshold    SMALLINT     NOT NULL DEFAULT 3, -- 1~5 (수신할 카드의 최소 importance_score)
+    locale              VARCHAR(10)  DEFAULT 'ko-KR',
+
+    is_active           BOOLEAN      DEFAULT TRUE,
+    created_at          TIMESTAMPTZ  DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ  DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_recipients_active
+    ON recipients (is_active, role);
+
+
+-- ============================================================
+-- 12. briefing_history — 메일 발송 이력 (Flyway V3)
+-- ============================================================
+-- 평일 08:30 EmailAgent 가 발송 후 INSERT.
+-- status=skipped (card_count==0) / sent / failed 모두 기록 — DLQ + 운영 알림의 단일 소스.
+CREATE TABLE IF NOT EXISTS briefing_history (
+    id                  BIGSERIAL    PRIMARY KEY,
+
+    recipient_id        BIGINT       NOT NULL REFERENCES recipients(id) ON DELETE RESTRICT,
+    briefing_date       DATE         NOT NULL,                    -- 어느 영업일의 브리핑인지
+    run_id              VARCHAR(50),                              -- 한 cycle 의 식별자 (재시도 추적)
+
+    card_count          INT          NOT NULL DEFAULT 0,
+    card_ids            TEXT[]       DEFAULT '{}',                -- 포함된 issue_cards.id 배열
+    subject             TEXT,                                      -- 메일 제목
+    body_preview        TEXT,                                      -- 본문 첫 200자 (감사 + 디버깅)
+
+    status              VARCHAR(20)  NOT NULL,                    -- sent | failed | skipped
+    smtp_response       TEXT,                                      -- SendGrid/SMTP 응답
+    error_msg           TEXT,                                      -- status=failed 시 상세
+    retry_count         SMALLINT     DEFAULT 0,                   -- EmailAgent 의 retry ×3 횟수
+
+    sent_at             TIMESTAMPTZ  DEFAULT NOW(),
+    created_at          TIMESTAMPTZ  DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_briefing_history_recipient_date
+    ON briefing_history (recipient_id, briefing_date DESC);
+CREATE INDEX IF NOT EXISTS idx_briefing_history_run
+    ON briefing_history (run_id);
+CREATE INDEX IF NOT EXISTS idx_briefing_history_status
+    ON briefing_history (status);
+
+
+-- ============================================================
+-- 13. mbb_baseline — 컨설팅 보고서 baseline (Flyway V3, W5 활성 예정)
+-- ============================================================
+-- McKinsey · Bain · BCG · 커니 등 글로벌 컨설팅 보고서 baseline.
+-- EvidenceAgent 가 카드 sector/keywords 와 매칭하여 evidence_chain.mbb_refs 에 첨부.
+CREATE TABLE IF NOT EXISTS mbb_baseline (
+    id                  BIGSERIAL    PRIMARY KEY,
+
+    source              VARCHAR(50)  NOT NULL,                    -- 'McKinsey' | 'BCG' | 'Bain' | 'Kearney' | ...
+    report_id           VARCHAR(100),                              -- 발행처 내부 식별자
+    title               TEXT         NOT NULL,
+    published_date      DATE,
+    url                 TEXT,
+    summary             TEXT,
+
+    sectors             TEXT[]       DEFAULT '{}',                -- ['ai_tech', 'security'] 등
+    keywords            TEXT[]       DEFAULT '{}',                -- 매칭 키워드 배열
+
+    raw_payload         JSONB        DEFAULT '{}',
+
+    is_active           BOOLEAN      DEFAULT TRUE,
+    created_at          TIMESTAMPTZ  DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_mbb_baseline_source_date
+    ON mbb_baseline (source, published_date DESC);
+CREATE INDEX IF NOT EXISTS idx_mbb_baseline_active
+    ON mbb_baseline (is_active);
+
 
 -- ============================================================
 -- 초기 데이터 — Peer사 4사 (v3 확정)

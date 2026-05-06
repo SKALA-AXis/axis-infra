@@ -11,7 +11,7 @@
 
 | 저장소 | 용도 | 보존 | 비고 |
 |---|---|---|---|
-| **PostgreSQL (Supabase)** | 원문 보존·감사·재처리 | 6개월 | 10개 테이블 |
+| **PostgreSQL (Supabase)** | 원문 보존·감사·재처리 | 6개월 | 13개 테이블 |
 | **Qdrant `axis_main`** | 검색엔진 (3개월 hot) | 90d TTL | Dense+Sparse 페이로드는 메타만 |
 | **Qdrant `axis_history`** | 시그널 히스토리 (1년 cold) | 365d TTL | 약신호 분석 전용 |
 | **공유 볼륨 (`IMAGE_STORAGE_PATH`)** | 카드 뉴스 이미지 파일 | 6개월 (대응 raw_articles 와 동기) | `axis-images` named volume — ai write, backend read-only |
@@ -19,7 +19,7 @@
 
 ---
 
-## 1. PostgreSQL — 10 테이블
+## 1. PostgreSQL — 13 테이블
 
 ### 1.1 `peer_companies` — 모니터링 대상 4사
 
@@ -48,12 +48,12 @@
 | `credibility_score` / `credibility_grade` | FLOAT / VARCHAR(20) | CredibilityAgent | High/Medium/Low/Unverified |
 | `cluster_id` / `is_representative` | BIGINT / BOOLEAN | DedupAgent | |
 | `processing_status` | VARCHAR(30) | 단계별 update | `RAW` → `CLUSTERED_REP/DUPE` → `CLASSIFIED` (또는 `SKIPPED_QUALITY/CREDIBILITY/ERROR`) |
-| `importance_level` / `importance_score` | VARCHAR(20) / FLOAT | ClassifyAgent | v3: exposure_band/score 호환 저장 |
-| `qdrant_vector_id` | UUID | IndexerAgent | 대표 기사만 채워짐 |
+| `importance_score` | FLOAT | ClassifyAgent | v3 exposure_score (결정적 산식, 0~1) |
 | `metadata` | JSONB | CrawlAgent | `{url_hash, ...크롤러별 부가 필드}` |
 | `created_at` | TIMESTAMPTZ | DB | |
 
-**인덱스**: `(peer_id, published_at DESC)` · `(processing_status)` · `(cluster_id)` · `(url)`
+**인덱스**: `(peer_id, published_at DESC)` · `(processing_status)` · `(cluster_id)`
+> `url` 은 UNIQUE 제약으로 자동 인덱스 생성 — 별도 명시적 인덱스 X (V4 정리)
 
 ### 1.3 `issue_cards` — AI 생성 동향 카드
 
@@ -164,19 +164,87 @@ issue_card 1:1 — `UNIQUE(issue_card_id)` + `ON DELETE CASCADE`.
 | `content_type` | VARCHAR(50) | ImageFetchAgent | `image/jpeg` / `image/png` / `image/webp` |
 | `width` / `height` | INT | ImageFetchAgent | Pillow 로 추출 |
 | `file_size_bytes` | INT | ImageFetchAgent | 5MB 상한 권장 |
-| `image_hash` | VARCHAR(64) | ImageFetchAgent | SHA-256(파일 콘텐츠) — 동일 파일 다른 URL 검출 |
 | `alt_text` | TEXT | ImageFetchAgent | 카드 title 또는 og:image:alt |
 | `attribution` | TEXT | ImageFetchAgent | 출처 표기 (예: "제공: 한경") |
-| `license_status` | VARCHAR(20) | ImageFetchAgent | `unknown` / `attributed` / `public_domain` / `unsafe` (기본 `unknown`) |
 | `fetched_at` | TIMESTAMPTZ | ImageFetchAgent | 다운로드 완료 시각 |
 | `created_at` | TIMESTAMPTZ | DB | |
 
-**인덱스**: `(issue_card_id)` · `(cluster_id)` · `(image_hash)`
+**인덱스**: `(issue_card_id)` · `(cluster_id)`
 
 **경로 규약 (계약)**:
 - `storage_path` 는 **반드시 상대 경로** — `..` 포함 금지 (backend 가 path-traversal 차단)
 - 권장 형식: `<peer_id>/<yyyy-mm>/<sha256>.<ext>` — 예: `lg_cns/2026-04/abc123de.jpg`
 - 절대 경로 (`/data/images/...`) 저장 금지 — 환경 이동 시 깨짐
+
+### 1.11 `recipients` — 메일 수신자 (Flyway V3, W5 추가)
+
+> CardSelectorAgent 가 `role` 별 `impact_threshold` 로 차등 필터링.
+> PM = impact ≥ 3 전체 / 임원 = impact ≥ 4 핵심 (architecture/04 §4.5 와 일치).
+>
+> - **write**: 운영자 (관리 도구) 또는 seed SQL
+> - **read**: axis-ai (CardSelectorAgent) — 활성 수신자 목록 조회
+
+| 컬럼 | 타입 | 비고 |
+|---|---|---|
+| `id` (PK) | BIGSERIAL | DB |
+| `email` (UNIQUE) | VARCHAR(255) | 메일 주소 (수신자 키) |
+| `name` | VARCHAR(100) | 이름 (메일 To 표시용) |
+| `role` | VARCHAR(20) | `pm` / `executive` / `admin` |
+| `impact_threshold` | SMALLINT | 1~5 · 수신할 카드의 최소 importance_score (default 3) |
+| `locale` | VARCHAR(10) | default `ko-KR` |
+| `is_active` | BOOLEAN | default TRUE — 비활성 수신자 일괄 토글 |
+| `created_at` / `updated_at` | TIMESTAMPTZ | DB |
+
+**인덱스**: `(is_active, role)` — 활성 수신자만 role 별로 조회
+
+### 1.12 `briefing_history` — 메일 발송 이력 (Flyway V3)
+
+> 평일 08:30 EmailAgent 가 발송 후 INSERT.
+> `status=skipped` (card_count==0) / `sent` / `failed` 모두 기록 — DLQ + 운영 알림의 단일 소스.
+
+| 컬럼 | 타입 | 채우는 주체 | 비고 |
+|---|---|---|---|
+| `id` (PK) | BIGSERIAL | DB | |
+| `recipient_id` (FK) | BIGINT | EmailAgent | `recipients(id)` · `ON DELETE RESTRICT` (이력 보존) |
+| `briefing_date` | DATE | EmailAgent | 어느 영업일의 브리핑인지 (배치 단위) |
+| `run_id` | VARCHAR(50) | EmailAgent | 한 cycle 식별자 — retry 추적 |
+| `card_count` | INT | EmailAgent | 메일에 포함된 카드 수 (0 이면 skipped) |
+| `card_ids` | TEXT[] | EmailAgent | 포함된 `issue_cards.id` 배열 |
+| `subject` | TEXT | EmailAgent | 메일 제목 |
+| `body_preview` | TEXT | EmailAgent | 본문 첫 200자 (감사 + 디버깅) |
+| `status` | VARCHAR(20) | EmailAgent | `sent` / `failed` / `skipped` |
+| `smtp_response` | TEXT | EmailAgent | SendGrid/SMTP 응답 (코드 + 메시지) |
+| `error_msg` | TEXT | EmailAgent | status=failed 시 상세 |
+| `retry_count` | SMALLINT | EmailAgent | EmailAgent 의 retry ×3 횟수 |
+| `sent_at` | TIMESTAMPTZ | EmailAgent | 발송 시각 |
+| `created_at` | TIMESTAMPTZ | DB | |
+
+**인덱스**: `(recipient_id, briefing_date DESC)` · `(run_id)` · `(status)`
+
+### 1.13 `mbb_baseline` — 컨설팅 보고서 baseline (Flyway V3, W5 활성)
+
+> McKinsey · Bain · BCG · 커니 등 글로벌 컨설팅 보고서를 baseline 으로 보관.
+> EvidenceAgent 가 카드의 `sectors`/`keywords` 와 매칭하여 `evidence_chain.mbb_refs` 에 첨부.
+>
+> - **write**: 운영자 (수기 적재) 또는 W5 컨설팅 보고서 크롤러
+> - **read**: axis-ai (EvidenceAgent)
+
+| 컬럼 | 타입 | 비고 |
+|---|---|---|
+| `id` (PK) | BIGSERIAL | DB |
+| `source` | VARCHAR(50) | `McKinsey` / `BCG` / `Bain` / `Kearney` / ... |
+| `report_id` | VARCHAR(100) | 발행처 내부 식별자 (있으면) |
+| `title` | TEXT | 보고서 제목 |
+| `published_date` | DATE | 발행일 |
+| `url` | TEXT | 원문 URL (PDF · 웹) |
+| `summary` | TEXT | 핵심 요약 (운영자 입력 또는 AI 생성) |
+| `sectors` | TEXT[] | 매칭 키 — `[ai_tech, security]` 등 |
+| `keywords` | TEXT[] | 매칭 키워드 배열 |
+| `raw_payload` | JSONB | 추가 메타 (저자 · 페이지 수 등) |
+| `is_active` | BOOLEAN | default TRUE |
+| `created_at` | TIMESTAMPTZ | DB |
+
+**인덱스**: `(source, published_date DESC)` · `(is_active)`
 
 ---
 
@@ -299,9 +367,7 @@ CredibilityAgent    → UPDATE raw_articles (credibility_grade,
                       ※ score 는 변경하지 않음 — grade·status 만 update
 DedupAgent          → UPDATE raw_articles (cluster_id, is_representative,
                                           status: 'CLUSTERED_REP' / 'CLUSTERED_DUPE')
-ClassifyAgent       → UPDATE raw_articles (importance_level, importance_score,
-                                          status: 'CLASSIFIED')
-                      ※ qdrant_vector_id 는 이 단계엔 NULL — IndexerAgent 가 나중에 채움
+ClassifyAgent       → UPDATE raw_articles (importance_score, status: 'CLASSIFIED')
                       + 카드 dict 에 sector / event_type / exposure_score 채움
 FinancialLinkAgent  → 카드 dict 에 financial_refs / financial_link 채움 (Track B 만)
 IssueCardAgent      → INSERT issue_cards (id, title, summary_lines, implication, sources, ...)
@@ -312,19 +378,25 @@ ImageFetchAgent     → evidence.pass=true 인 카드만 대상 · fail-soft (�
                     → 공유 볼륨 IMAGE_STORAGE_PATH/<peer_id>/<yyyy-mm>/<sha256>.<ext> 저장
                     → INSERT article_images (issue_card_id, source_url, source_url_hash UNIQUE,
                                              storage_path 상대경로, content_type, width, height,
-                                             image_hash, alt_text, attribution, ...)
+                                             alt_text, attribution, fetched_at, ...)
                     ※ ON CONFLICT (source_url_hash) DO NOTHING — 중복 다운로드 차단
 IndexerAgent        → evidence.pass=true 인 카드만 대상으로 필터
 (vector_index_node)   → Qdrant axis_main upsert (payload + dense+sparse vector)
-                    → UPDATE raw_articles (qdrant_vector_id, importance 재기록)
+                      ※ Qdrant payload 의 rdb_id 가 raw_articles 역참조 키 — DB 컬럼 별도 X
 
 DeliveryAgent (08:30):
-CardSelectorAgent   → SELECT issue_cards JOIN evidence_chain WHERE pass=true
+CardSelectorAgent   → SELECT recipients WHERE is_active=true       (V3 활성 후)
+                    → SELECT issue_cards JOIN evidence_chain WHERE pass=true
                                         AND created_at > now()-24h
+                    → 수신자 role 별 차등: PM (impact_threshold=3) · 임원 (=4)
                     ※ backend 의 IssueCardService 도 같은 시점에 article_images JOIN
                        (issue_card_id 로 lookup) → 응답에 image_url 첨부
-BriefingAgent       → 본문 생성 (수신자 role 별 fan-out) · 카드별 image_url 인라인
-EmailAgent          → SMTP 발송 + INSERT briefing_history (※ DDL 미정의 — 아래 5번 참조)
+BriefingAgent       → EvidenceAgent 가 mbb_baseline 에서 sectors/keywords 매칭
+                       → evidence_chain.mbb_refs 에 첨부 (W5 활성)
+                    → 본문 생성 (수신자 role 별 fan-out) · 카드별 image_url 인라인
+EmailAgent          → SMTP 발송 + INSERT briefing_history
+                       (recipient_id, briefing_date, run_id, card_ids, status, retry_count, ...)
+                    → status=skipped (card_count==0) / sent / failed 모두 기록 — DLQ 단일 소스
 
 PatternDetect (W7+ MON 09:00):
                     → SELECT raw_articles WHERE collected_at > now()-7d
@@ -338,10 +410,23 @@ PatternDetect (W7+ MON 09:00):
 
 ## 5. 알려진 불일치 / TODO
 
-- **`briefing_history` 테이블이 schema.sql 에 없다.** 아키텍처 문서 (`architecture/04-ai-agent-view.html`, `architecture/05-data-view.html`) 와 EmailAgent 코드 흐름에서는 참조하지만 DDL 미정의 — 마이그레이션 추가 필요.
-- **`recipients` 테이블도 schema.sql 에 없다.** CardSelectorAgent 가 수신자 role 별 차등 필터링하려면 `(id, email, role, is_active)` 정도의 테이블 필요.
-- **`mbb_baseline` 테이블도 schema.sql 에 없다.** 아키텍처 문서에서 4사 비교 baseline 으로 참조하지만 DDL 없음 — W5 컨설팅 보고서 매칭과 함께 정의 필요.
-- **`issue_cards.implication` JSONB 와 `evidence_chain` 테이블이 dual-write 중**. 분리 마이그레이션은 BE 측에서 evidence_chain 전용 컬럼 분리 후 진행 예정 ([article_store.py:182-183](../../axis-ai/src/db/article_store.py#L182-L183)).
-- **v1 잔재 컬럼**: `raw_articles.importance_level` (urgent/notable/reference) 와 `issue_cards.importance` (동일) 는 v3 에서 exposure_band (high/medium/low) 로 의미 전환 — 컬럼명 그대로 두고 값만 호환 저장. 추후 rename 마이그레이션 후보.
-- **`issue_cards.validation_sc_score`**: SC 검증이 폐기된 v3 에서는 단순히 1.0/0.0 플래그로 의미 축소 — `validation_pass` 와 중복. 정리 후보.
+### 해결된 항목 (참고용 · 이력)
+
+- ~~**`briefing_history` 테이블이 schema.sql 에 없다.**~~ → V3 추가 (§1.12)
+- ~~**`recipients` 테이블도 schema.sql 에 없다.**~~ → V3 추가 (§1.11)
+- ~~**`mbb_baseline` 테이블도 schema.sql 에 없다.**~~ → V3 추가 (§1.13)
+
+### V4 (2026-05-06) 정리 완료
+
+- ~~`raw_articles.importance_level`~~ DROP — v1 잔재. SELECT 0 건 (importance_score 만 사용).
+- ~~`raw_articles.qdrant_vector_id`~~ DROP — Qdrant payload `rdb_id` 로 역참조 충분.
+- ~~`article_images.image_hash`~~ DROP — INSERT/SELECT 0 건 (source_url_hash 가 UNIQUE 키).
+- ~~`article_images.license_status`~~ DROP — 기본값 'unknown' 외 INSERT 없음.
+- ~~`idx_raw_articles_url`~~, ~~`idx_evidence_chain_card`~~, ~~`idx_article_images_hash`~~ DROP — UNIQUE 자동 인덱스와 중복 / 컬럼 폐기.
+
+### 남은 항목 (코드 변경 동반 — 별도 PR)
+
+- **`issue_cards.implication` JSONB 와 `evidence_chain` 테이블이 dual-write 중**. axis-ai 의 [article_store.py](../../axis-ai/src/db/article_store.py) 가 implication JSONB 안에 evidence_chain 도 함께 저장 + evidence_chain 테이블에도 따로 INSERT. 분리는 BE 측의 IssueCard JPA entity 에서 evidence_chain 전용 컬럼 제거 후 진행 예정. **현재 영향**: 같은 데이터가 두 곳에 — 한 쪽 수정 시 sync 깨질 위험.
+- **`issue_cards.importance` (varchar)**: v1 잔재명이지만 v3 에서 exposure_band (high/medium/low) 호환 저장. backend `IssueCardRepository.findAll(orderBy importance)` 가 사용 중 — 컬럼명 그대로 유지, 값만 호환.
+- **`issue_cards.validation_sc_score`**: SC 검증이 폐기된 v3 에서는 단순히 1.0/0.0 플래그로 의미 축소 — `validation_pass` 와 중복. evidence_agent 가 여전히 채우는 중 → axis-ai 동반 정리 필요.
 - **`article_images` 의 파일 실체는 클러스터/PG 외부**: 공유 볼륨 (`IMAGE_STORAGE_PATH`) 에 저장. backend/ai 컨테이너가 같은 볼륨 마운트되어 있어야 동작. v1 에서 S3 + CloudFront 로 마이그 검토 — 그땐 `storage_backend` 컬럼 추가 가능성.
