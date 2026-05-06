@@ -1,7 +1,7 @@
 # AXIS 시스템 아키텍처
 
 > Figma 작업용 단일 레퍼런스. **이 문서가 SoT** — 인프라·파이프라인 변경 시 함께 갱신.
-> 작성: 2026-04-30 · 갱신: 2026-05-06 (V5 / 13 테이블 / 146 컬럼 / 5사 baseline) · 적용 범위: axis-infra / axis-backend / axis-ai / axis-frontend
+> 작성: 2026-04-30 · 갱신: 2026-05-06 (V6 / 13 테이블 / 145 컬럼 / 5사 baseline) · 적용 범위: axis-infra / axis-backend / axis-ai / axis-frontend
 >
 > 한 캔버스에 인프라 토폴로지 + AI Pod 내부 동작 동시 표현. 저장소·SaaS 는 한 번만 등장.
 >
@@ -208,7 +208,7 @@ flowchart TB
 | AI Server | Python 3.11 · FastAPI · LangGraph 1.1.8 · uv | 4개 graph (ingestion / delivery / search / weak_signal) | SQLAlchemy 2.0 + psycopg2 로 Supabase 접근 |
 | Pipeline 노드 | crawl · credibility · dedup · classify · issue_card · evidence | 6노드 LangGraph + 결정적 노출도 산식 | `axis-ai/src/pipeline/ingestion_graph.py` |
 | Evidence Chain | source_links · provenance · financial_refs · mbb_refs | 환각 방지 검증 첨부 4종 | `evidence_chain` 테이블 |
-| RDB | PostgreSQL 16 (Supabase Managed) | **13 테이블 / 146 컬럼 (V5 기준)** — 4 영역: Peer 원천 (5) · AI 분석 (3) · 메일 전달 (2) · 운영·평가 (3). `peer_companies` 5 row (4 peer + 1 self/SK AX) | Pooler:6543 (sslmode=require) |
+| RDB | PostgreSQL 16 (Supabase Managed) | **13 테이블 / 145 컬럼 (V6 기준)** — 4 영역: Peer 원천 (5) · AI 분석 (3) · 메일 전달 (2) · 운영·평가 (3). `peer_companies` 5 row (4사 + sk_ax 자사 — id 로 분기) | Pooler:6543 (sslmode=require) |
 | Vector DB | Qdrant 1.9 (Cloud) | Hybrid RRF (Dense + Sparse) | `axis_main` 3개월 · `axis_history` 12개월 TTL |
 | LLM | OpenAI GPT-4o | 분류 · 카드 생성 · Generative Search | 일일 비용 목표 ≤ ₩5,000 |
 | 임베딩 / 재랭킹 | BGE-M3 + BGE-reranker-v2-m3 (FlagEmbedding 1.x, MIT) | AI Pod 내장 — 외부 호출 없음 | Dense+Sparse 원샷 추론 |

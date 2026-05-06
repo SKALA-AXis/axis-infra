@@ -11,19 +11,15 @@ CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 -- ============================================================
 -- 1. peer_companies — 모니터링 대상 Peer사 + 자사 (SK AX)
 -- ============================================================
--- role='peer' (4사) — 카드 생성 O / role='self' (sk_ax) — raw_articles 까지만
+-- 4사 (samsung_sds · lg_cns · hyundai_autoever · posco_dx) — 풀 파이프라인
+-- sk_ax — 자사. raw_articles 까지만 적재, issue_card 생성 X (id 로 분기)
 CREATE TABLE IF NOT EXISTS peer_companies (
-    id          VARCHAR(50)  PRIMARY KEY,            -- 예: 'samsung_sds', 'lg_cns', 'sk_ax'
+    id          VARCHAR(50)  PRIMARY KEY,            -- 'samsung_sds' · 'lg_cns' · 'hyundai_autoever' · 'posco_dx' · 'sk_ax'
     name        VARCHAR(100) NOT NULL,
     keywords    TEXT[]       DEFAULT '{}',            -- 수집 키워드 목록
-    role        VARCHAR(10)  NOT NULL DEFAULT 'peer'  -- 'peer' (경쟁사) | 'self' (자사)
-                CHECK (role IN ('peer', 'self')),
     is_active   BOOLEAN      DEFAULT TRUE,
     created_at  TIMESTAMPTZ  DEFAULT NOW()
 );
-
-CREATE INDEX IF NOT EXISTS idx_peer_companies_role
-    ON peer_companies (role);
 
 -- ============================================================
 -- 2. raw_articles — 크롤링 원문 전량 아카이브
@@ -324,12 +320,12 @@ CREATE INDEX IF NOT EXISTS idx_mbb_baseline_active
 
 
 -- ============================================================
--- 초기 데이터 — Peer사 4사 (role='peer') + SK AX 자사 (role='self', V5)
+-- 초기 데이터 — Peer사 4사 + SK AX 자사 (V5 시드, id 로 분기)
 -- ============================================================
-INSERT INTO peer_companies (id, name, keywords, role) VALUES
-    ('samsung_sds',      '삼성SDS',     ARRAY['삼성SDS', '삼성 SDS', 'Samsung SDS'],          'peer'),
-    ('lg_cns',           'LG CNS',      ARRAY['LG CNS', 'LGCNS'],                              'peer'),
-    ('hyundai_autoever', '현대오토에버', ARRAY['현대오토에버', '오토에버', 'Hyundai AutoEver'], 'peer'),
-    ('posco_dx',         '포스코DX',    ARRAY['포스코DX', '포스코 DX', 'POSCO DX'],            'peer'),
-    ('sk_ax',            'SK AX',       ARRAY['SK AX', 'SKAX', '에스케이에이엑스', 'SK 에이엑스'], 'self')
+INSERT INTO peer_companies (id, name, keywords) VALUES
+    ('samsung_sds',      '삼성SDS',     ARRAY['삼성SDS', '삼성 SDS', 'Samsung SDS']),
+    ('lg_cns',           'LG CNS',      ARRAY['LG CNS', 'LGCNS']),
+    ('hyundai_autoever', '현대오토에버', ARRAY['현대오토에버', '오토에버', 'Hyundai AutoEver']),
+    ('posco_dx',         '포스코DX',    ARRAY['포스코DX', '포스코 DX', 'POSCO DX']),
+    ('sk_ax',            'SK AX',       ARRAY['SK AX', 'SKAX', '에스케이에이엑스', 'SK 에이엑스'])
 ON CONFLICT (id) DO NOTHING;

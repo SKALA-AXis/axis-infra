@@ -1,7 +1,7 @@
 // ============================================================
 // AXIS — DBML (ERD 시각화용)
 // 사용법: 전체 복사 → https://dbdiagram.io/d 에 붙여넣기
-// 동기화 원본: axis-infra/db/schema.sql (V5 기준, 13 테이블 / 146 컬럼)
+// 동기화 원본: axis-infra/db/schema.sql (V6 기준, 13 테이블 / 145 컬럼)
 // ============================================================
 
 Project axis {
@@ -17,21 +17,16 @@ Project axis {
 // ─── 1. Peer 원천 데이터 ──────────────────────────────────────
 
 Table peer_companies {
-  id varchar(50) [pk, note: '예: samsung_sds, lg_cns, sk_ax']
+  id varchar(50) [pk, note: 'samsung_sds · lg_cns · hyundai_autoever · posco_dx · sk_ax']
   name varchar(100) [not null]
   keywords "text[]" [default: `'{}'`, note: '수집 키워드 배열']
-  role varchar(10) [not null, default: 'peer', note: "'peer' (경쟁사 4사) | 'self' (SK AX)"]
   is_active boolean [default: true]
   created_at timestamptz [default: `now()`]
 
-  indexes {
-    role [name: 'idx_peer_companies_role']
-  }
-
   Note: '''
     모니터링 대상 4사 + 자사 (SK AX) 5 row.
-    role='peer' → issue_card 생성 O (분석·시사점)
-    role='self' → raw_articles 까지만 (비교 baseline) · issue_card X
+    4사 → 풀 파이프라인 (raw_articles → issue_cards → evidence_chain)
+    sk_ax → raw_articles 까지만 (비교 baseline). id 로 분기 (별도 role 컬럼 X).
   '''
 }
 
