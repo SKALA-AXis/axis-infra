@@ -21,68 +21,119 @@ CREATE TABLE IF NOT EXISTS peer_companies (
     created_at  TIMESTAMPTZ  DEFAULT NOW()
 );
 
+
 -- ============================================================
--- 2. raw_articles — 크롤링 원문 전량 아카이브
+-- 2. raw_articles — 크롤링 원문 전량 아카이브 (axis-ai current write path)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS raw_articles (
     id                  BIGSERIAL    PRIMARY KEY,
-    peer_id             VARCHAR(50)  NOT NULL REFERENCES peer_companies(id),
-    source_tier         SMALLINT     NOT NULL,        -- 1~5 (출처 등급)
+
+    source_type         VARCHAR(50)  NOT NULL,
     source_name         VARCHAR(100) NOT NULL,
-    title               TEXT         NOT NULL,
+    publisher           VARCHAR(150),
+
+    title               VARCHAR(500) NOT NULL,
     content             TEXT,
     url                 TEXT         NOT NULL UNIQUE,
-    published_at        TIMESTAMPTZ  NOT NULL,
-    collected_at        TIMESTAMPTZ  DEFAULT NOW(),
+    url_hash            VARCHAR(32)  NOT NULL,
+
+    published_at        TIMESTAMPTZ,
+    collected_at        TIMESTAMPTZ  NOT NULL,
+
+    company             JSONB        NOT NULL DEFAULT '[]',
+    language            VARCHAR(10)  NOT NULL DEFAULT 'ko',
+    content_type        VARCHAR(30)  NOT NULL,
+
+    crawl_status        VARCHAR(20)  NOT NULL DEFAULT 'success',
+    error_message       TEXT,
+    processing_status   VARCHAR(40)  NOT NULL DEFAULT 'RAW',
+    metadata            JSONB        NOT NULL DEFAULT '{}',
+
     credibility_score   FLOAT,
-    credibility_grade   VARCHAR(20),                  -- High/Medium/Low/Unverified
+    credibility_grade   VARCHAR(20),
+
+    relevance_score     FLOAT,
+    relevance_label     VARCHAR(20),
+    relevance_reason    TEXT,
+    matched_companies   JSONB        NOT NULL DEFAULT '[]',
+    matched_sectors     JSONB        NOT NULL DEFAULT '[]',
+
     cluster_id          BIGINT,
-    is_representative   BOOLEAN      DEFAULT FALSE,
-    processing_status   VARCHAR(30)  DEFAULT 'RAW',   -- RAW/EMBEDDED/SKIPPED_QUALITY/SKIPPED_CREDIBILITY/CLUSTERED_DUPE/ERROR
-    importance_score    FLOAT,                        -- v3 exposure_score (결정적 산식, 0~1)
-    metadata            JSONB        DEFAULT '{}',
+    is_representative   BOOLEAN,
+
+    importance_level    VARCHAR(20),
+    importance_score    FLOAT,
+    qdrant_vector_id    UUID,
+
     created_at          TIMESTAMPTZ  DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_raw_articles_peer_published
-    ON raw_articles (peer_id, published_at DESC);
-CREATE INDEX IF NOT EXISTS idx_raw_articles_status
+CREATE INDEX IF NOT EXISTS idx_raw_articles_url_hash
+    ON raw_articles (url_hash);
+CREATE INDEX IF NOT EXISTS idx_raw_articles_source_type
+    ON raw_articles (source_type);
+CREATE INDEX IF NOT EXISTS idx_raw_articles_source_name
+    ON raw_articles (source_name);
+CREATE INDEX IF NOT EXISTS idx_raw_articles_published_at
+    ON raw_articles (published_at);
+CREATE INDEX IF NOT EXISTS idx_raw_articles_processing_status
     ON raw_articles (processing_status);
-CREATE INDEX IF NOT EXISTS idx_raw_articles_cluster
+CREATE INDEX IF NOT EXISTS idx_raw_articles_company
+    ON raw_articles USING GIN(company);
+CREATE INDEX IF NOT EXISTS idx_raw_articles_metadata
+    ON raw_articles USING GIN(metadata);
+CREATE INDEX IF NOT EXISTS idx_raw_articles_matched_companies
+    ON raw_articles USING GIN(matched_companies);
+CREATE INDEX IF NOT EXISTS idx_raw_articles_matched_sectors
+    ON raw_articles USING GIN(matched_sectors);
+CREATE INDEX IF NOT EXISTS idx_raw_articles_cluster_id
     ON raw_articles (cluster_id);
+CREATE INDEX IF NOT EXISTS idx_raw_articles_is_representative
+    ON raw_articles (is_representative);
+CREATE INDEX IF NOT EXISTS idx_raw_articles_qdrant_vector_id
+    ON raw_articles (qdrant_vector_id);
 -- url 컬럼은 UNIQUE 제약으로 PG 가 자동 인덱스 생성 — 별도 인덱스 불필요.
 
+
 -- ============================================================
--- 3. issue_cards — AI가 생성한 이슈 카드 (v3에서 "동향 카드"로 리네임 예정)
+-- 3. issue_cards — AI가 생성한 이슈 카드 (axis-ai current write path)
 -- ============================================================
 -- v3 변경사항:
---   - importance 컬럼: v3에서 exposure_band(high/medium/low)를 그대로 저장 (값 호환)
+--   - company 컬럼: axis-ai IssueCardAgent가 company/peer_id 값을 문자열로 저장
 --   - implication JSONB: v3 메타데이터 (sector, sectors, exposure_score, exposure_band,
 --     signals, evidence_chain) 통합 저장. 향후 evidence_chain 테이블로 분리 마이그레이션 예정
---   - validation_pass / validation_sc_score: SC 검증 → EvidenceAgent의 검증 첨부 결과로 의미 전환
+--   - validation_pass / validation_sc_score: EvidenceAgent의 검증 첨부 결과
 CREATE TABLE IF NOT EXISTS issue_cards (
-    id                  VARCHAR(50)  PRIMARY KEY,     -- 'IC-20260420-001' 형식
-    peer_id             VARCHAR(50)  NOT NULL REFERENCES peer_companies(id),
+    id                  VARCHAR(30)  PRIMARY KEY,     -- 'IC-YYYYMMDD-001' 형식
+    company             VARCHAR(50)  NOT NULL,
     cluster_id          BIGINT,
-    title               TEXT         NOT NULL,
-    summary_lines       TEXT[]       DEFAULT '{}',    -- 3줄 요약
-    event_type          VARCHAR(50),                  -- partnership/ma/personnel/tech/regulation/new_biz
-    importance          VARCHAR(20),                  -- v1: urgent/notable/reference, v3: high/medium/low (exposure_band)
-    importance_score    FLOAT,                        -- v3: exposure_score (0~1, 결정적 산식)
-    implication         JSONB,                        -- v3: {sector, sectors, exposure_score, exposure_band, signals, evidence_chain}
-    sources             JSONB,                        -- 출처 목록
-    validation_pass     BOOLEAN,                      -- v3: 검증 정보 4종 자동 첨부 통과 여부
-    validation_sc_score FLOAT,                        -- v3: 1.0 (pass) / 0.0 (fail) — SC 검증 폐기, 의미 전환
+
+    title               VARCHAR(500) NOT NULL,
+    summary_lines       TEXT[]       NOT NULL DEFAULT '{}',
+
+    event_type          VARCHAR(50)  NOT NULL DEFAULT 'tech',
+    importance          VARCHAR(20)  NOT NULL DEFAULT 'low',
+    importance_score    FLOAT        NOT NULL DEFAULT 0.0,
+
+    implication         JSONB        NOT NULL DEFAULT '{}',
+    sources             JSONB        NOT NULL DEFAULT '[]',
+
+    validation_pass     BOOLEAN      NOT NULL DEFAULT FALSE,
+    validation_sc_score FLOAT        NOT NULL DEFAULT 0.0,
     is_human_reviewed   BOOLEAN      DEFAULT FALSE,
     created_at          TIMESTAMPTZ  DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_issue_cards_peer_created
-    ON issue_cards (peer_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_issue_cards_importance
-    ON issue_cards (importance);
+CREATE INDEX IF NOT EXISTS idx_issue_cards_company
+    ON issue_cards (company);
+CREATE INDEX IF NOT EXISTS idx_issue_cards_cluster_id
+    ON issue_cards (cluster_id);
 CREATE INDEX IF NOT EXISTS idx_issue_cards_event_type
     ON issue_cards (event_type);
+CREATE INDEX IF NOT EXISTS idx_issue_cards_importance
+    ON issue_cards (importance);
+CREATE INDEX IF NOT EXISTS idx_issue_cards_validation_pass
+    ON issue_cards (validation_pass);
 
 -- ============================================================
 -- 4. job_postings — 채용공고 (약한 신호 감지용)
@@ -114,20 +165,26 @@ CREATE TABLE IF NOT EXISTS golden_set (
     created_at          TIMESTAMPTZ DEFAULT NOW()
 );
 
+
 -- ============================================================
 -- 6. pipeline_logs — AI 파이프라인 실행 로그
 -- ============================================================
 CREATE TABLE IF NOT EXISTS pipeline_logs (
     id              BIGSERIAL    PRIMARY KEY,
     pipeline_step   VARCHAR(50)  NOT NULL,
-    peer_id         VARCHAR(50),
-    input_count     INT,
-    output_count    INT,
-    elapsed_ms      INT,
-    llm_tokens_used INT,
+    company         VARCHAR(50),
+    input_count     INT          NOT NULL DEFAULT 0,
+    output_count    INT          NOT NULL DEFAULT 0,
+    elapsed_ms      INT          NOT NULL DEFAULT 0,
+    llm_tokens_used INT          NOT NULL DEFAULT 0,
     error_msg       TEXT,
     created_at      TIMESTAMPTZ  DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS idx_pipeline_logs_step
+    ON pipeline_logs (pipeline_step);
+CREATE INDEX IF NOT EXISTS idx_pipeline_logs_company
+    ON pipeline_logs (company);
 
 -- ============================================================
 -- 7. crawl_logs — 크롤러 실행 로그
@@ -172,30 +229,31 @@ CREATE TABLE IF NOT EXISTS peer_financials (
 CREATE INDEX IF NOT EXISTS idx_peer_financials_peer_period
     ON peer_financials (peer_id, period);
 
+
 -- ============================================================
 -- 9. evidence_chain — 검증 체인 4종 (v3 §3.2, §5.6)
 -- ============================================================
 -- 모든 이슈카드의 4종 검증 정보 (source_links / provenance / financial_refs / mbb_refs).
--- 현재는 issue_cards.implication JSONB 안에 통합 저장 중 — 본 테이블로 분리 마이그레이션 예정.
 -- API: GET /api/evidence/{issue_card_id} 가 이 테이블을 조회.
 CREATE TABLE IF NOT EXISTS evidence_chain (
-    id                  BIGSERIAL    PRIMARY KEY,
-    issue_card_id       VARCHAR(50)  NOT NULL REFERENCES issue_cards(id) ON DELETE CASCADE,
-    source_links        JSONB        DEFAULT '[]',       -- 원문 URL + 출처명 + 신뢰도
-    provenance          JSONB        DEFAULT '{}',       -- raw_article_ids, llm_model, prompt_version, run_at
-    financial_refs      JSONB        DEFAULT '[]',       -- {period, metric, value, delta_qoq, delta_yoy, dart_rcept_no, ir_page}
-    mbb_refs            JSONB        DEFAULT '[]',       -- 컨설팅사 보고서 자동 매칭 (W5)
-    financial_link      JSONB,                           -- {linked, segment, highlights, headcount_delta}
-    evidence_version    VARCHAR(20)  DEFAULT 'v3.0',
-    pass                BOOLEAN      DEFAULT FALSE,      -- 4종 첨부 통과 여부
-    missing             TEXT[]       DEFAULT '{}',       -- 누락 항목 — pass=false 시 human_review
-    created_at          TIMESTAMPTZ  DEFAULT NOW(),
-    UNIQUE (issue_card_id)
+    issue_card_id       VARCHAR(30)  PRIMARY KEY REFERENCES issue_cards(id) ON DELETE CASCADE,
+
+    source_links        JSONB        NOT NULL DEFAULT '[]',
+    provenance          JSONB        NOT NULL DEFAULT '{}',
+    financial_refs      JSONB        NOT NULL DEFAULT '[]',
+    mbb_refs            JSONB        NOT NULL DEFAULT '[]',
+    financial_link      JSONB        NOT NULL DEFAULT '{}',
+
+    evidence_version    VARCHAR(20)  NOT NULL DEFAULT 'v3.0',
+    pass                BOOLEAN      NOT NULL DEFAULT FALSE,
+    missing             TEXT[]       NOT NULL DEFAULT '{}',
+    created_at          TIMESTAMPTZ  DEFAULT NOW()
 );
 
--- issue_card_id 는 UNIQUE 제약으로 PG 가 자동 인덱스 생성 — 별도 인덱스 불필요.
 CREATE INDEX IF NOT EXISTS idx_evidence_chain_pass
     ON evidence_chain (pass);
+CREATE INDEX IF NOT EXISTS idx_evidence_chain_version
+    ON evidence_chain (evidence_version);
 
 -- ============================================================
 -- 10. article_images — 카드 뉴스 이미지 메타 (v3 W4 추가, V2 migration)
