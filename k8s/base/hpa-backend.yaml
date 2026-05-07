@@ -2,7 +2,7 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: axis-backend
-  namespace: axis
+  namespace: skala3-finalproj-class3-team13
 spec:
   scaleTargetRef:
     apiVersion: apps/v1

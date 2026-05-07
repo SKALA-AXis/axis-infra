@@ -1,20 +1,18 @@
-# axis 네임스페이스 + 리소스 한도 + 기본 limit/request.
-# Pod Security Standards baseline 강제, restricted warn.
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: axis
-  labels:
-    app.kubernetes.io/part-of: axis
-    pod-security.kubernetes.io/enforce: baseline
-    pod-security.kubernetes.io/warn: restricted
+# namespace 안의 리소스 한도 + 기본 limit/request.
+#
+# Namespace 자체 (`kind: Namespace`) 는 SKALA 클러스터에서 미리 생성됨
+# (skala3-finalproj-class3-team13) — 우리가 재생성하면 권한 에러.
+# 자체 EKS 띄울 때만 별도 overlay 에서 Namespace 리소스 추가.
+#
+# ResourceQuota / LimitRange 도 SKALA 환경에서 권한 거부될 수 있음 —
+# kubectl apply 실패 시 base resources 에서 namespace.yaml 자체를 제외하거나
+# overlay 별 분리 필요.
 ---
 apiVersion: v1
 kind: ResourceQuota
 metadata:
   name: axis-quota
-  namespace: axis
+  namespace: skala3-finalproj-class3-team13
 spec:
   hard:
     requests.cpu: "8"
@@ -30,7 +28,7 @@ apiVersion: v1
 kind: LimitRange
 metadata:
   name: axis-defaults
-  namespace: axis
+  namespace: skala3-finalproj-class3-team13
 spec:
   limits:
     - type: Container

@@ -7,7 +7,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: axis-ai
-  namespace: axis
+  namespace: skala3-finalproj-class3-team13
   labels:
     app: axis-ai
     tier: business

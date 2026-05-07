@@ -8,7 +8,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: postgres
-  namespace: axis
+  namespace: skala3-finalproj-class3-team13
   labels:
     app: postgres
     tier: data
@@ -26,7 +26,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: postgres-data
-  namespace: axis
+  namespace: skala3-finalproj-class3-team13
 spec:
   accessModes:
     - ReadWriteOnce
@@ -39,7 +39,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: postgres
-  namespace: axis
+  namespace: skala3-finalproj-class3-team13
   labels:
     app: postgres
     tier: data

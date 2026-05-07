@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: axis-frontend
-  namespace: axis
+  namespace: skala3-finalproj-class3-team13
 spec:
   replicas: 1  # 로컬 단일 노드 — 1개로 충분
   template:

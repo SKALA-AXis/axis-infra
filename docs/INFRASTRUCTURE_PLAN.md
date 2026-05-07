@@ -388,7 +388,7 @@ jobs:
 
 | 버전 | 범위 | 시점 |
 |---|---|---|
-| **v0 (이 문서)** | §10 의 단계 0~10. kubectl 직배포 + 단일 namespace + 수동 secret. | W6 ~ W7 |
+| **v0 (이 문서)** | §10 의 단계 0~10. kubectl 직배포 + 단일 namespace `skala3-finalproj-class3-team13` (SKALA 공유 클러스터 정책 — 별도 namespace 생성 금지) + 수동 secret. | W6 ~ W7 |
 | v1 | ArgoCD GitOps + External Secrets + Prometheus/Grafana + staging overlay 분리 + CardSelectorAgent / supervisor 패턴 구현 반영 | W8 |
 | v2 | mTLS · 멀티 AZ HPA 튜닝 · 모델 캐시 EFS PVC · DR runbook · WeakSignal 활성 | 발주 후 |
 

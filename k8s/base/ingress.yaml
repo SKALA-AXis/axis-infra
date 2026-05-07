@@ -14,7 +14,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: axis
-  namespace: axis
+  namespace: skala3-finalproj-class3-team13
   annotations:
     kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internal

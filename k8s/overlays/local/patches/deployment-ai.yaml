@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: axis-ai
-  namespace: axis
+  namespace: skala3-finalproj-class3-team13
 spec:
   strategy:
     type: Recreate  # RWO PVC + emptyDir 모델 캐시 → 동시 2 Pod 불가

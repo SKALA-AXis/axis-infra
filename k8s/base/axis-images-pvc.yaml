@@ -9,7 +9,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: axis-images
-  namespace: axis
+  namespace: skala3-finalproj-class3-team13
   labels:
     app.kubernetes.io/part-of: axis
 spec:
