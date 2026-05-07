@@ -16,10 +16,29 @@ CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 CREATE TABLE IF NOT EXISTS peer_companies (
     id          VARCHAR(50)  PRIMARY KEY,            -- 'samsung_sds' · 'lg_cns' · 'hyundai_autoever' · 'posco_dx' · 'sk_ax'
     name        VARCHAR(100) NOT NULL,
+    tier        VARCHAR(20)  NOT NULL DEFAULT 'domestic',
     keywords    TEXT[]       DEFAULT '{}',            -- 수집 키워드 목록
     is_active   BOOLEAN      DEFAULT TRUE,
-    created_at  TIMESTAMPTZ  DEFAULT NOW()
+    created_at  TIMESTAMPTZ  DEFAULT NOW(),
+    CONSTRAINT chk_peer_companies_tier CHECK (tier IN ('self', 'domestic', 'overseas'))
 );
+
+ALTER TABLE peer_companies
+    ADD COLUMN IF NOT EXISTS tier VARCHAR(20) NOT NULL DEFAULT 'domestic';
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'chk_peer_companies_tier'
+          AND conrelid = 'peer_companies'::regclass
+    ) THEN
+        ALTER TABLE peer_companies
+            ADD CONSTRAINT chk_peer_companies_tier
+            CHECK (tier IN ('self', 'domestic', 'overseas'));
+    END IF;
+END $$;
 
 
 -- ============================================================
@@ -378,12 +397,15 @@ CREATE INDEX IF NOT EXISTS idx_mbb_baseline_active
 
 
 -- ============================================================
--- 초기 데이터 — Peer사 4사 + SK AX 자사 (V5 시드, id 로 분기)
+-- 초기 데이터 — Peer사 4사 + SK AX 자사 (tier 로 self/domestic/overseas 구분)
 -- ============================================================
-INSERT INTO peer_companies (id, name, keywords) VALUES
-    ('samsung_sds',      '삼성SDS',     ARRAY['삼성SDS', '삼성 SDS', 'Samsung SDS']),
-    ('lg_cns',           'LG CNS',      ARRAY['LG CNS', 'LGCNS']),
-    ('hyundai_autoever', '현대오토에버', ARRAY['현대오토에버', '오토에버', 'Hyundai AutoEver']),
-    ('posco_dx',         '포스코DX',    ARRAY['포스코DX', '포스코 DX', 'POSCO DX']),
-    ('sk_ax',            'SK AX',       ARRAY['SK AX', 'SKAX', '에스케이에이엑스', 'SK 에이엑스'])
-ON CONFLICT (id) DO NOTHING;
+INSERT INTO peer_companies (id, name, tier, keywords) VALUES
+    ('samsung_sds',      '삼성SDS',     'domestic', ARRAY['삼성SDS', '삼성 SDS', 'Samsung SDS']),
+    ('lg_cns',           'LG CNS',      'domestic', ARRAY['LG CNS', 'LGCNS']),
+    ('hyundai_autoever', '현대오토에버', 'domestic', ARRAY['현대오토에버', '오토에버', 'Hyundai AutoEver']),
+    ('posco_dx',         '포스코DX',    'domestic', ARRAY['포스코DX', '포스코 DX', 'POSCO DX']),
+    ('sk_ax',            'SK AX',       'self',     ARRAY['SK AX', 'SKAX', '에스케이에이엑스', 'SK 에이엑스'])
+ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    tier = EXCLUDED.tier,
+    keywords = EXCLUDED.keywords;

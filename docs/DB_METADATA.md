@@ -29,6 +29,7 @@
 |---|---|---|
 | `id` (PK) | VARCHAR(50) | `samsung_sds` · `lg_cns` · `hyundai_autoever` · `posco_dx` · `sk_ax` |
 | `name` | VARCHAR(100) | 한글 표기명 |
+| `tier` | VARCHAR(20) | `self` · `domestic` · `overseas` |
 | `keywords` | TEXT[] | 검색 키워드 배열 |
 | `is_active` | BOOLEAN | 활성 여부 |
 | `created_at` | TIMESTAMPTZ | |
@@ -36,6 +37,7 @@
 > **id 별 도메인 의미**
 > - 4사 (`samsung_sds` · `lg_cns` · `hyundai_autoever` · `posco_dx`) — 모니터링 대상 경쟁사. 풀 파이프라인 (raw_articles → issue_cards → evidence_chain) 진행
 > - `sk_ax` — 자사. MVP 단계에서 발주처 내부 데이터 부재로 외부 공개 정보 (뉴스·공시·채용) 만 크롤링하여 비교 baseline 으로 활용. **issue_card 생성 안 함** — raw_articles 까지만 적재
+> - 향후 `global_companies` 로 추가되는 해외 기업은 `tier = 'overseas'` 로 저장
 > - axis-ai 영향: `IssueCardAgent` 가 `peer.id == 'sk_ax'` (또는 `SELF_PEER_IDS` config) 면 카드 생성 skip. `ExposureScoreAgent` 도 sk_ax 인 경우 `peer_mention_rate=0` 강제.
 
 ### 1.2 `raw_articles` — 크롤링 원문 전량 (6개월 보관)
@@ -444,6 +446,12 @@ PatternDetect (W7+ MON 09:00):
   - `IssueCardAgent` — `peer.id == 'sk_ax'` (또는 `SELF_PEER_IDS = {'sk_ax'}` config 상수) 면 카드 생성 skip
   - `ExposureScoreAgent` — `sk_ax` 인 경우 `peer_mention_rate=0` 강제
   - 크롤러 config — `peer_id='sk_ax'` 키워드 추가하여 raw_articles 적재 (V5 와 동일)
+
+### V7 (2026-05-07) company tier 도입
+
+- `peer_companies.tier` 추가 — `self | domestic | overseas`
+- 초기 시드 기준: `sk_ax = self`, 기존 국내 4사 = `domestic`
+- 향후 해외 기업 registry (`global_companies`) 에서 들어오는 row 는 `overseas` 로 저장
 
 ### 남은 항목 (코드 변경 동반 — 별도 PR)
 

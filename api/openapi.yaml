@@ -3754,11 +3754,18 @@ components:
       required:
       - id
       - name
+      - tier
       properties:
         id:
           $ref: "#/components/schemas/PeerIdEnum"
         name:
           type: string
+        tier:
+          type: string
+          enum:
+          - self
+          - domestic
+          - overseas
         full_name:
           type: string
         keywords:
