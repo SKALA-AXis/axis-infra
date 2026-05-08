@@ -1,0 +1,5 @@
+# Ingress host — team12 패턴 따라 wildcard 처리.
+# host 필드 제거 → ALB Controller 가 자동 DNS 발급, 모든 host header 수용.
+# 매니저로부터 DNS (axis.skala.ai) 매핑 받으면 그때 다시 박을 수 있음.
+- op: remove
+  path: /spec/rules/0/host

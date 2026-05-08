@@ -1,0 +1,31 @@
+# Ingress SKALA 환경 patch — team12 패턴 따라 정정.
+#
+# 변경 (vs base):
+#   · scheme: internal → internet-facing  (외부 접근 가능)
+#   · listen-ports: HTTPS 443 → HTTP 80   (TLS 인증서 미발급, HTTPS 보류)
+#   · ssl-redirect / ssl-policy / certificate-arn 어노테이션 제거 (HTTPS 미사용)
+#   · healthcheck-path: /health → /       (frontend / backend 둘 다 / 응답함)
+#   · success-codes: 200,301,302,400,401,403,404 (관대한 health check)
+#   · spec.ingressClassName: alb 추가     (deprecated annotation 보강)
+#   · alb.ingress.kubernetes.io/load-balancer-name: skala3-team13-axis-alb
+#
+# 추후 axis.skala.ai 도메인 + ACM 인증서 받으면 HTTPS 로 다시 박을 수 있음.
+- op: replace
+  path: /metadata/annotations
+  value:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+    alb.ingress.kubernetes.io/healthcheck-path: /
+    alb.ingress.kubernetes.io/healthcheck-port: traffic-port
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "15"
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: "5"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: "3"
+    alb.ingress.kubernetes.io/success-codes: "200,301,302,400,401,403,404"
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=60
+    alb.ingress.kubernetes.io/load-balancer-name: skala3-team13-axis-alb
+- op: add
+  path: /spec/ingressClassName
+  value: alb

@@ -1,0 +1,114 @@
+# SKALA EKS overlay — namespace 내부 PostgreSQL.
+# 매니저 가이드 ("우리 namespace 에 직접 쓰면 된다") 에 따라 cluster 공용 postgres 대신
+# 본인 namespace 에 자체 인스턴스 배포. 다른 팀과 완전 격리.
+#
+# StorageClass: gp3 (SKALA 클러스터 default — EBS, ReadWriteOnce)
+# 데이터 보존: PVC postgres-data (5Gi). 클러스터 wipe 정책에 영향 받음 → pg_dump CronJob 으로 보호.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app: postgres
+    tier: data
+    app.kubernetes.io/part-of: axis
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+  ports:
+    - name: pg
+      port: 5432
+      targetPort: 5432
+      protocol: TCP
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app: postgres
+    app.kubernetes.io/part-of: axis
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gp3
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app: postgres
+    tier: data
+    app.kubernetes.io/part-of: axis
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+        tier: data
+        app.kubernetes.io/part-of: axis
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: pg
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: axis-postgres-bootstrap
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: axis-postgres-bootstrap
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: axis-postgres-bootstrap
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres-data

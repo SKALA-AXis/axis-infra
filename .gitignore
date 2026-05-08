@@ -79,3 +79,5 @@ k8s/overlays/local/secret.yaml
 k8s/overlays/local/secret.local.yaml
 k8s/overlays/local/secret.local.yaml.real
 k8s/overlays/local/secret.real.yaml
+k8s/overlays/skala/secret.skala.yaml
+k8s/overlays/skala/secret.skala.real.yaml

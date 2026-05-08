@@ -1,0 +1,18 @@
+# axis-frontend 의 nginx default.conf 가 `upstream backend` 를 expect.
+# 우리 backend Service 이름은 `axis-backend` 라 mismatch → alias Service 추가.
+# ExternalName 으로 axis-backend 를 가리키는 logical alias.
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app.kubernetes.io/part-of: axis
+    app.kubernetes.io/component: alias
+spec:
+  type: ExternalName
+  externalName: axis-backend.skala3-finalproj-class3-team13.svc.cluster.local
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP

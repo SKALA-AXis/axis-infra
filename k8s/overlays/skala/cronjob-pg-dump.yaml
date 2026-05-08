@@ -1,0 +1,65 @@
+# 매일 02:00 KST(UTC 17:00) Postgres 전체 dump → axis-images PVC 의 /data/backups
+# SKALA 클러스터가 wipe 되어도 PVC 살아있는 동안 복구 가능.
+# 별도 S3 export 는 추후 추가 (sealed-secret 으로 AWS creds 주입 후).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: axis-pg-dump
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app.kubernetes.io/part-of: axis
+    app.kubernetes.io/component: backup
+spec:
+  # KST 02:00 = UTC 17:00 (전날). 클러스터 timezone 이 UTC.
+  schedule: "0 17 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/part-of: axis
+            app.kubernetes.io/component: backup       # NetworkPolicy allow-postgres-from-app 매칭
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pg-dump
+              image: postgres:16-alpine
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: axis-secrets
+                      key: DATABASE_URL
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  STAMP=$(date -u +%Y%m%d_%H%M)
+                  OUT="/data/backups/axis_team13_${STAMP}.sql.gz"
+                  mkdir -p /data/backups
+                  echo "[pg-dump] dumping → ${OUT}"
+                  pg_dump --no-owner --no-acl "${DATABASE_URL}" | gzip > "${OUT}"
+                  echo "[pg-dump] size: $(du -h "${OUT}" | cut -f1)"
+                  # 14일 이전 파일 삭제 — PVC 용량 보호
+                  find /data/backups -type f -name '*.sql.gz' -mtime +14 -delete
+                  echo "[pg-dump] retention applied (>14d removed)"
+              resources:
+                requests:
+                  memory: "128Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+              volumeMounts:
+                - name: backup-volume
+                  mountPath: /data
+          volumes:
+            - name: backup-volume
+              persistentVolumeClaim:
+                claimName: axis-images   # 기존 PVC 재사용 (/data/images 와 형제 디렉토리)

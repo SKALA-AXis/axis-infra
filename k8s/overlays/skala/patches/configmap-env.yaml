@@ -1,0 +1,31 @@
+# axis-config — DATABASE_URL / Qdrant 를 SKALA 클러스터 공용 서비스 DNS 로 변경.
+# Postgres / Qdrant 는 namespace 가 다르므로 FQDN 사용.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: axis-config
+  namespace: skala3-finalproj-class3-team13
+data:
+  SPRING_PROFILES_ACTIVE: "prod"
+  AI_SERVER_URL: "http://axis-ai:8001"
+
+  # 임시 — Hibernate schema validation 스킵 (raw_articles.company jsonb vs entity varchar mismatch).
+  # backend 팀이 RawArticle entity 를 jsonb 매핑으로 정정하면 'validate' 로 복원 권장.
+  SPRING_JPA_HIBERNATE_DDL_AUTO: "none"
+
+  # Qdrant — in-namespace (qdrant.yaml 의 Service "qdrant" 와 일치, 같은 ns 면 짧은 이름 OK)
+  QDRANT_HOST: "http://qdrant"
+  QDRANT_PORT: "6333"
+
+  # 카드뉴스 이미지 PVC
+  IMAGE_STORAGE_PATH: "/data/images"
+
+  # SMTP — 매니저 정책에 맞춰 변경 가능
+  SMTP_HOST: "smtp.sendgrid.net"
+  SMTP_PORT: "587"
+  SMTP_FROM: "axis-briefing@skax.skala.ai"
+  BRIEFING_RECIPIENTS: "REPLACE_RECIPIENT_EMAILS"
+  BRIEFING_TIME: "08:30"
+
+  # 프론트 — 빌드타임 baked-in.  Ingress / LB 결정 후 갱신.
+  VITE_API_BASE_URL: "https://axis.skala.ai"

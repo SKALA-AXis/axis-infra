@@ -1,0 +1,78 @@
+# SKALA EKS overlay — class3-team13
+#
+# 대상 환경:
+#   클러스터:   skala-2025 (EKS, ap-northeast-2)
+#   namespace: skala3-finalproj-class3-team13
+#   레지스트리: amdp-registry.skala-ai.com (Harbor) / project=skala26a-ai3
+#   Postgres:  postgres-1-postgresql.postgres.svc.cluster.local:5432  (cluster 공용)
+#   Qdrant:    qdrant.qdrant.svc.cluster.local:6333                    (cluster 공용)
+#
+# base 와의 차이:
+#   · 이미지: REPLACE_ACCOUNT (ECR 가정) → Harbor (amdp-registry.skala-ai.com/skala26a-ai3)
+#   · pullPolicy: IfNotPresent  +  imagePullSecrets: harbor-creds
+#   · DATABASE_URL / QDRANT_URL: cluster 공용 서비스 DNS (configmap-env.yaml)
+#   · CronJob: pg_dump 백업 추가
+#   · NetworkPolicy / HPA / Ingress: 활성화 (EKS 는 지원)
+#
+# 사용:
+#   1) cp secret.skala.yaml.example secret.skala.yaml — 매니저 받은 실값 채움 (.gitignore)
+#   2) docker login amdp-registry.skala-ai.com  +  이미지 build/push (Makefile)
+#   3) kubectl create secret docker-registry harbor-creds ... (1회)
+#   4) kubectl apply -k k8s/overlays/skala
+#
+# 자세한 절차: README.md 참조.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: skala3-finalproj-class3-team13
+
+resources:
+  - ../../base
+  - secret.skala.yaml          # gitignored — 실값
+  - postgres.yaml              # in-namespace Postgres (매니저 가이드)
+  - qdrant.yaml                # in-namespace Qdrant
+  - cronjob-pg-dump.yaml       # 신규 백업
+  - networkpolicy-db.yaml      # postgres / qdrant ingress 허용 룰
+  - service-aliases.yaml       # frontend nginx 의 'backend' upstream alias
+
+# 이미지 치환 — Harbor 로
+images:
+  - name: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-frontend
+    newName: amdp-registry.skala-ai.com/skala26a-ai3/axis-frontend
+    newTag: "3501567"          # CI 가 git SHA 로 치환 (또는 Makefile)
+  - name: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-backend
+    newName: amdp-registry.skala-ai.com/skala26a-ai3/axis-backend
+    newTag: "3501567"
+  - name: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-ai
+    newName: amdp-registry.skala-ai.com/skala26a-ai3/axis-ai
+    newTag: "3501567"
+
+patches:
+  # ── pullPolicy + imagePullSecrets (3 Deployment)
+  - path: patches/deployment-frontend.yaml
+  - path: patches/deployment-backend.yaml
+  - path: patches/deployment-ai.yaml
+
+  # ── ConfigMap 환경 — DB / Qdrant URL 을 cluster 내부 DNS 로
+  - path: patches/configmap-env.yaml
+
+  # ── Ingress host 제거 (team12 패턴 — wildcard, ALB 자동 DNS) (JSON 6902)
+  - path: patches/ingress-host.yaml
+    target:
+      group: networking.k8s.io
+      version: v1
+      kind: Ingress
+      name: axis
+
+  # ── Ingress SKALA 환경 어노테이션 + ingressClassName: alb
+  - path: patches/ingress-skala.yaml
+    target:
+      group: networking.k8s.io
+      version: v1
+      kind: Ingress
+      name: axis
+
+  # ── PVC axis-images storageClass: REPLACE_RWX_* → efs-sc-shared (SKALA EFS RWX)
+  - path: patches/pvc-images.yaml
+    target:
+      kind: PersistentVolumeClaim
+      name: axis-images

@@ -1,0 +1,59 @@
+# in-namespace Postgres / Qdrant 는 base manifest 에 없어서 default-deny-ingress 의 영향 받음.
+# 명시적 ingress 룰로 backend / ai pod 만 허용.
+---
+# Postgres ← backend + ai (둘 다 DB 직접 접근). pg-dump CronJob 도 같은 namespace 에서 호출.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-postgres-from-app
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app.kubernetes.io/part-of: axis
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: axis-backend
+        - podSelector:
+            matchLabels:
+              app: axis-ai
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: backup       # pg-dump CronJob 의 Pod
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: cron          # ingestion / delivery / weak-signal
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# Qdrant ← ai 만 (backend 는 ai 거쳐서 호출, 직접 X). HTTP + gRPC 둘 다.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-qdrant-from-ai
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app.kubernetes.io/part-of: axis
+spec:
+  podSelector:
+    matchLabels:
+      app: qdrant
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: axis-ai
+      ports:
+        - protocol: TCP
+          port: 6333         # HTTP
+        - protocol: TCP
+          port: 6334         # gRPC

@@ -1,0 +1,99 @@
+# SKALA EKS overlay — namespace 내부 Qdrant.
+# StorageClass: gp3 (SKALA 클러스터 default).
+# 데이터 보존: PVC qdrant-data (5Gi). 임베딩 재생성 비용 큼 → 백업 권장.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qdrant
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app: qdrant
+    tier: data
+    app.kubernetes.io/part-of: axis
+spec:
+  type: ClusterIP
+  selector:
+    app: qdrant
+  ports:
+    - name: http
+      port: 6333
+      targetPort: 6333
+    - name: grpc
+      port: 6334
+      targetPort: 6334
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qdrant-data
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app: qdrant
+    app.kubernetes.io/part-of: axis
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gp3
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qdrant
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app: qdrant
+    tier: data
+    app.kubernetes.io/part-of: axis
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: qdrant
+  template:
+    metadata:
+      labels:
+        app: qdrant
+        tier: data
+        app.kubernetes.io/part-of: axis
+    spec:
+      containers:
+        - name: qdrant
+          image: qdrant/qdrant:v1.9.4
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 6333
+            - name: grpc
+              containerPort: 6334
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 1500m
+              memory: 2Gi
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          volumeMounts:
+            - name: storage
+              mountPath: /qdrant/storage
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: qdrant-data
