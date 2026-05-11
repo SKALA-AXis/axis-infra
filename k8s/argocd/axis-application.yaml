@@ -23,9 +23,9 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: axis-team13
-  # 자체 ArgoCD (axis-argocd) 가 우리 ns 에 있어서 Application 도 같은 ns.
-  # configs.cm.application.namespaces 와 일치해야 controller 가 reconcile.
-  namespace: skala3-finalproj-class3-team13
+  # 공용 SKALA ArgoCD (skala-argocd) — 매니저 운영 production instance.
+  # controller 가 자기 ns 의 Application 만 reconcile (application.namespaces 미설정 시 default).
+  namespace: skala-argocd
   labels:
     team: team13
     app.kubernetes.io/part-of: axis
