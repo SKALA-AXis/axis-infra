@@ -83,6 +83,65 @@ kubectl -n skala3-finalproj-class3-team13 get secret argocd-initial-admin-secret
 - HPA 가 axis-ai 까지 확장되면 ignoreDifferences 에 추가.
 - `finalizers` 가 있으면 Application 삭제 시 cluster 리소스 cascade delete — 발표 직전 제거 검토.
 
+## P7 — 이메일 알림 (활성화됨)
+
+ArgoCD notifications controller 가 활성화되어 axis-team13 의 sync/health 이벤트에 대해 6 명에게 이메일 발송.
+
+| 트리거 | 조건 | 발송 |
+|---|---|---|
+| `on-deployed` | sync.phase=Succeeded AND health=Healthy (per revision) | 1회/리비전 |
+| `on-sync-failed` | sync.phase in [Error, Failed] | 1회/sync attempt |
+| `on-health-degraded` | health=Degraded | 1회/condition |
+
+수신자 6명 (team13 전원), SMTP=SendGrid (axis-secrets 의 SMTP_PASSWORD 재사용 — 발표 단계 A 옵션. 프로덕션 단계 B 는 [P8](#p8-운영-강화-발표-후) 참조).
+
+SMTP secret 박는 법 (별도 — git tracking X):
+
+```bash
+SMTP_PWD=$(kubectl get secret axis-secrets -n skala3-finalproj-class3-team13 \
+  -o jsonpath='{.data.SMTP_PASSWORD}' | base64 -d)
+kubectl create secret generic argocd-notifications-secret \
+  -n skala3-finalproj-class3-team13 \
+  --from-literal=email-password="$SMTP_PWD" \
+  --dry-run=client -o yaml | kubectl apply -f -
+unset SMTP_PWD
+```
+
+## P8 — 운영 강화 (발표 후)
+
+- **ApplicationSet pod/svc 정리** — chart v9.5 부터 disable 불가. 직접 `kubectl delete svc/deploy axis-argocd-applicationset-controller` 후 helm uninstall 시 ignore.
+- **services quota 증액** — 매니저에 `services: 10 → 15` 요청.
+- **SMTP 분리 (옵션 B)** — SendGrid 에 `axis-cicd@...` verified sender 등록 → 별도 키 발급 → argocd-notifications-secret 만 새 키로 교체.
+- **Sealed Secrets / ESO** — secret.skala.yaml / argocd-notifications-secret / repo-secret.yaml 을 GitOps 화.
+- **selfHeal: true 전환** — P6 drill 통과했으므로 가능. axis-application.yaml 의 `selfHeal: false` → `true`.
+- **on-deployed trigger 끄기** — 운영 시 매 deploy 마다 이메일 = spam. on-sync-failed + on-health-degraded 만 유지.
+
+## helm upgrade 시 주의
+
+helm upgrade 시 `--set configs.secret.argocdServerAdminPassword=...` 옵션 **사용 금지**:
+
+- chart 가 admin.password + admin.passwordMtime 을 SSA 로 박으려 함 → 우리가 reset 한 비번의 fieldManager (`kubectl-patch`) 와 SSA conflict
+- `--set` 없이 upgrade 하면 chart 가 `argocd-secret` 의 `data` 자체 안 박음 → cluster 의 우리 reset 비번 그대로 보존
+
+```bash
+# 안전한 helm upgrade
+helm upgrade axis-argocd argo/argo-cd \
+  -n skala3-finalproj-class3-team13 \
+  -f k8s/argocd-self/values.yaml \
+  --version 9.5.13
+```
+
+비번 분실 시 reset 절차:
+
+```bash
+read -s NEW_PWD
+HASH=$(python3 -c "import bcrypt; print(bcrypt.hashpw(b'$NEW_PWD', bcrypt.gensalt(rounds=10)).decode())")
+unset NEW_PWD
+kubectl -n skala3-finalproj-class3-team13 patch secret argocd-secret \
+  -p "{\"stringData\": {\"admin.password\": \"$HASH\", \"admin.passwordMtime\": \"$(date -u +%FT%TZ)\"}}"
+kubectl rollout restart deploy/axis-argocd-server -n skala3-finalproj-class3-team13
+```
+
 ## ResourceQuota 메모
 
 services 한도 10 정확히 도달 (axis 서비스 6 + ArgoCD 4). 우리 매니페스트가 새 svc 추가하면 막힘. 발표 후 P8 에서:

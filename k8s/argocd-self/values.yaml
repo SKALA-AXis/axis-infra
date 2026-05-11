@@ -39,7 +39,77 @@ applicationSet:
   enabled: false
 
 notifications:
-  enabled: false
+  enabled: true
+  # 이메일 본문의 {{.context.argocdUrl}} 치환값. 발표용 placeholder — 발표 후 P8 에서 ALB ingress.
+  argocdUrl: https://argocd.axis.local
+  # SMTP — 발표 단계 A: 기존 axis-secrets 의 SendGrid 키 재사용 (axis-briefing@skax.skala.ai sender).
+  #        프로덕션 B: SendGrid 에 axis-cicd@... verified sender + 별도 키 발급 후 분리.
+  # $email-password 는 argocd-notifications-secret 의 'email-password' 키 참조 — 별도 apply.
+  notifiers:
+    service.email.smtp: |
+      host: smtp.sendgrid.net
+      port: 587
+      from: axis-briefing@skax.skala.ai
+      username: apikey
+      password: $email-password
+      html: true
+      tls: true
+  # 수신자 — team13 6명 (발표 직전 가중치 결정).
+  subscriptions:
+    - recipients:
+        - email:meniscus220@gmail.com
+        - email:jins006945@gmail.com
+        - email:a45047385@gmail.com
+        - email:kgaeun0118@gmail.com
+        - email:tladbwjd04899@gmail.com
+        - email:gaeundks@gmail.com
+      triggers:
+        - on-sync-failed
+        - on-health-degraded
+        - on-deployed
+  # ArgoCD 공식 catalog 의 trigger + 본문 template (한국어 다국어 X — 발표 후 P8 에서).
+  templates:
+    template.app-deployed: |
+      email:
+        subject: "[AXIS] {{.app.metadata.name}} deployed → {{.app.status.sync.revision | trunc 7}}"
+      message: |
+        Application {{.app.metadata.name}} 배포 완료 (sync + healthy).
+        · Revision: {{.app.status.sync.revision | trunc 7}}
+        · Status:   {{.app.status.sync.status}} / {{.app.status.health.status}}
+        · Synced at: {{.app.status.operationState.finishedAt}}
+        · URL: {{.context.argocdUrl}}/applications/{{.app.metadata.name}}
+    template.app-sync-failed: |
+      email:
+        subject: "[AXIS] {{.app.metadata.name}} sync FAILED ⚠️"
+      message: |
+        Application {{.app.metadata.name}} sync 실패.
+        · Revision: {{.app.status.sync.revision | trunc 7}}
+        · Phase:    {{.app.status.operationState.phase}}
+        · Message:  {{.app.status.operationState.message}}
+        · URL: {{.context.argocdUrl}}/applications/{{.app.metadata.name}}
+    template.app-health-degraded: |
+      email:
+        subject: "[AXIS] {{.app.metadata.name}} health DEGRADED ⚠️"
+      message: |
+        Application {{.app.metadata.name}} health degraded.
+        · Sync:   {{.app.status.sync.status}}
+        · Health: {{.app.status.health.status}}
+        · URL: {{.context.argocdUrl}}/applications/{{.app.metadata.name}}
+  triggers:
+    trigger.on-deployed: |
+      - description: Application is synced and healthy
+        send: [app-deployed]
+        when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+        oncePer: app.status.operationState.syncResult.revision
+    trigger.on-sync-failed: |
+      - description: Application sync has failed
+        send: [app-sync-failed]
+        when: app.status.operationState.phase in ['Error', 'Failed']
+        oncePer: app.status.operationState.startedAt
+    trigger.on-health-degraded: |
+      - description: Application has degraded
+        send: [app-health-degraded]
+        when: app.status.health.status == 'Degraded'
 
 # ── application-controller (StatefulSet)
 controller:
