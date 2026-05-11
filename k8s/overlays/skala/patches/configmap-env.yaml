@@ -20,10 +20,12 @@ data:
   # 카드뉴스 이미지 PVC
   IMAGE_STORAGE_PATH: "/data/images"
 
-  # SMTP — 매니저 정책에 맞춰 변경 가능
-  SMTP_HOST: "smtp.sendgrid.net"
+  # SMTP — Resend (https://resend.com). 발표 단계 sender 는 onboarding@resend.dev (도메인 verify 전).
+  # 발표 후 P8 에서 skax.skala.ai 도메인 verify (DNS TXT 추가) 후 'axis-briefing@skax.skala.ai' 로 복원.
+  # axis-ai email_agent (Python smtplib) 는 STARTTLS 587 사용, ArgoCD notifications 는 implicit TLS 465.
+  SMTP_HOST: "smtp.resend.com"
   SMTP_PORT: "587"
-  SMTP_FROM: "axis-briefing@skax.skala.ai"
+  SMTP_FROM: "onboarding@resend.dev"
   BRIEFING_RECIPIENTS: "REPLACE_RECIPIENT_EMAILS"
   BRIEFING_TIME: "08:30"
 

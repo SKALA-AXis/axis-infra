@@ -47,13 +47,17 @@ notifications:
   # $email-password 는 argocd-notifications-secret 의 'email-password' 키 참조 — 별도 apply.
   notifiers:
     service.email.smtp: |
-      host: smtp.sendgrid.net
-      port: 587
-      from: axis-briefing@skax.skala.ai
-      username: apikey
+      host: smtp.resend.com
+      port: 465
+      from: onboarding@resend.dev
+      username: resend
       password: $email-password
       html: true
       tls: true
+  # chart 가 만든 빈 argocd-notifications-secret 위에 우리가 kubectl 로 덮어쓰기 패턴 유지.
+  # secret.create: false 박으면 chart 가 아예 안 만들고 우리 secret 만 존재 (helm upgrade 충돌 회피).
+  secret:
+    create: false
   # 수신자 — team13 6명 (발표 직전 가중치 결정).
   subscriptions:
     - recipients:
