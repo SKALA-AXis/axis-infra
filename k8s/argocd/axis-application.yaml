@@ -1,0 +1,94 @@
+# ArgoCD Application — axis-team13 (SKALA EKS, develop branch GitOps).
+#
+# 사전 조건:
+#   · skala-argocd namespace 에 ArgoCD 가 떠있음 (cluster 에 이미 존재)
+#   · k8s/argocd/repo-secret.yaml 가 먼저 apply 되어 있음 (private repo 인증)
+#   · 클러스터 Secret 3종 (axis-secrets / axis-postgres-bootstrap / harbor-creds) 가
+#     'argocd.argoproj.io/sync-options: Prune=false' annotation 으로 보호되어 있음
+#   · 클러스터 PVC 3종 (postgres-data / qdrant-data / axis-images) 도 동일 보호
+#
+# 적용:
+#   kubectl apply -f k8s/argocd/repo-secret.yaml          # 먼저 repo credential
+#   kubectl apply -f k8s/argocd/axis-application.yaml     # 그 다음 Application
+#
+# 검증:
+#   kubectl get applications.argoproj.io -n skala-argocd axis-team13 \
+#     -o jsonpath='{.status.sync.status} {.status.health.status}{"\n"}'
+#   # 기대: Synced Healthy
+#
+# 발표 demo 시 즉시 sync 강제:
+#   argocd app sync axis-team13              # CLI (argocd login 필요)
+#   # 또는 UI 의 "SYNC" 버튼
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: axis-team13
+  namespace: skala-argocd
+  labels:
+    team: team13
+    app.kubernetes.io/part-of: axis
+  finalizers:
+    # Application 삭제 시 manifest 리소스도 함께 정리.
+    # 발표 직전 안전을 위해 finalizer 제거 검토:
+    #   kubectl patch application axis-team13 -n skala-argocd \
+    #     --type=json -p='[{"op":"remove","path":"/metadata/finalizers"}]'
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  # 본인 AppProject 미발급 — default 사용 (server dry-run 통과 확인됨)
+  project: default
+
+  source:
+    repoURL: https://github.com/SKALA-AXis/axis-infra.git
+    targetRevision: develop      # develop → main 이전 시 sed 로 4 라인 치환 (계획서 §4 참조)
+    path: k8s/overlays/skala
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: skala3-finalproj-class3-team13
+
+  syncPolicy:
+    automated:
+      # 안정화 전까지 false — 디버그 시 ArgoCD 가 즉시 복원하는 사고 방지.
+      # P6 rollback drill 통과 후 true 로 전환 검토.
+      selfHeal: false
+      # 미커밋 리소스는 prune (단, Prune=false annotation 박힌 것은 제외).
+      prune: true
+      allowEmpty: false
+    syncOptions:
+      # namespace 는 매니저 발급 — ArgoCD 가 생성 X
+      - CreateNamespace=false
+      # 순서: foreground → 의존 리소스부터 안전 삭제
+      - PrunePropagationPolicy=foreground
+      # prune 을 sync 마지막 단계로 (새 리소스 먼저 띄움)
+      - PruneLast=true
+      # SSA — 기존 cluster 리소스와의 첫 sync conflict 완화
+      - ServerSideApply=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+
+  # ── ignoreDifferences ─────────────────────────────────────────────────
+  # 외부에서 관리되는 필드를 ArgoCD 의 OutOfSync 판정에서 제외.
+  ignoreDifferences:
+    # Secret 의 실값은 외부 (make skala-secret) 관리 — ArgoCD manifest 는 빈 상태.
+    - group: ""
+      kind: Secret
+      jsonPointers:
+        - /stringData
+        - /data
+
+    # HPA 가 replicas 를 동적 조정 → ArgoCD 와 줄다리기 방지.
+    # axis-backend / axis-frontend 에 HPA 적용 시 활성화.
+    - group: apps
+      kind: Deployment
+      name: axis-backend
+      jsonPointers:
+        - /spec/replicas
+    - group: apps
+      kind: Deployment
+      name: axis-frontend
+      jsonPointers:
+        - /spec/replicas

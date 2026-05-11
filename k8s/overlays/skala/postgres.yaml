@@ -29,6 +29,9 @@ kind: PersistentVolumeClaim
 metadata:
   name: postgres-data
   namespace: skala3-finalproj-class3-team13
+  annotations:
+    # ArgoCD 가 manifest 에서 빠져도 PVC 는 prune 하지 않음 (DB 데이터 보호).
+    argocd.argoproj.io/sync-options: Prune=false
   labels:
     app: postgres
     app.kubernetes.io/part-of: axis

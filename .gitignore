@@ -81,3 +81,7 @@ k8s/overlays/local/secret.local.yaml.real
 k8s/overlays/local/secret.real.yaml
 k8s/overlays/skala/secret.skala.yaml
 k8s/overlays/skala/secret.skala.real.yaml
+
+# ArgoCD repository credential — GitHub PAT 포함, 클러스터에 직접 apply (절대 커밋 금지).
+# 생성/적용: docs/ci-cd-plan.md §6.4 참조.
+k8s/argocd/repo-secret.yaml

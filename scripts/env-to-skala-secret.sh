@@ -68,12 +68,19 @@ SPRING_URL="jdbc:postgresql://postgres:5432/${PG_DB}"
 cat <<HEADER
 # Auto-generated from $ENV_FILE by scripts/env-to-skala-secret.sh — DO NOT EDIT manually.
 # 재생성: make skala-secret
+#
+# ArgoCD 주의:
+#   · 이 Secret 들은 git 에 커밋되지 않음 (kustomization.yaml resources 에서 제외).
+#   · ArgoCD 가 빌드한 manifest 에는 안 보이지만 cluster 에서는 prune 하면 안 됨.
+#   · annotation 'argocd.argoproj.io/sync-options: Prune=false' 로 보호.
 ---
 apiVersion: v1
 kind: Secret
 metadata:
   name: axis-postgres-bootstrap
   namespace: $NS
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false
   labels:
     app: postgres
     app.kubernetes.io/part-of: axis
@@ -88,6 +95,8 @@ kind: Secret
 metadata:
   name: axis-secrets
   namespace: $NS
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false
   labels:
     app.kubernetes.io/part-of: axis
 type: Opaque

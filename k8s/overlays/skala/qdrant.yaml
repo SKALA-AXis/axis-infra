@@ -28,6 +28,9 @@ kind: PersistentVolumeClaim
 metadata:
   name: qdrant-data
   namespace: skala3-finalproj-class3-team13
+  annotations:
+    # ArgoCD 가 manifest 에서 빠져도 PVC 는 prune 하지 않음 (벡터 인덱스 재생성 비용 큼).
+    argocd.argoproj.io/sync-options: Prune=false
   labels:
     app: qdrant
     app.kubernetes.io/part-of: axis

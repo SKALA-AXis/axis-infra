@@ -10,6 +10,9 @@ kind: PersistentVolumeClaim
 metadata:
   name: axis-images
   namespace: skala3-finalproj-class3-team13
+  annotations:
+    # ArgoCD 가 manifest 에서 빠져도 PVC 는 prune 하지 않음 (이미지 자산 보호).
+    argocd.argoproj.io/sync-options: Prune=false
   labels:
     app.kubernetes.io/part-of: axis
 spec:
