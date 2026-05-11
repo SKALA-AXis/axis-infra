@@ -1,0 +1,116 @@
+# AXIS 자체 ArgoCD — namespace-scoped install in skala3-finalproj-class3-team13.
+#
+# 왜 자체 ArgoCD?
+#   · 공용 skala-argocd 의 cluster cache 가 좀비 Tekton CRD 의 conversion webhook 호출에서
+#     영구 fail (service "tekton-pipelines-webhook" not found — 480일째 dead).
+#   · cluster-wide 변경 (argocd-cm patch) 대신 우리 ns 격리 install 로 cluster 무영향.
+#   · namespace-scoped 모드: cluster cache 자체가 우리 ns 만 watch → Tekton CRD 안 만짐.
+#
+# 변형 — minimal (services 한도 10 / pods 30 안에서 동작):
+#   · 사용:    server, controller (statefulset), repo-server, redis = 4 pods / 3 services
+#   · 비활성:  dex (SSO X), applicationSet (X), notifications (이메일 발표 후), metrics (관측 X)
+#
+# CRDs 는 cluster 에 이미 깔려있음 (applications.argoproj.io 등) → install: false.
+#
+# 설치:
+#   helm install argocd argo/argo-cd \
+#     -n skala3-finalproj-class3-team13 \
+#     -f k8s/argocd-self/values.yaml \
+#     --version 9.5.13
+#
+# 접속 (발표 demo):
+#   kubectl port-forward -n skala3-finalproj-class3-team13 svc/argocd-server 8080:443
+#   admin pwd:
+#     kubectl -n skala3-finalproj-class3-team13 get secret argocd-initial-admin-secret \
+#       -o jsonpath='{.data.password}' | base64 -d
+
+global:
+  domain: argocd.local
+
+# ── CRDs 는 cluster 에 이미 존재 (공용 ArgoCD 의 잔재) → install skip
+crds:
+  install: false
+
+# ── 비활성화 컴포넌트 (services / pods 한도 절약 + 발표 단계 불필요)
+dex:
+  enabled: false
+
+applicationSet:
+  enabled: false
+
+notifications:
+  enabled: false
+
+# ── application-controller (StatefulSet)
+controller:
+  replicas: 1
+  # namespace-scoped: ClusterRole 안 만들고 Role 만. 우리 ns 의 리소스만 watch.
+  clusterAdminAccess:
+    enabled: false
+  metrics:
+    enabled: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+# ── repo-server: manifest 빌드 (kustomize / helm template)
+repoServer:
+  replicas: 1
+  metrics:
+    enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 512Mi
+
+# ── server: UI / API
+server:
+  replicas: 1
+  clusterAdminAccess:
+    enabled: false
+  metrics:
+    enabled: false
+  service:
+    type: ClusterIP             # port-forward 로 발표용 접근
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 512Mi
+
+# ── redis: 캐시
+redis:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 256Mi
+
+# ── argocd-cm
+configs:
+  cm:
+    create: true
+    application.instanceLabelKey: argocd.argoproj.io/instance
+    # controller 가 reconcile 할 Application CR 의 ns. 우리만.
+    application.namespaces: "skala3-finalproj-class3-team13"
+    # cluster cache 가 Tekton 좀비 CRD list 시도 안 함 (ComparisonError 회피).
+    resource.exclusions: |
+      - apiGroups:
+          - tekton.dev
+          - triggers.tekton.dev
+          - resolution.tekton.dev
+          - dashboard.tekton.dev
+        kinds: ['*']
+        clusters: ['*']
