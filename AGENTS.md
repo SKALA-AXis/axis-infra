@@ -239,21 +239,21 @@ new_biz       신규 사업 진출
 ### 트렌드 섹터 (v3 — 1차 미팅 확정 5종)
 
 ```
-security      보안
-ai_tech       AI 기술
-large_deal    대형 수주
-sk_ax_biz     SK AX 사업
-other         기타
+ax         AX
+security   보안
+infra      인프라
+deal       수주
+other      기타
 ```
 
 ### 노출도 밴드 (v3 — 결정적 산식)
 
 ```
-exposure_score = 0.40·cluster_size + 0.30·credibility_max
-               + 0.20·peer_mention + 0.10·tier1_diversity
+exposure_score = 0.50·cluster_size_norm + 0.30·credibility_max
+               + 0.20·peer_mention_rate
 
-high     ≥ 0.70
-medium   0.40 ~ 0.70
+high     ≥ 0.65
+medium   0.40 ~ 0.65
 low      < 0.40
 ```
 
@@ -265,7 +265,7 @@ low      < 0.40
 
 | 지표 | 최소 기준 | 목표 | 측정 시점 |
 |---|---|---|---|
-| 중요도 분류 F1 | 0.70 | 0.80 | 4주차 |
+| 섹터 분류 F1 | 0.70 | 0.80 | 4주차 |
 | RAG Hit@5 | 0.80 | 0.90 | 5주차 |
 | RAG MRR | 0.65 | 0.75 | 5주차 |
 | LLM 환각률 | 5% 이하 | 2% 이하 | 6주차 |

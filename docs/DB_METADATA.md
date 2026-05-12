@@ -245,7 +245,7 @@ issue_card 1:1 — `UNIQUE(issue_card_id)` + `ON DELETE CASCADE`.
 | `published_date` | DATE | 발행일 |
 | `url` | TEXT | 원문 URL (PDF · 웹) |
 | `summary` | TEXT | 핵심 요약 (운영자 입력 또는 AI 생성) |
-| `sectors` | TEXT[] | 매칭 키 — `[ai_tech, security]` 등 |
+| `sectors` | TEXT[] | 매칭 키 — `[ax, security]` 등 |
 | `keywords` | TEXT[] | 매칭 키워드 배열 |
 | `raw_payload` | JSONB | 추가 메타 (저자 · 페이지 수 등) |
 | `is_active` | BOOLEAN | default TRUE |
@@ -267,7 +267,7 @@ issue_card 1:1 — `UNIQUE(issue_card_id)` + `ON DELETE CASCADE`.
 | `issue_card_id` | str | `IC-YYYYMMDD-NNN` |
 | `peer_id` | str | 4사 중 1 |
 | `event_type` | str | 6 taxonomy |
-| `sector` | str | 5 trend: `security` / `ai_tech` / `large_deal` / `sk_ax_biz` / `other` |
+| `sector` | str | 5 trend: `ax` / `security` / `infra` / `deal` / `other` |
 | `exposure_score` / `exposure_band` | float / str | 결정적 산식 결과 |
 | `credibility_score` | float | 대표 기사 신뢰도 |
 | `published_at` | int | Unix timestamp |
@@ -286,8 +286,8 @@ issue_card 1:1 — `UNIQUE(issue_card_id)` + `ON DELETE CASCADE`.
 
 ```json
 {
-  "sector": "ai_tech",
-  "sectors": ["ai_tech", "security"],
+  "sector": "ax",
+  "sectors": ["ax", "security"],
   "exposure_score": 0.74,
   "exposure_band": "high",
   "signals": { ... },

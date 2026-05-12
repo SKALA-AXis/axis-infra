@@ -284,10 +284,10 @@ components:
             enum: [partnership, ma, personnel, tech, regulation, new_biz]
         sectors:
           type: array
-          description: v3 트렌드 섹터 4종 + other (1차 미팅 확정)
+          description: v3 트렌드 섹터 4종 + other (axis-ai src/config/sectors.py 기준)
           items:
             type: string
-            enum: [security, ai_tech, large_deal, sk_ax_biz, other]
+            enum: [ax, security, infra, deal, other]
         exposure_band:
           type: array
           description: v3 노출도 밴드 (긴급/주목 폐기, 결정적 산식 기반)
@@ -329,7 +329,7 @@ components:
         sector:
           type: string
           description: v3 트렌드 섹터
-          enum: [security, ai_tech, large_deal, sk_ax_biz, other]
+          enum: [ax, security, infra, deal, other]
         exposure_score:
           type: number
           format: float
