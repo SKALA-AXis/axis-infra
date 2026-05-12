@@ -58,13 +58,18 @@ paths:
           application/json:
             schema:
               type: object
-              required: [peer_ids, trigger_type]
+              required: [company, trigger_type]
               properties:
-                peer_ids:
+                track:
+                  type: string
+                  enum: [A, B, C, ALL]
+                  default: A
+                  example: B
+                company:
                   type: array
                   items:
                     type: string
-                  example: ["samsung_sds", "lg_cns"]
+                  example: ["samsung_sds", "lg_cns", "hyundai_autoever", "posco_dx"]
                 trigger_type:
                   type: string
                   enum: [scheduled, manual]

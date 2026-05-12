@@ -48,7 +48,7 @@ K8s 매니페스트 적용 전에 각 레포에서 아래 변경이 끝나야 �
 
 | # | 변경 | 이유 | 파일 |
 |---|---|---|---|
-| B1 | `/api/pipeline/trigger` 가 `?track=A\|B` 쿼리 받도록 | CronJob 이 Track A/B 분기 호출 | [`PipelineController.java`](../../axis-backend/src/main/java/com/skala/axis/controller/PipelineController.java) |
+| B1 | `/api/pipeline/trigger` 가 `?track=A\|B\|C` 쿼리 받도록 | CronJob 이 Track A/B/C 분기 호출 | [`PipelineController.java`](../../axis-backend/src/main/java/com/skala/axis/controller/PipelineController.java) |
 | B2 | `triggerPipeline(List.of("samsung_sds", "lg_cns"))` hardcoded → 4사 전체 | 현재 2사만 호출 — 현대오토에버·포스코DX 누락 | [`PipelineController.java:23`](../../axis-backend/src/main/java/com/skala/axis/controller/PipelineController.java#L23) |
 | B3 | `@Scheduled` 어노테이션 제거 (D6=b 시) | 멀티 replica 중복 트리거 방지 | [`SchedulerConfig.java`](../../axis-backend/src/main/java/com/skala/axis/config/SchedulerConfig.java) |
 | ~~B4~~ | ~~`application.yml` 에 mail 설정 추가~~ | D8b=a 결정 시 backend 가 메일 안 보냄 — 변경 불필요 (취소) | — |
@@ -61,8 +61,8 @@ K8s 매니페스트 적용 전에 각 레포에서 아래 변경이 끝나야 �
 
 | # | 변경 | 이유 | 파일 |
 |---|---|---|---|
-| A1 | `/pipeline/run` 이 `track` 쿼리 파라미터 받기 | Track A/B 분기 (architecture View 4 §4.7) | [`router.py:55`](../../axis-ai/src/api/router.py#L55) |
-| A2 | ingestion_graph 가 `track` 으로 분기 (Track A: FinancialLink skip / Track B: 활성) | architecture 설계 반영 — supervisor 패턴은 후순위, 단순 if 분기로 시작 가능 | [`ingestion_graph.py`](../../axis-ai/src/pipeline/ingestion_graph.py) |
+| A1 | `/pipeline/run` 이 `track` 파라미터 받기 | Track A/B/C 분기 (architecture View 4 §4.7) | [`router.py:55`](../../axis-ai/src/api/router.py#L55) |
+| A2 | 수집 실행이 `track` 으로 분기 | Track A: 고빈도, Track B: 일중/일간, Track C: 저빈도/문서형 | [`batch_processor.py`](../../axis-ai/src/crawler/batch_processor.py) |
 | A3 | BGE-M3 다운로드 폴백 경로 (D11 결정 후) | 사내망 huggingface.co 차단 시 InitContainer + S3 미러 | `Dockerfile` 또는 K8s InitContainer |
 
 ### 2.3 axis-frontend (Vite + React)
@@ -229,14 +229,15 @@ egress 는 모두 허용 (외부 SaaS 호출 필요: Supabase · Qdrant Cloud ·
 
 ---
 
-## §7 · CronJob 4개 (D6=b 시)
+## §7 · CronJob 5개 (D6=b 시)
 
 스케줄 · 타임아웃 · 호출 endpoint 정리.
 
 | 이름 | schedule (cron) | endpoint | activeDeadline | 상태 |
 |---|---|---|---|---|
 | `axis-cron-ingestion-a` | `0 * * * *` | `POST /api/pipeline/trigger?track=A` | 1800s | 활성 |
-| `axis-cron-ingestion-b` | `0 2 * * *` | `POST /api/pipeline/trigger?track=B` | 3600s | 활성 (B1, A1 완료 후) |
+| `axis-cron-ingestion-b` | `0 2 * * *` | `POST /api/pipeline/trigger?track=B` | 3600s | 활성 |
+| `axis-cron-ingestion-c` | `30 3 * * *` | `POST /api/pipeline/trigger?track=C` | 5400s | 활성 |
 | `axis-cron-delivery` | `30 8 * * 1-5` | `POST /api/pipeline/delivery` | 600s | 활성 (B8 완료 후) |
 | `axis-cron-weak-signal` | `0 9 * * 1` | `POST /api/weak-signal/trigger` | 600s | `suspend: true` (W7+ 활성) |
 
@@ -326,7 +327,7 @@ jobs:
 | **6** | 매니페스트 | I1 — k8s/base 작성 + ai Deployment 만 먼저 적용 | Backend Lead | `kubectl exec ai -- curl localhost:8001/health` |
 | **7** | 매니페스트 | backend + frontend Deployment 추가, Ingress 활성 | Backend Lead | 브라우저로 SPA 접근 |
 | **8** | 매니페스트 | NetworkPolicy 적용 → 외부 ai 접근 차단 검증 | DevOps | 외부 pod 에서 `curl axis-ai:8001` 차단 확인 |
-| **9** | 코드 + 매니페스트 | B3 (Spring `@Scheduled` 제거) + CronJob 4개 배포 | Backend Lead | `kubectl get cronjob` |
+| **9** | 코드 + 매니페스트 | B3 (Spring `@Scheduled` 제거) + CronJob 5개 배포 | Backend Lead | `kubectl get cronjob` |
 | **10** | 운영 전환 | docker-compose.prod.yml 폐기, traffic 전환 | PM | 발주처 데모 |
 
 각 단계는 **이전 단계 완료 후** 시작. 단계 간 추정 소요: 0.5 ~ 2일.
@@ -419,7 +420,7 @@ jobs:
 | ConfigMap | `axis-config` | — |
 | Secret | `axis-secrets` | — |
 | Ingress | `axis` | — |
-| CronJob | `axis-cron-{ingestion-a, ingestion-b, delivery, weak-signal}` | `app.kubernetes.io/component: cron` |
+| CronJob | `axis-cron-{ingestion-a, ingestion-b, ingestion-c, delivery, weak-signal}` | `app.kubernetes.io/component: cron` |
 
 ### A.3 Healthcheck path
 

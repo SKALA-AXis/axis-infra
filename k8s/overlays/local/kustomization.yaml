@@ -59,7 +59,7 @@ patches:
         path: /spec/ports/0/nodePort
         value: 30880
 
-  # ── CronJob 4개: 모두 suspend
+  # ── CronJob: 모두 suspend
   - path: patches/cronjob-suspend.yaml
     target:
       kind: CronJob

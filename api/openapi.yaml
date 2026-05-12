@@ -3977,8 +3977,20 @@ paths:
       - pipeline
       summary: 파이프라인 수동 실행
       operationId: triggerPipeline
+      parameters:
+      - name: track
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - A
+          - B
+          - C
+          - ALL
+          default: A
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
@@ -4008,10 +4020,14 @@ paths:
                     data:
                       type: object
                       properties:
-                        run_id:
-                          type: string
                         status:
                           type: string
+                        track:
+                          type: string
+                        peer_ids:
+                          type: array
+                          items:
+                            type: string
         '400':
           $ref: "#/components/responses/BadRequest"
         '401':
