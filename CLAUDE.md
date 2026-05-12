@@ -88,7 +88,7 @@ PostgreSQL (원문 아카이브)    Qdrant (벡터 검색엔진)
 ```
 1. SpringBoot 스케줄러 또는 CronJob (axis-cron-delivery) → POST /api/pipeline/delivery
 2. (수집은 별도) SpringBoot 스케줄러 → POST http://ai:8001/pipeline/run (1시간마다)
-3. Python AI → 크롤링 → credibility → dedup → classify → issue_card → evidence → DB 저장
+3. Python AI → 크롤링 → credibility → dedup → classify → card_news → evidence → DB 저장
 4. SpringBoot 의 /api/pipeline/delivery 핸들러:
    a. POST http://axis-ai:8001/pipeline/delivery (본문 데이터 요청)
    b. Python AI → 동향 카드 + 검증 첨부 4종 조회 + HTML/Text 본문 구성 → 반환
@@ -270,7 +270,7 @@ low      < 0.40
 | RAG MRR | 0.65 | 0.75 | 5주차 |
 | LLM 환각률 | 5% 이하 | 2% 이하 | 6주차 |
 | 대시보드 응답 | 3,000ms | 2,000ms (95th) | 8주차 |
-| 이슈카드 E2E | 60초 | 30초 | 4주차 |
+| 카드뉴스 E2E | 60초 | 30초 | 4주차 |
 | 일일 LLM 비용 | ₩10,000 | ₩5,000 | 상시 |
 
 ---
@@ -308,7 +308,7 @@ low      < 0.40
 ### 완료 ✅
 - BGE-M3 + Qdrant 하이브리드 검색 (RAG)
 - 크롤러 (네이버 / DART / KIPRIS / RSS / 채용 사이트)
-- AI 파이프라인 (수집 / 분류 / 이슈카드 / evidence chain)
+- AI 파이프라인 (수집 / 분류 / 카드뉴스 / evidence chain)
 - Frontend (designing → develop merge 완료, 디자인 대규모 개편)
 - **CI/CD 자동화** — GitHub Actions + Harbor + 공용 ArgoCD (GitOps 전 사이클 검증, P6 rollback drill 23초 자동 복원)
 - **SKALA EKS 배포** — namespace 운영 + ALB endpoint

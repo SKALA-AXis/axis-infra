@@ -12,7 +12,7 @@ AXIS의 AI 처리 흐름을 처음 설계할 때 단일 LangGraph 그래프로 �
 | 구분 | 수집 파이프라인 | 전달 파이프라인 |
 |---|---|---|
 | 실행 주기 | 1시간마다 | 매일 오전 8:30 |
-| 입력 | 외부 뉴스·공시·채용공고 | PostgreSQL 이슈 카드 |
+| 입력 | 외부 뉴스·공시·채용공고 | PostgreSQL 카드 뉴스 |
 | 출력 | PostgreSQL + Qdrant 저장 | Slack 브리핑 |
 | 실패 허용 | 일부 실패 허용 (재시도) | 전체 성공 필요 |
 
@@ -25,7 +25,7 @@ AXIS의 AI 처리 흐름을 처음 설계할 때 단일 LangGraph 그래프로 �
   크롤링 → 전처리 → 품질Gate → 신뢰도Gate → 중복Gate → 임베딩 → [PostgreSQL + Qdrant 저장]
 
 전달 파이프라인 (매일 08:30)
-  [PostgreSQL 이슈 카드 조회] → 시사점 생성 → SC 검증 → Slack 발송
+  [PostgreSQL 카드 뉴스 조회] → 시사점 생성 → SC 검증 → Slack 발송
 ```
 
 ## 대안

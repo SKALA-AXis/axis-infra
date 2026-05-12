@@ -26,7 +26,7 @@ Table peer_companies {
 
   Note: '''
     모니터링 대상 4사 + 자사 (SK AX) 5 row.
-    4사 → 풀 파이프라인 (raw_articles → issue_cards → evidence_chain)
+    4사 → 풀 파이프라인 (raw_articles → card_news → evidence_chain)
     sk_ax → raw_articles 까지만 (비교 baseline). tier='self'.
     향후 global_companies 는 tier='overseas' 로 저장.
   '''
@@ -126,7 +126,7 @@ Table mbb_baseline {
 
 // ─── 2. AI 분석 결과 ─────────────────────────────────────────
 
-Table issue_cards {
+Table card_news {
   id varchar(50) [pk, note: 'IC-YYYYMMDD-NNN 형식']
   peer_id varchar(50) [not null, ref: > peer_companies.id]
   cluster_id bigint
@@ -143,9 +143,9 @@ Table issue_cards {
   created_at timestamptz [default: `now()`]
 
   indexes {
-    (peer_id, created_at) [name: 'idx_issue_cards_peer_created']
-    importance [name: 'idx_issue_cards_importance']
-    event_type [name: 'idx_issue_cards_event_type']
+    (peer_id, created_at) [name: 'idx_card_news_peer_created']
+    importance [name: 'idx_card_news_importance']
+    event_type [name: 'idx_card_news_event_type']
   }
 
   Note: 'AI 가 cluster 단위로 생성한 동향 카드'
@@ -153,7 +153,7 @@ Table issue_cards {
 
 Table evidence_chain {
   id bigserial [pk]
-  issue_card_id varchar(50) [not null, unique, ref: - issue_cards.id, note: '1:1, ON DELETE CASCADE']
+  issue_card_id varchar(50) [not null, unique, ref: - card_news.id, note: '1:1, ON DELETE CASCADE']
   source_links jsonb [default: `'[]'`]
   provenance jsonb [default: `'{}'`, note: 'raw_article_ids 배열 포함 — raw_articles 역참조']
   financial_refs jsonb [default: `'[]'`, note: 'dart_rcept_no 로 peer_financials 매칭']
@@ -183,7 +183,7 @@ Table article_images {
   id bigserial [pk]
   article_id bigint [ref: > raw_articles.id, note: 'ON DELETE SET NULL']
   cluster_id bigint
-  issue_card_id varchar(50) [ref: > issue_cards.id, note: 'ON DELETE SET NULL — backend lookup 키']
+  issue_card_id varchar(50) [ref: > card_news.id, note: 'ON DELETE SET NULL — backend lookup 키']
   source_url text [not null, note: 'og:image / twitter:image / 본문 첫 <img>']
   source_url_hash varchar(64) [not null, unique, note: 'SHA-256(source_url) — 중복 차단']
   storage_path text [not null, note: 'IMAGE_STORAGE_PATH 기준 상대 경로']
@@ -231,7 +231,7 @@ Table briefing_history {
   briefing_date date [not null]
   run_id varchar(50) [note: '한 cycle 식별자']
   card_count int [not null, default: 0]
-  card_ids "text[]" [default: `'{}'`, note: '배열 원소 → issue_cards.id (FK X, 배열 참조)']
+  card_ids "text[]" [default: `'{}'`, note: '배열 원소 → card_news.id (FK X, 배열 참조)']
   subject text
   body_preview text [note: '본문 첫 200자']
   status varchar(20) [not null, note: 'sent | failed | skipped']
@@ -251,7 +251,7 @@ Table briefing_history {
     평일 08:30 EmailAgent 발송 이력. DLQ + 운영 알림 단일 소스.
 
     배열 안의 논리적 참조 (FK X):
-      - card_ids[] → issue_cards.id
+      - card_ids[] → card_news.id
   '''
 }
 
@@ -290,7 +290,7 @@ Table crawl_logs {
 Table golden_set {
   id bigserial [pk]
   query text [not null]
-  expected_card_ids "text[]" [default: `'{}'`, note: '배열 원소 → issue_cards.id (FK X)']
+  expected_card_ids "text[]" [default: `'{}'`, note: '배열 원소 → card_news.id (FK X)']
   annotator varchar(50)
   difficulty varchar(10) [note: 'easy | hard']
   created_at timestamptz [default: `now()`]
@@ -299,7 +299,7 @@ Table golden_set {
     RAG 평가용 골든셋 (W6 활성 예정).
 
     배열 안의 논리적 참조 (FK X):
-      - expected_card_ids[] → issue_cards.id
+      - expected_card_ids[] → card_news.id
   '''
 }
 
@@ -309,7 +309,7 @@ Table golden_set {
 // dbdiagram ERD 가시성을 위해 별도 ref 로 추가.
 // PG 에는 강제되지 않음 — 코드 레벨에서 일관성 유지.
 
-Ref: "issue_cards"."cluster_id" > "raw_articles"."cluster_id"
+Ref: "card_news"."cluster_id" > "raw_articles"."cluster_id"
 Ref: "article_images"."cluster_id" > "raw_articles"."cluster_id"
 
 
@@ -324,7 +324,7 @@ TableGroup "1. Peer 원천 데이터" {
 }
 
 TableGroup "2. AI 분석 결과" {
-  issue_cards
+  card_news
   evidence_chain
   article_images
 }

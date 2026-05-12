@@ -12,7 +12,7 @@ CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 -- 1. peer_companies — 모니터링 대상 Peer사 + 자사 (SK AX)
 -- ============================================================
 -- 4사 (samsung_sds · lg_cns · hyundai_autoever · posco_dx) — 풀 파이프라인
--- sk_ax — 자사. raw_articles 까지만 적재, issue_card 생성 X (id 로 분기)
+-- sk_ax — 자사. raw_articles 까지만 적재, card_news 생성 X (id 로 분기)
 CREATE TABLE IF NOT EXISTS peer_companies (
     id          VARCHAR(50)  PRIMARY KEY,            -- 'samsung_sds' · 'lg_cns' · 'hyundai_autoever' · 'posco_dx' · 'sk_ax'
     name        VARCHAR(100) NOT NULL,
@@ -115,14 +115,14 @@ CREATE INDEX IF NOT EXISTS idx_raw_articles_qdrant_vector_id
 
 
 -- ============================================================
--- 3. issue_cards — AI가 생성한 이슈 카드 (axis-ai current write path)
+-- 3. card_news — AI가 생성한 카드 뉴스 (axis-ai current write path)
 -- ============================================================
 -- v3 변경사항:
---   - company 컬럼: axis-ai IssueCardAgent가 company/peer_id 값을 문자열로 저장
+--   - company 컬럼: axis-ai IssueCardAgent (function-named, 보존) 가 company/peer_id 값을 문자열로 저장
 --   - implication JSONB: v3 메타데이터 (sector, sectors, exposure_score, exposure_band,
 --     signals, evidence_chain) 통합 저장. 향후 evidence_chain 테이블로 분리 마이그레이션 예정
 --   - validation_pass / validation_sc_score: EvidenceAgent의 검증 첨부 결과
-CREATE TABLE IF NOT EXISTS issue_cards (
+CREATE TABLE IF NOT EXISTS card_news (
     id                  VARCHAR(30)  PRIMARY KEY,     -- 'IC-YYYYMMDD-001' 형식
     company             VARCHAR(50)  NOT NULL,
     cluster_id          BIGINT,
@@ -143,16 +143,16 @@ CREATE TABLE IF NOT EXISTS issue_cards (
     created_at          TIMESTAMPTZ  DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_issue_cards_company
-    ON issue_cards (company);
-CREATE INDEX IF NOT EXISTS idx_issue_cards_cluster_id
-    ON issue_cards (cluster_id);
-CREATE INDEX IF NOT EXISTS idx_issue_cards_event_type
-    ON issue_cards (event_type);
-CREATE INDEX IF NOT EXISTS idx_issue_cards_importance
-    ON issue_cards (importance);
-CREATE INDEX IF NOT EXISTS idx_issue_cards_validation_pass
-    ON issue_cards (validation_pass);
+CREATE INDEX IF NOT EXISTS idx_card_news_company
+    ON card_news (company);
+CREATE INDEX IF NOT EXISTS idx_card_news_cluster_id
+    ON card_news (cluster_id);
+CREATE INDEX IF NOT EXISTS idx_card_news_event_type
+    ON card_news (event_type);
+CREATE INDEX IF NOT EXISTS idx_card_news_importance
+    ON card_news (importance);
+CREATE INDEX IF NOT EXISTS idx_card_news_validation_pass
+    ON card_news (validation_pass);
 
 -- ============================================================
 -- 4. job_postings — 채용공고 (약한 신호 감지용)
@@ -252,10 +252,12 @@ CREATE INDEX IF NOT EXISTS idx_peer_financials_peer_period
 -- ============================================================
 -- 9. evidence_chain — 검증 체인 4종 (v3 §3.2, §5.6)
 -- ============================================================
--- 모든 이슈카드의 4종 검증 정보 (source_links / provenance / financial_refs / mbb_refs).
+-- 모든 카드뉴스의 4종 검증 정보 (source_links / provenance / financial_refs / mbb_refs).
 -- API: GET /api/evidence/{issue_card_id} 가 이 테이블을 조회.
+-- V9 (2026-05-12): card_news 테이블 rename 후에도 본 FK 컬럼은 issue_card_id 유지 (deploy
+-- race 회피). 컬럼 rename 은 V10 으로 분리 예정.
 CREATE TABLE IF NOT EXISTS evidence_chain (
-    issue_card_id       VARCHAR(30)  PRIMARY KEY REFERENCES issue_cards(id) ON DELETE CASCADE,
+    issue_card_id       VARCHAR(30)  PRIMARY KEY REFERENCES card_news(id) ON DELETE CASCADE,
 
     source_links        JSONB        NOT NULL DEFAULT '[]',
     provenance          JSONB        NOT NULL DEFAULT '{}',
@@ -286,7 +288,8 @@ CREATE TABLE IF NOT EXISTS article_images (
 
     article_id          BIGINT       REFERENCES raw_articles(id) ON DELETE SET NULL,
     cluster_id          BIGINT,
-    issue_card_id       VARCHAR(50)  REFERENCES issue_cards(id) ON DELETE SET NULL,
+    -- V9 (2026-05-12): card_news 테이블 rename 후에도 본 FK 컬럼은 issue_card_id 유지 (V10 분리).
+    issue_card_id       VARCHAR(50)  REFERENCES card_news(id) ON DELETE SET NULL,
 
     source_url          TEXT         NOT NULL,
     source_url_hash     VARCHAR(64)  NOT NULL UNIQUE,    -- SHA-256(source_url)
@@ -345,7 +348,7 @@ CREATE TABLE IF NOT EXISTS briefing_history (
     run_id              VARCHAR(50),                              -- 한 cycle 의 식별자 (재시도 추적)
 
     card_count          INT          NOT NULL DEFAULT 0,
-    card_ids            TEXT[]       DEFAULT '{}',                -- 포함된 issue_cards.id 배열
+    card_ids            TEXT[]       DEFAULT '{}',                -- 포함된 card_news.id 배열
     subject             TEXT,                                      -- 메일 제목
     body_preview        TEXT,                                      -- 본문 첫 200자 (감사 + 디버깅)
 
