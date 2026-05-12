@@ -253,9 +253,11 @@ CREATE INDEX IF NOT EXISTS idx_peer_financials_peer_period
 -- 9. evidence_chain — 검증 체인 4종 (v3 §3.2, §5.6)
 -- ============================================================
 -- 모든 카드뉴스의 4종 검증 정보 (source_links / provenance / financial_refs / mbb_refs).
--- API: GET /api/evidence/{card_news_id} 가 이 테이블을 조회.
+-- API: GET /api/evidence/{issue_card_id} 가 이 테이블을 조회.
+-- V9 (2026-05-12): card_news 테이블 rename 후에도 본 FK 컬럼은 issue_card_id 유지 (deploy
+-- race 회피). 컬럼 rename 은 V10 으로 분리 예정.
 CREATE TABLE IF NOT EXISTS evidence_chain (
-    card_news_id       VARCHAR(30)  PRIMARY KEY REFERENCES card_news(id) ON DELETE CASCADE,
+    issue_card_id       VARCHAR(30)  PRIMARY KEY REFERENCES card_news(id) ON DELETE CASCADE,
 
     source_links        JSONB        NOT NULL DEFAULT '[]',
     provenance          JSONB        NOT NULL DEFAULT '{}',
@@ -286,7 +288,8 @@ CREATE TABLE IF NOT EXISTS article_images (
 
     article_id          BIGINT       REFERENCES raw_articles(id) ON DELETE SET NULL,
     cluster_id          BIGINT,
-    card_news_id       VARCHAR(50)  REFERENCES card_news(id) ON DELETE SET NULL,
+    -- V9 (2026-05-12): card_news 테이블 rename 후에도 본 FK 컬럼은 issue_card_id 유지 (V10 분리).
+    issue_card_id       VARCHAR(50)  REFERENCES card_news(id) ON DELETE SET NULL,
 
     source_url          TEXT         NOT NULL,
     source_url_hash     VARCHAR(64)  NOT NULL UNIQUE,    -- SHA-256(source_url)
@@ -305,7 +308,7 @@ CREATE TABLE IF NOT EXISTS article_images (
 );
 
 CREATE INDEX IF NOT EXISTS idx_article_images_card
-    ON article_images (card_news_id);
+    ON article_images (issue_card_id);
 CREATE INDEX IF NOT EXISTS idx_article_images_cluster
     ON article_images (cluster_id);
 
