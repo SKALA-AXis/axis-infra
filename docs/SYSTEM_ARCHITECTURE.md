@@ -195,7 +195,7 @@ flowchart TB
 | **모델 추적** | (없음) — MLflow 도입 안 함 | 미세조정·자체 모델 학습 없음. BGE-M3·GPT-4o 모두 외부. 실험은 수기 노트로 충분 |
 | **로드밸런서** | AWS ALB + K8s Service (NodePort/ClusterIP) | AWS LB Controller 로 Ingress 자동 프로비저닝. 별도 NGINX Ingress 불필요 |
 | **시크릿** | AWS Secrets Manager → External Secrets Operator | `.env` 직접 마운트 금지 (보안 컨벤션) |
-| **알림 채널** | 이메일 (Spring Mail SMTP) — Slack Webhook 폐기 (v3) | SK AX 사업전략팀 운영 환경과 일치 (ADR-0007 작성 예정) |
+| **알림 채널** | 이메일 — **AWS SES V2 SDK + IRSA** (axis-backend `SesMailService`), sender `noreply@skala-ai.com`. Slack/SMTP 폐기 (v3 → v4) | SK AX 사업전략팀 운영 환경과 일치 (ADR-0008) |
 
 ---
 
@@ -203,8 +203,8 @@ flowchart TB
 
 | 레이어 | 기술 | 책임 | 현재 상태 |
 |---|---|---|---|
-| Frontend | React 18 + Vite + TypeScript + Radix UI | 대시보드 UI | docker-compose, W6+ K8s |
-| Backend | Spring Boot 3.x · Java 17 · Flyway · WebClient · Spring Mail | REST API · JWT · 스케줄러 · 이메일 브리핑 | 평일 08:30 자동 발송 (Slack 폐기) |
+| Frontend | React 18 + Vite + TypeScript + Radix UI | 대시보드 UI | **SKALA EKS 운영 배포 중** (ALB ingress, GitOps) |
+| Backend | Spring Boot 3.x · Java 17 · Flyway · WebClient · **AWS SES V2 SDK** | REST API · JWT · 스케줄러 · 이메일 브리핑 (SES IRSA) | 평일 08:30 자동 발송 (axis-cron-delivery → backend `SesMailService` → SES) |
 | AI Server | Python 3.11 · FastAPI · LangGraph 1.1.8 · uv | 4개 graph (ingestion / delivery / search / weak_signal) | SQLAlchemy 2.0 + psycopg2 로 Supabase 접근 |
 | Pipeline 노드 | crawl · credibility · dedup · classify · issue_card · evidence | 6노드 LangGraph + 결정적 노출도 산식 | `axis-ai/src/pipeline/ingestion_graph.py` |
 | Evidence Chain | source_links · provenance · financial_refs · mbb_refs | 환각 방지 검증 첨부 4종 | `evidence_chain` 테이블 |
@@ -213,12 +213,13 @@ flowchart TB
 | LLM | OpenAI GPT-4o | 분류 · 카드 생성 · Generative Search | 일일 비용 목표 ≤ ₩5,000 |
 | 임베딩 / 재랭킹 | BGE-M3 + BGE-reranker-v2-m3 (FlagEmbedding 1.x, MIT) | AI Pod 내장 — 외부 호출 없음 | Dense+Sparse 원샷 추론 |
 | 스케줄러 | Spring `@Scheduled` (cron) | 매시 수집 · 평일 08:30 브리핑 · 월 09:00 약한신호 | `SchedulerConfig.java` (Java 측 단일 트리거) |
-| 컨테이너 | Docker Compose → EKS | 5 컨테이너 → K8s Deployment | **현재**: docker-compose / **W6+**: EKS 2 AZ |
-| CI | GitHub Actions | 빌드 · 테스트 · 이미지 푸시 → ECR | 4 레포 각각 동작 중 (Jenkins 도입 안 함) |
-| CD | (수동 배포) → ArgoCD | GitOps · `axis-gitops` watch | **W6+ (자체 EKS 한정)**: ArgoCD 별도 namespace. SKALA 클러스터에선 적용 X |
-| 모니터링 | (없음) → Prometheus + Grafana + CloudWatch Logs | 메트릭 + 로그 (Loki·MLflow 도입 안 함) | **W6+ 계획** |
+| 컨테이너 | **SKALA EKS** (Docker Compose 는 로컬 개발만) | 5 Deployment + 4 CronJob + 3 PVC + Ingress | namespace `skala3-finalproj-class3-team13`, cluster `skala-2025` |
+| 이미지 레지스트리 | **Harbor** (`amdp-registry.skala-ai.com/skala26a-ai3`) | git SHA tag + `:develop` + `:buildcache` | linux/amd64 강제 |
+| CI | GitHub Actions | 빌드 · 테스트 · 이미지 푸시 → Harbor | 4 레포 각각 동작 (Jenkins 도입 안 함) |
+| CD | **공용 SKALA ArgoCD** (`skala-argocd`) | GitOps · `axis-infra` develop watch | UI: argocd.skala25a.project.skala-ai.com (P6 rollback drill 검증) |
+| 모니터링 | (없음) → Prometheus + Grafana + CloudWatch Logs | 메트릭 + 로그 (Loki·MLflow 도입 안 함) | **P8 계획** (발표 후) |
 
-> ADR 참조: [SpringBoot](adr/0001-springboot-selection.md) · [Qdrant](adr/0002-qdrant-selection.md) · [BGE-M3](adr/0003-bge-m3-selection.md) · [파이프라인 분리](adr/0004-pipeline-separation.md) · [이중 저장소](adr/0005-two-storage-design.md) · [Flyway](adr/0006-flyway-introduction.md) · [Slack 폐기](adr/0007-slack-deprecation.md) *(작성 예정)*
+> ADR 참조: [SpringBoot](adr/0001-springboot-selection.md) · [Qdrant](adr/0002-qdrant-selection.md) · [BGE-M3](adr/0003-bge-m3-selection.md) · [파이프라인 분리](adr/0004-pipeline-separation.md) · [이중 저장소](adr/0005-two-storage-design.md) · [Flyway](adr/0006-flyway-introduction.md) · [공용 ArgoCD GitOps](adr/0007-cicd-shared-argocd.md) · [AWS SES IRSA](adr/0008-email-aws-ses-irsa.md)
 
 ---
 
