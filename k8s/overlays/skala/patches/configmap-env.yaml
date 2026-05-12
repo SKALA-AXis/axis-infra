@@ -20,12 +20,11 @@ data:
   # 카드뉴스 이미지 PVC
   IMAGE_STORAGE_PATH: "/data/images"
 
-  # SMTP — Resend (https://resend.com). 발표 단계 sender 는 onboarding@resend.dev (도메인 verify 전).
-  # 발표 후 P8 에서 skax.skala.ai 도메인 verify (DNS TXT 추가) 후 'axis-briefing@skax.skala.ai' 로 복원.
-  # axis-ai email_agent (Python smtplib) 는 STARTTLS 587 사용, ArgoCD notifications 는 implicit TLS 465.
-  SMTP_HOST: "smtp.resend.com"
-  SMTP_PORT: "587"
-  SMTP_FROM: "onboarding@resend.dev"
+  # 이메일 발송 — AWS SES V2 SDK + IRSA (ses-mailer-sa 의 IAM role).
+  # axis-backend 의 SesMailService 가 SES API 직접 호출 (SMTP 폐기).
+  # sender: noreply@skala-ai.com (매니저 SES verified domain).
+  AWS_REGION: "ap-northeast-2"
+  MAIL_FROM: "noreply@skala-ai.com"
   BRIEFING_RECIPIENTS: "REPLACE_RECIPIENT_EMAILS"
   BRIEFING_TIME: "08:30"
 

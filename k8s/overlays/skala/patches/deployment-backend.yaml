@@ -6,6 +6,9 @@ metadata:
 spec:
   template:
     spec:
+      # AWS SES 발송 위해 IRSA-enabled SA (매니저 가이드). axis-backend-sa → ses-mailer-sa.
+      # ses-mailer-sa 의 annotation eks.amazonaws.com/role-arn 이 SES 발송 IAM role 보유.
+      serviceAccountName: ses-mailer-sa
       imagePullSecrets:
         - name: harbor-creds
       containers:
