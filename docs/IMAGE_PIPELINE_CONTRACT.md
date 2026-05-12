@@ -26,7 +26,7 @@
                  → 공유 볼륨에서 파일 읽기 (path-traversal 차단)
                  → 이미지 바이너리 + Cache-Control 1년 응답
 
-  IssueCardService → 카드 응답 빌드 시 article_images 를 issue_card_id 로 lookup
+  CardNewsService → 카드 응답 빌드 시 article_images 를 card_news_id 로 lookup
                    → 응답 DTO 에 image_url=/api/images/{id} · image_attribution · image_alt 첨부
 ```
 
@@ -105,7 +105,7 @@ INSERT INTO article_images (
 |---|---|
 | `article_id` | backend 가 카드 ↔ article 추적 |
 | `cluster_id` | 같은 클러스터 카드끼리 이미지 dedup |
-| `issue_card_id` | **backend 의 카드 응답 lookup 키** — 비어있으면 카드에 이미지가 안 붙음 |
+| `card_news_id` | **backend 의 카드 응답 lookup 키** — 비어있으면 카드에 이미지가 안 붙음 |
 | `content_type` | backend 가 응답 `Content-Type` 으로 그대로 사용 |
 | `width`, `height` | frontend / 이메일 본문 layout 결정 |
 | `file_size_bytes` | 모니터링 / quota |
@@ -124,14 +124,14 @@ from sqlalchemy import text
 
 INSERT_IMAGE = text("""
     INSERT INTO article_images (
-        article_id, cluster_id, issue_card_id,
+        article_id, cluster_id, card_news_id,
         source_url, source_url_hash,
         storage_path, content_type,
         width, height, file_size_bytes, image_hash,
         alt_text, attribution, license_status,
         fetched_at
     ) VALUES (
-        :article_id, :cluster_id, :issue_card_id,
+        :article_id, :cluster_id, :card_news_id,
         :source_url, :source_url_hash,
         :storage_path, :content_type,
         :width, :height, :file_size_bytes, :image_hash,
@@ -142,7 +142,7 @@ INSERT_IMAGE = text("""
     RETURNING id
 """)
 
-def insert_article_image(*, article_id, cluster_id, issue_card_id,
+def insert_article_image(*, article_id, cluster_id, card_news_id,
                           source_url, storage_path, content_type,
                           width, height, file_size_bytes, image_bytes,
                           alt_text, attribution, license_status="unknown"):
@@ -150,7 +150,7 @@ def insert_article_image(*, article_id, cluster_id, issue_card_id,
         row = db.execute(INSERT_IMAGE, {
             "article_id":      article_id,
             "cluster_id":      cluster_id,
-            "issue_card_id":   issue_card_id,
+            "card_news_id":   card_news_id,
             "source_url":      source_url,
             "source_url_hash": hashlib.sha256(source_url.encode()).hexdigest(),
             "storage_path":    storage_path,         # 상대 경로!
@@ -170,7 +170,7 @@ def insert_article_image(*, article_id, cluster_id, issue_card_id,
 
 ### 4.4 1 카드 = 1 이미지 정책
 
-`issue_card_id` 별로 이미지가 여러 건 있을 수 있지만, backend 는 `findFirstByIssueCardIdOrderByCreatedAtDesc` 로 **가장 최근 1건만** 사용한다. 즉 같은 카드에 더 좋은 이미지를 발견했으면 새로 INSERT 하면 됨 (덮어쓰기 X, 최신 우선).
+`card_news_id` 별로 이미지가 여러 건 있을 수 있지만, backend 는 `findFirstByCardNewsIdOrderByCreatedAtDesc` 로 **가장 최근 1건만** 사용한다. 즉 같은 카드에 더 좋은 이미지를 발견했으면 새로 INSERT 하면 됨 (덮어쓰기 X, 최신 우선).
 
 ---
 
@@ -219,8 +219,8 @@ AI 가 INSERT 만 정확히 하면 backend 는 자동으로 카드 응답에 이
 
 ```
 GET /api/issues/today
-  → IssueCardService.toResponse(card)
-      → articleImageRepository.findFirstByIssueCardIdOrderByCreatedAtDesc(card.id)
+  → CardNewsService.toResponse(card)
+      → articleImageRepository.findFirstByCardNewsIdOrderByCreatedAtDesc(card.id)
       → 발견 시 응답에 image_url="/api/images/{image.id}" 첨부
 ```
 
@@ -234,7 +234,7 @@ GET /api/issues/today
 - [ ] 디렉토리 자동 생성 (`os.makedirs(..., exist_ok=True)`)
 - [ ] `storage_path` 는 상대 경로로 INSERT
 - [ ] `source_url_hash` UNIQUE 충돌 시 `ON CONFLICT DO NOTHING`
-- [ ] `issue_card_id` 채우기 (backend lookup 키)
+- [ ] `card_news_id` 채우기 (backend lookup 키)
 - [ ] `content_type`, `width`, `height`, `image_hash` 채우기
 - [ ] `attribution` 으로 출처 표기 (예: `"제공: <source_name>"`)
 - [ ] SSRF 검증 (사내망 IP 차단)
@@ -248,7 +248,7 @@ GET /api/issues/today
 
 | 증상 | 원인 | 대응 |
 |---|---|---|
-| backend 가 카드에 이미지 안 붙임 | `issue_card_id` 가 NULL 또는 mismatch | INSERT 시 `issue_card_id` 채우기 — IssueCardAgent 가 부여한 카드 id 그대로 |
+| backend 가 카드에 이미지 안 붙임 | `card_news_id` 가 NULL 또는 mismatch | INSERT 시 `card_news_id` 채우기 — IssueCardAgent 가 부여한 카드 id 그대로 |
 | `GET /api/images/{id}` 가 404 | 파일 부재 / 권한 문제 | 컨테이너에서 `ls /data/images/<storage_path>` 확인. AI 컨테이너에서 mount RW 인지 확인 |
 | `GET /api/images/{id}` 가 400 | `storage_path` 가 root 밖을 가리킴 | 절대 경로 또는 `..` 가 들어갔는지 확인. §3.1 형식 따름 |
 | INSERT 시 UNIQUE 충돌 | 같은 `source_url` 재크롤링 | `ON CONFLICT DO NOTHING` 으로 무시 — 정상 동작 |

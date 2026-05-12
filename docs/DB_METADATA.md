@@ -35,8 +35,8 @@
 | `created_at` | TIMESTAMPTZ | |
 
 > **id 별 도메인 의미**
-> - 4사 (`samsung_sds` · `lg_cns` · `hyundai_autoever` · `posco_dx`) — 모니터링 대상 경쟁사. 풀 파이프라인 (raw_articles → issue_cards → evidence_chain) 진행
-> - `sk_ax` — 자사. MVP 단계에서 발주처 내부 데이터 부재로 외부 공개 정보 (뉴스·공시·채용) 만 크롤링하여 비교 baseline 으로 활용. **issue_card 생성 안 함** — raw_articles 까지만 적재
+> - 4사 (`samsung_sds` · `lg_cns` · `hyundai_autoever` · `posco_dx`) — 모니터링 대상 경쟁사. 풀 파이프라인 (raw_articles → card_news → evidence_chain) 진행
+> - `sk_ax` — 자사. MVP 단계에서 발주처 내부 데이터 부재로 외부 공개 정보 (뉴스·공시·채용) 만 크롤링하여 비교 baseline 으로 활용. **card_news 생성 안 함** — raw_articles 까지만 적재
 > - 향후 `global_companies` 로 추가되는 해외 기업은 `tier = 'overseas'` 로 저장
 > - axis-ai 영향: `IssueCardAgent` 가 `peer.id == 'sk_ax'` (또는 `SELF_PEER_IDS` config) 면 카드 생성 skip. `ExposureScoreAgent` 도 sk_ax 인 경우 `peer_mention_rate=0` 강제.
 
@@ -62,7 +62,7 @@
 **인덱스**: `(peer_id, published_at DESC)` · `(processing_status)` · `(cluster_id)`
 > `url` 은 UNIQUE 제약으로 자동 인덱스 생성 — 별도 명시적 인덱스 X (V4 정리)
 
-### 1.3 `issue_cards` — AI 생성 동향 카드
+### 1.3 `card_news` — AI 생성 동향 카드
 
 `id` 형식: `IC-YYYYMMDD-NNN` (날짜별 순번, lock 으로 중복 방지)
 
@@ -87,12 +87,12 @@
 
 ### 1.4 `evidence_chain` — 검증 체인 4종
 
-issue_card 1:1 — `UNIQUE(issue_card_id)` + `ON DELETE CASCADE`.
-현재는 `issue_cards.implication` JSONB 안에도 통합 저장 중 (마이그 진행 중).
+card_news 1:1 — `UNIQUE(card_news_id)` + `ON DELETE CASCADE`.
+현재는 `card_news.implication` JSONB 안에도 통합 저장 중 (마이그 진행 중).
 
 | 컬럼 | 타입 | 채우는 주체 | 비고 |
 |---|---|---|---|
-| `issue_card_id` (FK) | VARCHAR(50) | EvidenceAgent | UNIQUE |
+| `card_news_id` (FK) | VARCHAR(50) | EvidenceAgent | UNIQUE |
 | `source_links` | JSONB[] | EvidenceAgent | `{title, source_name, url, credibility_score}` |
 | `provenance` | JSONB | EvidenceAgent | `{raw_article_ids, cluster_id, llm_model, prompt_version, evidence_version, run_at}` |
 | `financial_refs` | JSONB[] | FinancialLinkerAgent | `{period, metric, value, delta_qoq, delta_yoy, dart_rcept_no, ir_page}` |
@@ -102,7 +102,7 @@ issue_card 1:1 — `UNIQUE(issue_card_id)` + `ON DELETE CASCADE`.
 | `pass` | BOOLEAN | EvidenceAgent | 4종 첨부 통과 여부 |
 | `missing` | TEXT[] | EvidenceAgent | pass=false 시 누락 항목 — human_review 트리거 |
 
-**인덱스**: `(issue_card_id)` · `(pass)`
+**인덱스**: `(card_news_id)` · `(pass)`
 
 ### 1.5 `peer_financials` — 분기·연간 재무 시계열 (Track B)
 
@@ -164,7 +164,7 @@ issue_card 1:1 — `UNIQUE(issue_card_id)` + `ON DELETE CASCADE`.
 | `id` (PK) | BIGSERIAL | DB | |
 | `article_id` (FK) | BIGINT | ImageFetchAgent | `raw_articles(id)` · `ON DELETE SET NULL` |
 | `cluster_id` | BIGINT | ImageFetchAgent | DedupAgent 결과 — 같은 클러스터 카드끼리 dedup 용 |
-| `issue_card_id` (FK) | VARCHAR(50) | ImageFetchAgent | `issue_cards(id)` · `ON DELETE SET NULL` · backend 의 카드 lookup 키 |
+| `card_news_id` (FK) | VARCHAR(50) | ImageFetchAgent | `card_news(id)` · `ON DELETE SET NULL` · backend 의 카드 lookup 키 |
 | `source_url` | TEXT | ImageFetchAgent | og:image 또는 본문 첫 이미지 URL (원본) |
 | `source_url_hash` (UNIQUE) | VARCHAR(64) | ImageFetchAgent | SHA-256(source_url) — 중복 다운로드 차단 |
 | `storage_path` | TEXT | ImageFetchAgent | `IMAGE_STORAGE_PATH` 기준 **상대 경로** (예: `lg_cns/2026-04/<hash>.jpg`) |
@@ -176,7 +176,7 @@ issue_card 1:1 — `UNIQUE(issue_card_id)` + `ON DELETE CASCADE`.
 | `fetched_at` | TIMESTAMPTZ | ImageFetchAgent | 다운로드 완료 시각 |
 | `created_at` | TIMESTAMPTZ | DB | |
 
-**인덱스**: `(issue_card_id)` · `(cluster_id)`
+**인덱스**: `(card_news_id)` · `(cluster_id)`
 
 **경로 규약 (계약)**:
 - `storage_path` 는 **반드시 상대 경로** — `..` 포함 금지 (backend 가 path-traversal 차단)
@@ -216,7 +216,7 @@ issue_card 1:1 — `UNIQUE(issue_card_id)` + `ON DELETE CASCADE`.
 | `briefing_date` | DATE | EmailAgent | 어느 영업일의 브리핑인지 (배치 단위) |
 | `run_id` | VARCHAR(50) | EmailAgent | 한 cycle 식별자 — retry 추적 |
 | `card_count` | INT | EmailAgent | 메일에 포함된 카드 수 (0 이면 skipped) |
-| `card_ids` | TEXT[] | EmailAgent | 포함된 `issue_cards.id` 배열 |
+| `card_ids` | TEXT[] | EmailAgent | 포함된 `card_news.id` 배열 |
 | `subject` | TEXT | EmailAgent | 메일 제목 |
 | `body_preview` | TEXT | EmailAgent | 본문 첫 200자 (감사 + 디버깅) |
 | `status` | VARCHAR(20) | EmailAgent | `sent` / `failed` / `skipped` |
@@ -264,7 +264,7 @@ issue_card 1:1 — `UNIQUE(issue_card_id)` + `ON DELETE CASCADE`.
 | 키 | 타입 | 출처 |
 |---|---|---|
 | `rdb_id` | int | `raw_articles.id` (FK · 원문 조회용) |
-| `issue_card_id` | str | `IC-YYYYMMDD-NNN` |
+| `card_news_id` | str | `IC-YYYYMMDD-NNN` |
 | `peer_id` | str | 4사 중 1 |
 | `event_type` | str | 6 taxonomy |
 | `sector` | str | 5 trend: `ax` / `security` / `infra` / `deal` / `other` |
@@ -282,7 +282,7 @@ issue_card 1:1 — `UNIQUE(issue_card_id)` + `ON DELETE CASCADE`.
 
 ## 3. 주요 JSONB 내부 구조
 
-### 3.1 `issue_cards.implication` (v3 통합)
+### 3.1 `card_news.implication` (v3 통합)
 
 ```json
 {
@@ -377,13 +377,13 @@ DedupAgent          → UPDATE raw_articles (cluster_id, is_representative,
 ClassifyAgent       → UPDATE raw_articles (importance_score, status: 'CLASSIFIED')
                       + 카드 dict 에 sector / event_type / exposure_score 채움
 FinancialLinkAgent  → 카드 dict 에 financial_refs / financial_link 채움 (Track B 만)
-IssueCardAgent      → INSERT issue_cards (id, title, summary_lines, implication, sources, ...)
+IssueCardAgent      → INSERT card_news (id, title, summary_lines, implication, sources, ...)
 EvidenceAgent       → INSERT evidence_chain (4종 + pass + missing)
-                    → UPSERT 시 issue_cards.implication / validation_pass / validation_sc_score 갱신
+                    → UPSERT 시 card_news.implication / validation_pass / validation_sc_score 갱신
 ImageFetchAgent     → evidence.pass=true 인 카드만 대상 · fail-soft (실패해도 카드는 살림)
                     → metadata.image_source_url 다운로드 (HEAD 사전 검증 + SSRF 차단 + 5MB 상한)
                     → 공유 볼륨 IMAGE_STORAGE_PATH/<peer_id>/<yyyy-mm>/<sha256>.<ext> 저장
-                    → INSERT article_images (issue_card_id, source_url, source_url_hash UNIQUE,
+                    → INSERT article_images (card_news_id, source_url, source_url_hash UNIQUE,
                                              storage_path 상대경로, content_type, width, height,
                                              alt_text, attribution, fetched_at, ...)
                     ※ ON CONFLICT (source_url_hash) DO NOTHING — 중복 다운로드 차단
@@ -393,11 +393,11 @@ IndexerAgent        → evidence.pass=true 인 카드만 대상으로 필터
 
 DeliveryAgent (08:30):
 CardSelectorAgent   → SELECT recipients WHERE is_active=true       (V3 활성 후)
-                    → SELECT issue_cards JOIN evidence_chain WHERE pass=true
+                    → SELECT card_news JOIN evidence_chain WHERE pass=true
                                         AND created_at > now()-24h
                     → 수신자 role 별 차등: PM (impact_threshold=3) · 임원 (=4)
-                    ※ backend 의 IssueCardService 도 같은 시점에 article_images JOIN
-                       (issue_card_id 로 lookup) → 응답에 image_url 첨부
+                    ※ backend 의 CardNewsService 도 같은 시점에 article_images JOIN
+                       (card_news_id 로 lookup) → 응답에 image_url 첨부
 BriefingAgent       → EvidenceAgent 가 mbb_baseline 에서 sectors/keywords 매칭
                        → evidence_chain.mbb_refs 에 첨부 (W5 활성)
                     → 본문 생성 (수신자 role 별 fan-out) · 카드별 image_url 인라인
@@ -455,7 +455,7 @@ PatternDetect (W7+ MON 09:00):
 
 ### 남은 항목 (코드 변경 동반 — 별도 PR)
 
-- **`issue_cards.implication` JSONB 와 `evidence_chain` 테이블이 dual-write 중**. axis-ai 의 [article_store.py](../../axis-ai/src/db/article_store.py) 가 implication JSONB 안에 evidence_chain 도 함께 저장 + evidence_chain 테이블에도 따로 INSERT. 분리는 BE 측의 IssueCard JPA entity 에서 evidence_chain 전용 컬럼 제거 후 진행 예정. **현재 영향**: 같은 데이터가 두 곳에 — 한 쪽 수정 시 sync 깨질 위험.
-- **`issue_cards.importance` (varchar)**: v1 잔재명이지만 v3 에서 exposure_band (high/medium/low) 호환 저장. backend `IssueCardRepository.findAll(orderBy importance)` 가 사용 중 — 컬럼명 그대로 유지, 값만 호환.
-- **`issue_cards.validation_sc_score`**: SC 검증이 폐기된 v3 에서는 단순히 1.0/0.0 플래그로 의미 축소 — `validation_pass` 와 중복. evidence_agent 가 여전히 채우는 중 → axis-ai 동반 정리 필요.
+- **`card_news.implication` JSONB 와 `evidence_chain` 테이블이 dual-write 중**. axis-ai 의 [article_store.py](../../axis-ai/src/db/article_store.py) 가 implication JSONB 안에 evidence_chain 도 함께 저장 + evidence_chain 테이블에도 따로 INSERT. 분리는 BE 측의 CardNews JPA entity 에서 evidence_chain 전용 컬럼 제거 후 진행 예정. **현재 영향**: 같은 데이터가 두 곳에 — 한 쪽 수정 시 sync 깨질 위험.
+- **`card_news.importance` (varchar)**: v1 잔재명이지만 v3 에서 exposure_band (high/medium/low) 호환 저장. backend `CardNewsRepository.findAll(orderBy importance)` 가 사용 중 — 컬럼명 그대로 유지, 값만 호환.
+- **`card_news.validation_sc_score`**: SC 검증이 폐기된 v3 에서는 단순히 1.0/0.0 플래그로 의미 축소 — `validation_pass` 와 중복. evidence_agent 가 여전히 채우는 중 → axis-ai 동반 정리 필요.
 - **`article_images` 의 파일 실체는 클러스터/PG 외부**: 공유 볼륨 (`IMAGE_STORAGE_PATH`) 에 저장. backend/ai 컨테이너가 같은 볼륨 마운트되어 있어야 동작. v1 에서 S3 + CloudFront 로 마이그 검토 — 그땐 `storage_backend` 컬럼 추가 가능성.

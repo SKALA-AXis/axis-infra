@@ -61,7 +61,7 @@ flowchart TB
                             I2["2·credibility"]
                             I3["3·dedup"]
                             I4["4·classify"]
-                            I5["5·issue_card"]
+                            I5["5·card_news"]
                             I6["6·evidence"]
                             I1 --> I2 --> I3 --> I4 --> I5 --> I6
                         end
@@ -111,7 +111,7 @@ flowchart TB
 
     %% ── 데이터 흐름 ──────────────────────────────────────
     SOURCES ==> I1
-    BE ==>|JPA · issue_cards · briefing_history| SB
+    BE ==>|JPA · card_news · briefing_history| SB
     ING ==> SB
     ING ==> QC
     I5 ==> OAI
@@ -177,8 +177,8 @@ flowchart TB
 
 | 단위 | 구현 | 트리거 | 결과물 | 시간 예산 |
 |---|---|---|---|---|
-| `ingestion_graph.py` | LangGraph 6노드 | BE `@Scheduled.triggerIngestionPipeline` → `/pipeline/run` · 매시 정각 KST (`AXIS_SCHEDULER_ENABLED=true`) | `issue_cards` + `evidence_chain` + `article_images` | 30초 / cycle |
-| **(BE 직빌드) BriefingService** | Java (axis-backend) — sector-grouped HTML/text 빌더 + `SesMailService` SES V2 SDK | BE `@Scheduled.sendDailyBriefing` · `cron="0 30 8 * * MON-FRI" zone="Asia/Seoul"` | `issue_cards` SELECT → SES 발송 (messageId) → (TBD `briefing_history` INSERT) | 5초 |
+| `ingestion_graph.py` | LangGraph 6노드 | BE `@Scheduled.triggerIngestionPipeline` → `/pipeline/run` · 매시 정각 KST (`AXIS_SCHEDULER_ENABLED=true`) | `card_news` + `evidence_chain` + `article_images` | 30초 / cycle |
+| **(BE 직빌드) BriefingService** | Java (axis-backend) — sector-grouped HTML/text 빌더 + `SesMailService` SES V2 SDK | BE `@Scheduled.sendDailyBriefing` · `cron="0 30 8 * * MON-FRI" zone="Asia/Seoul"` | `card_news` SELECT → SES 발송 (messageId) → (TBD `briefing_history` INSERT) | 5초 |
 | `delivery_graph.py` (**현재 dead**) | LangGraph 1노드 (build_briefing_node) | (호출자 없음 — `AiClientService.buildBriefing` 정의됐으나 미사용) | (의도: BE 가 cards 보내면 HTML/text 본문 반환) | 5초 |
 | `rag/` (search) | RAG 모듈 — embedder + hybrid_search + reranker (graph 아님) | User `POST /api/search` → BE → `/search` · `/gen-search` | 검색 응답 / Generative Search (SC 3회) | 10초 (BE 타임아웃) |
 | `weak_signal` | **W7 구현 예정** — `weak_signal_graph.py` 신규 + `_deprecated/weak_signal_agent.py` 재구축 | BE `@Scheduled` `/weak-signal/run` · 월 09:00 | `signal_cards` *(테이블 미존재 — W7 추가 예정)* | 60초 |
@@ -217,7 +217,7 @@ ADR-0008 spec(CronJob → BE → axis-ai 본문빌더) 과 실 구현(BE @Schedu
 | Frontend | React 18 + Vite + TypeScript + Radix UI | 대시보드 UI | **SKALA EKS 운영 배포 중** (ALB ingress, GitOps) |
 | Backend | Spring Boot 3.x · Java 17 · Flyway · WebClient · **AWS SES V2 SDK + STS module** (IRSA 필수) | REST API · JWT · 스케줄러 · 이메일 브리핑 (SES IRSA) · 수동 트리거 `POST /api/pipeline/briefing` | 평일 08:30 KST 자동 발송 — Spring `@Scheduled` `zone="Asia/Seoul"` → `BriefingService.generateAndSend()` → `SesMailService` → SES. **2026-05-12 end-to-end 검증 완료** (messageId 발급 + 6명 inbox 도착) |
 | AI Server | Python 3.11 · FastAPI · LangGraph 1.1.8 · uv | 4개 graph (ingestion / delivery / search / weak_signal) | SQLAlchemy 2.0 + psycopg2 로 Supabase 접근 |
-| Pipeline 노드 | crawl · credibility · dedup · classify · issue_card · evidence | 6노드 LangGraph + 결정적 노출도 산식 | `axis-ai/src/pipeline/ingestion_graph.py` |
+| Pipeline 노드 | crawl · credibility · dedup · classify · card_news · evidence | 6노드 LangGraph + 결정적 노출도 산식 | `axis-ai/src/pipeline/ingestion_graph.py` |
 | Evidence Chain | source_links · provenance · financial_refs · mbb_refs | 환각 방지 검증 첨부 4종 | `evidence_chain` 테이블 |
 | RDB | PostgreSQL 16 (Supabase Managed) | **13 테이블 / 146 컬럼 (V7 기준)** — 4 영역: Peer 원천 (5) · AI 분석 (3) · 메일 전달 (2) · 운영·평가 (3). `peer_companies` 5 row (4사 + sk_ax 자사 — tier 로 self/domestic 구분) | Pooler:6543 (sslmode=require) |
 | Vector DB | Qdrant 1.9 (Cloud) | Hybrid RRF (Dense + Sparse) | `axis_main` 3개월 · `axis_history` 12개월 TTL |
@@ -340,7 +340,7 @@ ADR-0008 spec(CronJob → BE → axis-ai 본문빌더) 과 실 구현(BE @Schedu
    | 일일 크롤링 | ~500건 | Naver·DART·RSS·Saramin 합산 |
    | Qdrant upsert | ~50건/일 | Gate 1·2·3 통과 후 |
    | LLM 비용 | 목표 ≤ ₩5,000/일 | infra/CLAUDE.md 성능 목표 |
-   | 이슈카드 E2E | 목표 ≤ 30초 | 4주차 목표 |
+   | 카드뉴스 E2E | 목표 ≤ 30초 | 4주차 목표 |
    | RAG Hit@5 | 목표 ≥ 0.90 | 5주차 목표 |
 
 ---

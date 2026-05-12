@@ -779,10 +779,11 @@ paths:
     get:
       tags:
       - deprecated
-      summary: 이슈 카드 목록 (Deprecated Candidate)
+      summary: 카드 뉴스 목록 — legacy path (Deprecated Candidate)
       description: |
-        초기 백엔드 `IssueCardResponse` 호환용입니다.
-        현재 프론트 주요 카드뉴스 화면은 `/api/cards`의 풍부한 `CardNews` 모델을 요구하므로 신규 화면에서는 사용하지 않습니다.
+        초기 백엔드 `IssueCardResponse` (현 `CardNewsResponse`) 호환용 legacy endpoint. v5 (2026-05) 에서
+        DB 테이블 `issue_cards` → `card_news` 로 rename 됐고 신규 화면은 `/api/cards` 의 풍부한 `CardNews`
+        모델을 요구합니다. 본 path 는 frontend 외부 계약 유지를 위해 보존.
       operationId: listIssuesDeprecated
       deprecated: true
       parameters:
@@ -800,7 +801,7 @@ paths:
           $ref: "#/components/schemas/EventTypeEnum"
       responses:
         '200':
-          description: 레거시 이슈 카드 목록
+          description: 레거시 카드 뉴스 목록 (legacy issue card 호환)
           content:
             application/json:
               schema:
@@ -824,7 +825,7 @@ paths:
     get:
       tags:
       - deprecated
-      summary: 이슈 카드 상세 (Deprecated Candidate)
+      summary: 카드 뉴스 상세 — legacy path (Deprecated Candidate)
       operationId: getIssueDeprecated
       deprecated: true
       parameters:
@@ -835,7 +836,7 @@ paths:
           type: string
       responses:
         '200':
-          description: 레거시 이슈 카드 상세
+          description: 레거시 카드 뉴스 상세 (legacy issue card 호환)
           content:
             application/json:
               schema:
