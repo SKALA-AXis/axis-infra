@@ -45,7 +45,7 @@ images:
   newTag: 81949ff
 - name: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-frontend
   newName: amdp-registry.skala-ai.com/skala26a-ai3/axis-frontend
-  newTag: e7310ec
+  newTag: d21e91b
 
   # ── pullPolicy + imagePullSecrets (3 Deployment)
 
