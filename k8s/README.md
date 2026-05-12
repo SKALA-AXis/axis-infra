@@ -37,7 +37,7 @@ k8s/
 |---|---|---|
 | `REPLACE_ACCOUNT` | AWS 계정 ID (12자리) | AWS 콘솔 |
 | `REPLACE_TAG` | 컨테이너 이미지 태그 (예: git SHA) | CI/CD pipeline |
-| `REPLACE_QDRANT_CLUSTER_ID` | Qdrant Cloud cluster URL | Qdrant Cloud 콘솔 |
+| ~~`REPLACE_QDRANT_CLUSTER_ID`~~ | (deprecated) | in-cluster Qdrant 로 전환 — Service `qdrant:6333/6334` 직접 사용 |
 | `REPLACE_CERT_UUID` | ACM 인증서 UUID | AWS ACM |
 | `REPLACE_RWX_STORAGE_CLASS` | RWX StorageClass 이름 (예: efs-sc) | CSI driver 설치 |
 | `REPLACE_*` (secret.example.yaml) | 자격증명 실값 | 1Password / SSM |

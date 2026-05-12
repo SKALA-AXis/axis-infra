@@ -1,6 +1,7 @@
-# 운영 배포용 — docker compose -f docker-compose.prod.yml up -d
-# PostgreSQL = Supabase, Vector DB = Qdrant Cloud. 모든 자격증명은 .env에서 주입.
-# 반드시 .env에 운영 값을 설정한 후 실행하세요.
+# (Legacy) 운영 배포용 docker-compose — 더 이상 사용 안 함.
+# 운영은 SKALA EKS (`skala3-finalproj-class3-team13`) + 공용 ArgoCD GitOps.
+# 본 파일은 비상 시 docker-compose 로 prod-like 환경을 재현해야 할 경우만 참조.
+# 그 경우에도 외부 Supabase / Qdrant Cloud 를 가정하지 말고, postgres + qdrant 컨테이너를 같이 띄울 것.
 
 services:
   backend:

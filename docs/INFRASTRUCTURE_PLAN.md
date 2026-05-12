@@ -1,15 +1,16 @@
-# AXIS 인프라 구축 계획서 (v0)
+# AXIS 인프라 구축 계획서 (v0 · 갱신 2026-05-12)
 
 > **목적**: 현재 docker-compose 기반 로컬 운영을 K8s 기반 통합 운영으로 옮기기 위한 **결정 항목 · 선결 조건 · 마이그레이션 단계** 정리.
 >
 > **이 문서가 답하지 않는 것**: 실제 매니페스트 YAML 풀세트 (선결 조건이 합의된 후 별도 작성).
 >
-> **현재 상태 (실측)**:
-> - 인프라: Docker Compose (cloud 모드 / local 모드 2개), 4 서비스
-> - DB: Supabase (managed) · Vector: Qdrant Cloud (managed)
-> - CI: GitHub Actions × 4 레포 (빌드·테스트만, 이미지 push 없음)
-> - CD: 없음 — 누군가 수동으로 `docker compose up`
-> - 클러스터: 없음 (EKS 미생성)
+> **현재 상태 (실측, 2026-05-12)**:
+> - 인프라: SKALA EKS · ns `skala3-finalproj-class3-team13` · 5 Deployments + 6 CronJob + 3 PVC + Ingress (ALB)
+> - DB: **in-cluster Postgres (`postgres:5432`, 5Gi gp3 PVC)** · Vector: **in-cluster Qdrant (`qdrant:6333/6334`, 5Gi gp3 PVC)** — Supabase/Qdrant Cloud 미사용
+> - CI: GitHub Actions × 4 레포 (CI + Build-and-Push → Harbor `amdp-registry.skala-ai.com/skala26a-ai3`)
+> - CD: **공용 SKALA ArgoCD** (`skala-argocd` ns, UI `argocd.skala25a.project.skala-ai.com`) · axis-infra develop watch + ServerSideApply
+> - 이메일: **AWS SES V2 SDK + IRSA** (ses-mailer-sa) · 2026-05-12 end-to-end 검증 (messageId 발급, 6명 inbox 도착)
+> - 본 문서의 §3 이하 일부는 SaaS DB 시나리오를 가정한 *historical* 항목이라 in-cluster reality 와 맞지 않을 수 있음. 정확한 SoT 는 [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md)
 
 ---
 
@@ -183,7 +184,7 @@ axis.skax.internal/            → axis-frontend:3000  (SPA — fallback /index.
 | axis-cron-* → axis-backend | 8080/TCP | 같은 ns, label `app.kubernetes.io/component=cron` |
 | 그 외 모두 → axis-ai | 차단 | NetworkPolicy default-deny |
 
-egress 는 모두 허용 (외부 SaaS 호출 필요: Supabase · Qdrant Cloud · OpenAI · DART · Naver · KIPRIS · Saramin · SMTP · S3).
+egress 는 모두 허용 (외부 호출 필요: OpenAI · AWS SES (IRSA) · DART · Naver · KIPRIS · Saramin · S3). Postgres/Qdrant 는 in-cluster 라 egress 불필요.
 
 ---
 
@@ -209,11 +210,11 @@ egress 는 모두 허용 (외부 SaaS 호출 필요: Supabase · Qdrant Cloud ·
 
 | 키 | 출처 | 사용 워크로드 |
 |---|---|---|
-| `DATABASE_URL` | Supabase | ai |
-| `SPRING_DATASOURCE_URL` | Supabase | backend |
-| `SPRING_DATASOURCE_USERNAME` | Supabase | backend |
-| `SPRING_DATASOURCE_PASSWORD` | Supabase | backend |
-| `QDRANT_API_KEY` | Qdrant Cloud | ai |
+| `DATABASE_URL` | in-cluster Postgres (`postgresql://axuser:axpass@postgres:5432/axis`) | ai |
+| `SPRING_DATASOURCE_URL` | in-cluster Postgres (`jdbc:postgresql://postgres:5432/axis`) | backend |
+| `SPRING_DATASOURCE_USERNAME` | in-cluster Postgres (`axuser`) | backend |
+| `SPRING_DATASOURCE_PASSWORD` | `axis-secrets` Secret (in-cluster Postgres) | backend |
+| `QDRANT_API_KEY` | (빈 값 — in-cluster Qdrant 는 API key 미사용) | ai |
 | `OPENAI_API_KEY` | OpenAI | ai |
 | `NAVER_CLIENT_ID` | Naver Dev | ai |
 | `NAVER_CLIENT_SECRET` | Naver Dev | ai |
@@ -347,8 +348,8 @@ jobs:
 | CloudWatch Logs | $0.50/GB ingestion | ~5 GB | $3 |
 | NAT Gateway (egress) | $0.045/시간 + 데이터 | 1 | ~$45 |
 | **합계 (인프라)** | | | **~$395/월** |
-| Supabase (외부, 변경 없음) | Pro | 1 | ~$25 |
-| Qdrant Cloud (외부, 변경 없음) | 1 GB | 1 | ~$30 |
+| in-cluster Postgres (gp3 PVC) | 5Gi | 1 | gp3 storage 비용만 (~$0.5/월) |
+| in-cluster Qdrant (gp3 PVC) | 5Gi | 1 | gp3 storage 비용만 (~$0.5/월) |
 | OpenAI API (외부, 변경 없음) | gpt-4o | usage | ~$60 (LLM 비용 §성능 목표) |
 | **합계 (전체)** | | | **~$510/월** |
 
@@ -361,7 +362,7 @@ jobs:
 | 리스크 | 영향 | 완화 |
 |---|---|---|
 | 사내망 huggingface.co 차단 | ai pod 부팅 실패 | D11 결정 후 S3 미러 + InitContainer |
-| Supabase pooler 연결 한도 초과 | DB 통신 실패 | HikariCP `maximum-pool-size: 10` 유지, ai 측 `pool_size` 제한 |
+| in-cluster Postgres 단일 replica 다운 | DB 통신 실패 | HikariCP `maximum-pool-size: 10` 유지 + auto-reconnect · pod CrashLoopBackOff 모니터 · PVC bound 유지 검증 |
 | BGE-M3 모델 캐시 손실 (Pod 재시작) | 1~3분 다운타임 | D10=b 로 PVC 전환 시 해결 |
 | `@Scheduled` 와 K8s CronJob 동시 활성 | 중복 트리거 → DB 중복 INSERT | B3 코드 변경이 CronJob 배포보다 먼저 |
 | Frontend 빌드타임 환경변수 의존 | staging/prod 이미지 분리 필요 | D12=b (런타임 config) 채택 |
@@ -406,8 +407,8 @@ jobs:
 | axis-frontend | 3000 | 3000 | 3000 | `/` |
 | axis-backend | 8080 | 8080 | 8080 | `/api`, `/swagger-ui`, `/api-docs` |
 | axis-ai | 8001 | 8001 | 8001 | — (NetworkPolicy 차단) |
-| (외부) Supabase | — | — | — | EKS 밖 |
-| (외부) Qdrant Cloud | 6333 | — | — | EKS 밖 |
+| postgres (in-cluster) | 5432 | 5432 | ClusterIP | ns 내부만 접근 |
+| qdrant (in-cluster) | 6333 / 6334 | 6333 / 6334 | ClusterIP | ns 내부만 접근 |
 
 ### A.2 Service / Deployment 이름
 
@@ -437,7 +438,7 @@ jobs:
 | `VITE_API_BASE_URL` | ✓ | | | ConfigMap | D12 결정에 따라 빌드/런타임 |
 | `SPRING_PROFILES_ACTIVE` | | ✓ | | ConfigMap | `prod` |
 | `AI_SERVER_URL` | | ✓ | | ConfigMap | `http://axis-ai:8001` |
-| `SPRING_DATASOURCE_URL` | | ✓ | | Secret | Supabase pooler |
+| `SPRING_DATASOURCE_URL` | | ✓ | | ConfigMap | in-cluster Postgres ClusterIP |
 | `SPRING_DATASOURCE_USERNAME` | | ✓ | | Secret | |
 | `SPRING_DATASOURCE_PASSWORD` | | ✓ | | Secret | |
 | `DATABASE_URL` | | | ✓ | Secret | Python psycopg2 형식 |

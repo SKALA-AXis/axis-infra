@@ -11,7 +11,7 @@
 
 | 저장소 | 용도 | 보존 | 비고 |
 |---|---|---|---|
-| **PostgreSQL (Supabase)** | 원문 보존·감사·재처리 | 6개월 | 13개 테이블 |
+| **PostgreSQL (in-cluster · 5Gi gp3 PVC)** | 원문 보존·감사·재처리 | 6개월 | 13개 테이블 — `postgres:5432` (ClusterIP) · 일일 백업 `axis-pg-dump` CronJob |
 | **Qdrant `axis_main`** | 검색엔진 (3개월 hot) | 90d TTL | Dense+Sparse 페이로드는 메타만 |
 | **Qdrant `axis_history`** | 시그널 히스토리 (1년 cold) | 365d TTL | 약신호 분석 전용 |
 | **공유 볼륨 (`IMAGE_STORAGE_PATH`)** | 카드 뉴스 이미지 파일 | 6개월 (대응 raw_articles 와 동기) | `axis-images` named volume — ai write, backend read-only |

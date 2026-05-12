@@ -88,8 +88,8 @@ flowchart TB
     %% ── Managed SaaS ─────────────────────────────────────
     subgraph SAAS["☁️ Managed SaaS"]
         direction LR
-        SB[("🟢 Supabase PG<br/>13 tables · V4")]
-        QC[("🔴 Qdrant Cloud<br/>Hybrid RRF")]
+        SB[("🟢 PostgreSQL (in-cluster)<br/>PVC 5Gi · postgres:5432")]
+        QC[("🔴 Qdrant (in-cluster)<br/>PVC 5Gi · qdrant:6333/6334")]
         OAI["🤖 OpenAI<br/>GPT-4o"]
         S3[(📦 S3)]
     end
@@ -168,7 +168,7 @@ flowchart TB
 | 선 종류 | 의미 | 사용 예 |
 |---|---|---|
 | `─→` 실선 | 사용자 요청 트래픽 · in-cluster HTTP · LangGraph 노드 간 흐름 | User→R53→ALB→BE→AI, ingestion 6노드 시퀀스 |
-| `═→` 굵은 실선 | 외부 fetch · 데이터 영속화 · LLM 호출 · 알림 발송 · 동기 위임 | SOURCES→crawl, ING→Supabase INSERT, ING→Qdrant upsert, search→OpenAI, delivery→Mail, BE→search 동기 위임 |
+| `═→` 굵은 실선 | 외부 fetch · 데이터 영속화 · LLM 호출 · 알림 발송 · 동기 위임 | SOURCES→crawl, ING→Postgres INSERT, ING→Qdrant upsert, search→OpenAI, delivery→Mail, BE→search 동기 위임 |
 | `-.→` 점선 | BE @Scheduled 트리거 · graph 내부 부수 효과 · CI/CD · 모니터링 (W6+ 계획) | BE→ingestion/delivery/weak_signal 트리거, evidence→Evidence Chain 생성, ACM→ALB cert, GH→ArgoCD, Pods→Prometheus |
 
 ### 1.2 AI Pod 의 4개 실행 단위 — 구현 형태별 분리
@@ -188,7 +188,7 @@ flowchart TB
 | 결정 | 선택 | 이유 |
 |---|---|---|
 | **클러스터 수** | SKALA 공유 K8s 1개 — 단일 namespace `skala3-finalproj-class3-team13` (별도 namespace 생성 금지) | 발주처 정책. 자체 EKS 띄울 시에만 ops namespace 추가 (W6+) |
-| **AZ 수** | 2 AZ (a, c) | 30명 사용자에 3 AZ 는 과잉. RDS 가 Supabase managed 이므로 stateful 부담 없음 |
+| **AZ 수** | 2 AZ (a, c) | 30명 사용자에 3 AZ 는 과잉. Postgres/Qdrant 는 in-cluster 1 replica + PVC (gp3 RWO) 라 AZ-pinned — 향후 multi-AZ 필요 시 StatefulSet + EFS RWX 로 재구성 |
 | **CI/CD** | GitHub Actions + ArgoCD (Jenkins 채택 안 함) | GH Actions 가 이미 4 레포 모두에 동작 중. Jenkins 도입은 학습 외 실익 없음 |
 | **모니터링** | Prometheus + Grafana + CloudWatch Logs (Loki 채택 안 함) | EKS 컨트롤플레인 로그가 이미 CWL 로 가니 Loki 중복. 메트릭만 자체 운영 |
 | **모델 추적** | (없음) — MLflow 도입 안 함 | 미세조정·자체 모델 학습 없음. BGE-M3·GPT-4o 모두 외부. 실험은 수기 노트로 충분 |
@@ -207,6 +207,8 @@ ADR-0008 spec(CronJob → BE → axis-ai 본문빌더) 과 실 구현(BE @Schedu
 | `axis-ai delivery_graph.py` + `/pipeline/delivery` | 코드 존재, 호출자 없음 (`AiClientService.buildBriefing` 정의는 있으나 미사용) | dead code | (a) 삭제 또는 (b) BE 가 본문 빌더 위임하도록 통합 |
 | AWS SDK V2 STS 의존성 | `build.gradle` 에 명시적 추가 완료. SDK 가 transitively 안 가져옴 — IRSA 필수 | 안 박으면 `WebIdentityTokenCredentialsProvider: 'sts' module must be on classpath` 런타임 실패 | **유지** (코드에 주석 박혀있음) — 다른 IRSA 도입 서비스에도 동일 필요 |
 | `application-prod.yml` logging | `com.skala.axis: WARN` baseline + `SesMailService/BriefingService/SchedulerConfig` INFO uplift | 운영 추적 OK (messageId 가시화). 다른 INFO 는 묻힘 | **유지** — 새 운영-중요 클래스 생기면 같은 패턴으로 추가 |
+| in-cluster DB stateful 단일 replica | Postgres / Qdrant 각각 Deployment 1 + 5Gi gp3 RWO PVC. 단일 AZ pinned (gp3 = block storage, 다른 AZ 마운트 불가) | pod evict 시 새 AZ 노드로 schedule 되면 PVC mount 실패 → 수동 개입 필요 | (a) StatefulSet 전환 + EFS RWX PVC 로 multi-AZ 또는 (b) 9주 종료까지 단일 AZ 감수. 발표 후 결정 |
+| `feat/db-cloud-migration` 잔존 branch | Supabase + Qdrant Cloud 로의 migration 시도 (미완) | merge 안 됨 — develop 과 분기. 정리 안 하면 future PR 충돌 가능 | 발표 후 사용 여부 결정 — 안 쓰면 `git branch -D` |
 
 ---
 
@@ -216,11 +218,11 @@ ADR-0008 spec(CronJob → BE → axis-ai 본문빌더) 과 실 구현(BE @Schedu
 |---|---|---|---|
 | Frontend | React 18 + Vite + TypeScript + Radix UI | 대시보드 UI | **SKALA EKS 운영 배포 중** (ALB ingress, GitOps) |
 | Backend | Spring Boot 3.x · Java 17 · Flyway · WebClient · **AWS SES V2 SDK + STS module** (IRSA 필수) | REST API · JWT · 스케줄러 · 이메일 브리핑 (SES IRSA) · 수동 트리거 `POST /api/pipeline/briefing` | 평일 08:30 KST 자동 발송 — Spring `@Scheduled` `zone="Asia/Seoul"` → `BriefingService.generateAndSend()` → `SesMailService` → SES. **2026-05-12 end-to-end 검증 완료** (messageId 발급 + 6명 inbox 도착) |
-| AI Server | Python 3.11 · FastAPI · LangGraph 1.1.8 · uv | 4개 graph (ingestion / delivery / search / weak_signal) | SQLAlchemy 2.0 + psycopg2 로 Supabase 접근 |
+| AI Server | Python 3.11 · FastAPI · LangGraph 1.1.8 · uv | 4개 graph (ingestion / delivery / search / weak_signal) | SQLAlchemy 2.0 + psycopg2 로 in-cluster Postgres (`postgres:5432`) 접근 |
 | Pipeline 노드 | crawl · credibility · dedup · classify · issue_card · evidence | 6노드 LangGraph + 결정적 노출도 산식 | `axis-ai/src/pipeline/ingestion_graph.py` |
 | Evidence Chain | source_links · provenance · financial_refs · mbb_refs | 환각 방지 검증 첨부 4종 | `evidence_chain` 테이블 |
-| RDB | PostgreSQL 16 (Supabase Managed) | **13 테이블 / 146 컬럼 (V7 기준)** — 4 영역: Peer 원천 (5) · AI 분석 (3) · 메일 전달 (2) · 운영·평가 (3). `peer_companies` 5 row (4사 + sk_ax 자사 — tier 로 self/domestic 구분) | Pooler:6543 (sslmode=require) |
-| Vector DB | Qdrant 1.9 (Cloud) | Hybrid RRF (Dense + Sparse) | `axis_main` 3개월 · `axis_history` 12개월 TTL |
+| RDB | PostgreSQL 16 (**in-cluster** — Deployment + 5Gi gp3 PVC) | **13 테이블 / 146 컬럼 (V7 기준)** — 4 영역: Peer 원천 (5) · AI 분석 (3) · 메일 전달 (2) · 운영·평가 (3). `peer_companies` 5 row (4사 + sk_ax 자사 — tier 로 self/domestic 구분) | `postgres.skala3-finalproj-class3-team13.svc:5432` (ClusterIP) · 일일 백업 `axis-pg-dump` CronJob (17:00 KST) |
+| Vector DB | Qdrant 1.9 (**in-cluster** — Deployment + 5Gi gp3 PVC) | Hybrid RRF (Dense + Sparse) | `qdrant.skala3-finalproj-class3-team13.svc:6333` (HTTP) / `:6334` (gRPC) · API key 없음 (network-level 격리) · `axis_main` 3개월 · `axis_history` 12개월 TTL |
 | LLM | OpenAI GPT-4o | 분류 · 카드 생성 · Generative Search | 일일 비용 목표 ≤ ₩5,000 |
 | 임베딩 / 재랭킹 | BGE-M3 + BGE-reranker-v2-m3 (FlagEmbedding 1.x, MIT) | AI Pod 내장 — 외부 호출 없음 | Dense+Sparse 원샷 추론 |
 | 스케줄러 | Spring `@Scheduled` (cron) — **`AXIS_SCHEDULER_ENABLED=true` 로 활성** | 매시 정각 수집 · 평일 08:30 KST 브리핑 (`zone="Asia/Seoul"`) · 월 09:00 약한신호 | `SchedulerConfig.java`. CronJob 4종 (`axis-cron-ingestion-a/b/c`, `axis-cron-delivery`) 과 트리거 중복 — 정리 항목 §1.4 참조 |
@@ -270,7 +272,7 @@ ADR-0008 spec(CronJob → BE → axis-ai 본문빌더) 과 실 구현(BE @Schedu
 │  └────────────────────────────────────────────────────────┘                 │
 │                                                                            │
 │  ── 외부 데이터 ──            ── Managed SaaS (한 번만) ──   ── 알림 ──     │
-│  🌐 Track A · B · C    🟢 Supabase  🔴 Qdrant  🤖 OpenAI  📦 S3   📧 Mail │
+│  🌐 Track A · B · C    🟢 Postgres (in-cluster)  🔴 Qdrant (in-cluster)  🤖 OpenAI  📦 S3   📧 Mail (SES IRSA) │
 │                                                                            │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -288,7 +290,7 @@ ADR-0008 spec(CronJob → BE → axis-ai 본문빌더) 과 실 구현(BE @Schedu
 | Backend | `#ECFDF5` | `#059669` | Spring Boot · BriefingAgent (delivery) |
 | AI / Pipeline | `#FEF3C7` | `#D97706` | AI Pod · LangGraph 4 graphs · 7 nodes |
 | Evidence Chain | `#FFFBEB` | `#B45309` | 검증 첨부 4종 (AI 보다 옅게) |
-| 저장소 | `#EEF2FF` | `#4F46E5` | Supabase · Qdrant · S3 · CloudWatch |
+| 저장소 | `#EEF2FF` | `#4F46E5` | Postgres (in-cluster) · Qdrant (in-cluster) · S3 · CloudWatch |
 | LLM SaaS | `#F5F3FF` | `#7C3AED` | OpenAI GPT-4o |
 | CI/CD | `#FEF2F2` | `#DC2626` | GitHub Actions · ArgoCD · ECR |
 | 모니터링 | `#F0FDFA` | `#0D9488` | Prometheus · Grafana |
@@ -309,7 +311,7 @@ ADR-0008 spec(CronJob → BE → axis-ai 본문빌더) 과 실 구현(BE @Schedu
 | OpenAI | `simple-icons:openai` | `#412991` |
 | Hugging Face (BGE-M3) | `logos:hugging-face-icon` | `#FFD21E` |
 | PostgreSQL | `logos:postgresql` | `#4169E1` |
-| Supabase | `logos:supabase-icon` | `#3ECF8E` |
+| PostgreSQL | `logos:postgresql` | `#4169E1` |
 | Qdrant | `simple-icons:qdrant` | `#DC382D` |
 | Docker | `logos:docker-icon` | `#2496ED` |
 | Kubernetes | `logos:kubernetes` | `#326CE5` |
@@ -331,7 +333,7 @@ ADR-0008 spec(CronJob → BE → axis-ai 본문빌더) 과 실 구현(BE @Schedu
 6. **점선 보더 박스** — ops namespace (자체 EKS 시) 와 CI/CD 흐름은 `[6, 4]` dash, 보더 컬러 `#94A3B8`. "현재 미구축, W6+" 가 한눈에 보이게
 7. **트래픽 흐름은 두께·색으로 구분**
    - 사용자 (파랑 실선) / 영속화·외부 fetch (보라 굵은 실선) / @Scheduled 트리거 (회색 점선) / CI/CD (주황 점선) / 모니터링 (청록 점선)
-8. **외부 SaaS 는 Cloud 박스 밖으로** — Supabase / Qdrant / OpenAI / S3 를 VPC 박스 외부 하단에 별도 zone 으로. 캔버스 한 번만 등장 ("우리 인프라가 아님" + 중복 제거)
+8. **외부 SaaS 는 Cloud 박스 밖으로** — OpenAI / S3 만 VPC 박스 외부 하단 별도 zone. Postgres · Qdrant 는 in-cluster 라 EKS 박스 안 namespace 영역에 배치. SES 는 AWS managed 이므로 IRSA 화살표로 EKS → SES 표시
 9. **트래픽·비용 캡션 우하단** — 작은 글씨로:
 
    | 항목 | 추정치 | 근거 |

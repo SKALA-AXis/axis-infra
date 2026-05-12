@@ -1,8 +1,10 @@
-# 0006. Flyway 도입 및 Supabase 마이그레이션 운영 표준
+# 0006. Flyway 도입 및 Postgres 마이그레이션 운영 표준
 
 - **날짜**: 2026-04-28
 - **상태**: Accepted
-- **선행 결정**: ADR-0005 (이중 저장소), Supabase + Qdrant Cloud 매니지드 전환
+- **선행 결정**: ADR-0005 (이중 저장소), 매니지드 SaaS DB 검토
+
+> **갱신 노트 (2026-05-12)**: 본 ADR 의 기반 가정이었던 *Supabase Managed Postgres + Qdrant Cloud* 는 이후 폐기되고 **SKALA EKS 의 in-cluster Postgres + Qdrant (5Gi gp3 PVC 각각)** 로 전환되었음. Flyway 자동화 결정 자체는 그대로 유효 — Postgres 는 Postgres 이고, JPA + `org.flywaydb:flyway-database-postgresql` 의존성도 동일하게 동작. 본문은 history 보존을 위해 그대로 두되, `Supabase` 라는 단어는 모두 `in-cluster Postgres` 로 읽으면 됨.
 
 ## 배경
 

@@ -78,7 +78,7 @@ kubectl config use-context docker-desktop
 ```bash
 # axis-infra 디렉토리에서:
 cp .env.example .env             # 또는 .env.local.example .env.local
-$EDITOR .env                      # OPENAI_API_KEY · Supabase 비밀번호 등 실값
+$EDITOR .env                      # OPENAI_API_KEY · DB 비밀번호 등 실값
 make secret                       # .env → k8s/overlays/local/secret.local.yaml 자동 생성
 ```
 
@@ -87,9 +87,10 @@ make secret                       # .env → k8s/overlays/local/secret.local.yam
 
 | 모드 | source | 비고 |
 |---|---|---|
-| Cloud DB (default · 권장) | `.env` (Supabase + Qdrant Cloud 자격증명) | `make secret` 가 .env 우선 사용 |
-| In-cluster DB | `.env.local` (postgres:5432 hostname 가정) | `.env` 없을 때만 .env.local 사용 |
-| placeholder | (둘 다 없을 때) | `secret.local.yaml.example` 자동 복사 — Pod 시작은 가능, 외부 호출 fail |
+| In-cluster DB (권장 · 운영과 동일) | `.env.local` (postgres:5432 / qdrant:6333) | 로컬에서도 postgres + qdrant 컨테이너 띄움 |
+| placeholder | (없을 때) | `secret.local.yaml.example` 자동 복사 — Pod 시작은 가능, 외부 호출 fail |
+
+> (구 Cloud DB 모드 — Supabase + Qdrant Cloud — 는 폐기. 운영도 in-cluster Postgres + Qdrant 만 사용.)
 
 ### 2) 컨테이너 이미지 빌드
 
@@ -111,11 +112,7 @@ cd ../axis-ai && docker build -t axis-ai:dev .
 
 ### 4) DB 모드 결정
 
-#### 모드 A — Cloud DB (default)
-
-`secret.local.yaml` 에 Supabase + Qdrant Cloud 자격증명 입력. 그대로 apply.
-
-#### 모드 B — In-cluster DB
+#### In-cluster DB (운영과 동일 · 유일 권장 모드)
 
 ```bash
 # kustomization.yaml 의 resources 주석 해제
@@ -202,7 +199,7 @@ kubectl -n axis edit configmap axis-config
 | backend `/health` 502 | startup 시간 부족 | startupProbe failureThreshold 증가 |
 | PVC `axis-images` Pending | local-path SC 없음 | `kubectl get sc` 확인 후 `standard` 가 default 인지 / 다른 SC 이름이면 patch 갱신 |
 | `kubectl apply -k` 가 server fail | 클러스터 미생성 / kubeconfig 잘못 | `kubectl config current-context` 확인, kind/minikube 컨텍스트로 전환 |
-| backend 로그 `Flyway Validate failed` | Supabase 의 V1 체크섬과 mismatch | local 모드에서 in-cluster postgres 사용 권장 (clean DB → V1+V2 모두 fresh apply) |
+| backend 로그 `Flyway Validate failed` | DB schema_history 체크섬 mismatch | clean DB pod 재시작 (PVC 삭제 → 신규 PVC) 후 V1+V2 fresh apply 또는 schema_history 수동 정정 |
 
 ---
 

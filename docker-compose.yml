@@ -1,10 +1,9 @@
-# 두 가지 모드 지원:
-#  - cloud (기본): PostgreSQL = Supabase, Qdrant = Qdrant Cloud. .env에서 DSN 주입.
-#       docker compose --env-file .env up -d
-#  - local (옵션): postgres + qdrant 컨테이너를 같이 띄우고, 그쪽으로 ai/backend가 붙는다.
-#       docker compose --profile local --env-file .env.local up -d
+# 로컬 dev 전용 — 운영은 SKALA EKS (`skala3-finalproj-class3-team13`) in-cluster.
+# 로컬 dev: postgres + qdrant 컨테이너를 띄우고, 그쪽으로 ai/backend가 붙는다.
+#   docker compose --profile local --env-file .env.local up -d
 #
-# .env.local.example를 .env.local로 복사한 뒤 `--env-file` 로 명시.
+# .env.local.example 를 .env.local 로 복사한 뒤 `--env-file` 로 명시.
+# (구 cloud 모드 (Supabase / Qdrant Cloud) 는 폐기됨 — 운영도 in-cluster Postgres + Qdrant 만 사용.)
 
 services:
   postgres:
