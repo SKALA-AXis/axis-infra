@@ -1,7 +1,7 @@
 # AXIS 시스템 아키텍처
 
 > Figma 작업용 단일 레퍼런스. **이 문서가 SoT** — 인프라·파이프라인 변경 시 함께 갱신.
-> 작성: 2026-04-30 · 갱신: 2026-05-07 (V7 / 13 테이블 / 146 컬럼 / 5사 baseline) · 적용 범위: axis-infra / axis-backend / axis-ai / axis-frontend
+> 작성: 2026-04-30 · 갱신: 2026-05-12 (SES IRSA end-to-end 검증 / Spring @Scheduled 운영 활성화 / `axis-cron-delivery` 중복·broken 표기) · 적용 범위: axis-infra / axis-backend / axis-ai / axis-frontend
 >
 > 한 캔버스에 인프라 토폴로지 + AI Pod 내부 동작 동시 표현. 저장소·SaaS 는 한 번만 등장.
 >
@@ -67,7 +67,7 @@ flowchart TB
                         end
 
                         EVID["📎 Evidence Chain 4종"]
-                        DEL["📬 delivery_graph<br/>평일 08:30"]
+                        DEL["📬 delivery_graph<br/>(현재 dead — BE 가 본문 직빌드)"]
                         SCH["🔎 search / gen-search<br/>RRF + Reranker"]
                         WSG["🔍 weak_signal · 월 09:00<br/>(W7)"]
 
@@ -102,22 +102,20 @@ flowchart TB
     BE --> AIPOD
 
     %% ── 스케줄 + 동기 ───────────────────────────────────
-    BE -.->|매시| ING
-    BE -.->|08:30| DEL
-    BE -.->|월| WSG
+    BE -.->|매시 정각 KST| ING
+    BE -.->|월 KST| WSG
     BE ==>|동기| SCH
+
+    %% ── 일일 브리핑 (실 구현: BE @Scheduled 직발송) ───────
+    BE ==>|SES V2 SDK · IRSA · 08:30 KST MON-FRI| Mail
 
     %% ── 데이터 흐름 ──────────────────────────────────────
     SOURCES ==> I1
-    BE ==> SB
+    BE ==>|JPA · issue_cards · briefing_history| SB
     ING ==> SB
     ING ==> QC
     I5 ==> OAI
     I6 ==> S3
-
-    DEL ==>|recipients SELECT| SB
-    DEL ==>|briefing_history INSERT| SB
-    DEL ==>|SMTP| Mail
 
     SCH ==> QC
     SCH ==> SB
@@ -155,8 +153,8 @@ flowchart TB
     class TA,TB src
     class FE fe
     class BE be
-    class I1,I2,I3,I4,I5,I6,DEL,SCH pipeline
-    class WSG planned
+    class I1,I2,I3,I4,I5,I6,SCH pipeline
+    class WSG,DEL planned
     class EVID evidence
     class SB,QC,S3,CWL db
     class OAI saas
@@ -179,8 +177,9 @@ flowchart TB
 
 | 단위 | 구현 | 트리거 | 결과물 | 시간 예산 |
 |---|---|---|---|---|
-| `ingestion_graph.py` | LangGraph 6노드 | BE `@Scheduled` `/pipeline/run` · 매시 정각 | `issue_cards` + `evidence_chain` + `article_images` | 30초 / cycle |
-| `delivery_graph.py` | LangGraph 2노드 (BriefingAgent → EmailAgent) | BE `@Scheduled` `/pipeline/delivery` · 평일 08:30 | `recipients` 조회 → SMTP 발송 → `briefing_history` INSERT | 5초 |
+| `ingestion_graph.py` | LangGraph 6노드 | BE `@Scheduled.triggerIngestionPipeline` → `/pipeline/run` · 매시 정각 KST (`AXIS_SCHEDULER_ENABLED=true`) | `issue_cards` + `evidence_chain` + `article_images` | 30초 / cycle |
+| **(BE 직빌드) BriefingService** | Java (axis-backend) — sector-grouped HTML/text 빌더 + `SesMailService` SES V2 SDK | BE `@Scheduled.sendDailyBriefing` · `cron="0 30 8 * * MON-FRI" zone="Asia/Seoul"` | `issue_cards` SELECT → SES 발송 (messageId) → (TBD `briefing_history` INSERT) | 5초 |
+| `delivery_graph.py` (**현재 dead**) | LangGraph 1노드 (build_briefing_node) | (호출자 없음 — `AiClientService.buildBriefing` 정의됐으나 미사용) | (의도: BE 가 cards 보내면 HTML/text 본문 반환) | 5초 |
 | `rag/` (search) | RAG 모듈 — embedder + hybrid_search + reranker (graph 아님) | User `POST /api/search` → BE → `/search` · `/gen-search` | 검색 응답 / Generative Search (SC 3회) | 10초 (BE 타임아웃) |
 | `weak_signal` | **W7 구현 예정** — `weak_signal_graph.py` 신규 + `_deprecated/weak_signal_agent.py` 재구축 | BE `@Scheduled` `/weak-signal/run` · 월 09:00 | `signal_cards` *(테이블 미존재 — W7 추가 예정)* | 60초 |
 
@@ -197,6 +196,18 @@ flowchart TB
 | **시크릿** | AWS Secrets Manager → External Secrets Operator | `.env` 직접 마운트 금지 (보안 컨벤션) |
 | **알림 채널** | 이메일 — **AWS SES V2 SDK + IRSA** (axis-backend `SesMailService`), sender `noreply@skala-ai.com`. Slack/SMTP 폐기 (v3 → v4) | SK AX 사업전략팀 운영 환경과 일치 (ADR-0008) |
 
+### 1.4 Known cleanup items (P9)
+
+ADR-0008 spec(CronJob → BE → axis-ai 본문빌더) 과 실 구현(BE @Scheduled → BE Java 직빌드) 이 갈렸음. 발표 후 둘 중 하나로 통일.
+
+| 항목 | 현 상태 | 영향 | 권장 |
+|---|---|---|---|
+| `axis-cron-delivery` CronJob | 08:30 KST 매일 발사 → `POST /api/pipeline/delivery` (endpoint 미구현) → 500 → backoffLimit 소진 후 ignored | 매일 실패 job 1건 생성, kubectl 노이즈 | **삭제** (Spring `@Scheduled.sendDailyBriefing` 가 이미 동일 시각에 정상 동작) |
+| `axis-cron-ingestion-a/b/c` CronJob | 정상 동작 (BE `/api/pipeline/trigger` 호출). 단 Spring `@Scheduled.triggerIngestionPipeline` 와 동시 발사 시 **이중 ingestion** | 매시 ingestion 2회 실행 가능, LLM 비용 2배 | **삭제** 또는 Spring `@Scheduled` 측 비활성. 단일 트리거 정책 결정 필요 |
+| `axis-ai delivery_graph.py` + `/pipeline/delivery` | 코드 존재, 호출자 없음 (`AiClientService.buildBriefing` 정의는 있으나 미사용) | dead code | (a) 삭제 또는 (b) BE 가 본문 빌더 위임하도록 통합 |
+| AWS SDK V2 STS 의존성 | `build.gradle` 에 명시적 추가 완료. SDK 가 transitively 안 가져옴 — IRSA 필수 | 안 박으면 `WebIdentityTokenCredentialsProvider: 'sts' module must be on classpath` 런타임 실패 | **유지** (코드에 주석 박혀있음) — 다른 IRSA 도입 서비스에도 동일 필요 |
+| `application-prod.yml` logging | `com.skala.axis: WARN` baseline + `SesMailService/BriefingService/SchedulerConfig` INFO uplift | 운영 추적 OK (messageId 가시화). 다른 INFO 는 묻힘 | **유지** — 새 운영-중요 클래스 생기면 같은 패턴으로 추가 |
+
 ---
 
 ## 2. 컴포넌트 스택 (한 페이지 요약)
@@ -204,7 +215,7 @@ flowchart TB
 | 레이어 | 기술 | 책임 | 현재 상태 |
 |---|---|---|---|
 | Frontend | React 18 + Vite + TypeScript + Radix UI | 대시보드 UI | **SKALA EKS 운영 배포 중** (ALB ingress, GitOps) |
-| Backend | Spring Boot 3.x · Java 17 · Flyway · WebClient · **AWS SES V2 SDK** | REST API · JWT · 스케줄러 · 이메일 브리핑 (SES IRSA) | 평일 08:30 자동 발송 (axis-cron-delivery → backend `SesMailService` → SES) |
+| Backend | Spring Boot 3.x · Java 17 · Flyway · WebClient · **AWS SES V2 SDK + STS module** (IRSA 필수) | REST API · JWT · 스케줄러 · 이메일 브리핑 (SES IRSA) · 수동 트리거 `POST /api/pipeline/briefing` | 평일 08:30 KST 자동 발송 — Spring `@Scheduled` `zone="Asia/Seoul"` → `BriefingService.generateAndSend()` → `SesMailService` → SES. **2026-05-12 end-to-end 검증 완료** (messageId 발급 + 6명 inbox 도착) |
 | AI Server | Python 3.11 · FastAPI · LangGraph 1.1.8 · uv | 4개 graph (ingestion / delivery / search / weak_signal) | SQLAlchemy 2.0 + psycopg2 로 Supabase 접근 |
 | Pipeline 노드 | crawl · credibility · dedup · classify · issue_card · evidence | 6노드 LangGraph + 결정적 노출도 산식 | `axis-ai/src/pipeline/ingestion_graph.py` |
 | Evidence Chain | source_links · provenance · financial_refs · mbb_refs | 환각 방지 검증 첨부 4종 | `evidence_chain` 테이블 |
@@ -212,7 +223,7 @@ flowchart TB
 | Vector DB | Qdrant 1.9 (Cloud) | Hybrid RRF (Dense + Sparse) | `axis_main` 3개월 · `axis_history` 12개월 TTL |
 | LLM | OpenAI GPT-4o | 분류 · 카드 생성 · Generative Search | 일일 비용 목표 ≤ ₩5,000 |
 | 임베딩 / 재랭킹 | BGE-M3 + BGE-reranker-v2-m3 (FlagEmbedding 1.x, MIT) | AI Pod 내장 — 외부 호출 없음 | Dense+Sparse 원샷 추론 |
-| 스케줄러 | Spring `@Scheduled` (cron) | 매시 수집 · 평일 08:30 브리핑 · 월 09:00 약한신호 | `SchedulerConfig.java` (Java 측 단일 트리거) |
+| 스케줄러 | Spring `@Scheduled` (cron) — **`AXIS_SCHEDULER_ENABLED=true` 로 활성** | 매시 정각 수집 · 평일 08:30 KST 브리핑 (`zone="Asia/Seoul"`) · 월 09:00 약한신호 | `SchedulerConfig.java`. CronJob 4종 (`axis-cron-ingestion-a/b/c`, `axis-cron-delivery`) 과 트리거 중복 — 정리 항목 §1.4 참조 |
 | 컨테이너 | **SKALA EKS** (Docker Compose 는 로컬 개발만) | 5 Deployment + 4 CronJob + 3 PVC + Ingress | namespace `skala3-finalproj-class3-team13`, cluster `skala-2025` |
 | 이미지 레지스트리 | **Harbor** (`amdp-registry.skala-ai.com/skala26a-ai3`) | git SHA tag + `:develop` + `:buildcache` | linux/amd64 강제 |
 | CI | GitHub Actions | 빌드 · 테스트 · 이미지 푸시 → Harbor | 4 레포 각각 동작 (Jenkins 도입 안 함) |
