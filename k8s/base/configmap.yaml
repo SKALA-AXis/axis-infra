@@ -20,10 +20,10 @@ data:
   # ── 카드 뉴스 이미지 공유 볼륨
   IMAGE_STORAGE_PATH: "/data/images"
 
-  # ── 메일 발송 (D8b=a — axis-ai 가 발송. backend 는 SMTP_* 미사용)
-  SMTP_HOST: "smtp.sendgrid.net"
-  SMTP_PORT: "587"
-  SMTP_FROM: "axis-briefing@example.co.kr"
+  # ── 메일 발송 — AWS SES V2 SDK + IRSA (backend 의 SesMailService 가 발송 주체).
+  # 발송 SMTP 폐기 (Resend / SendGrid 시점 잔재 제거). backend Pod 의 ses-mailer-sa 가
+  # IAM role 통한 SES API 직접 호출. SMTP_HOST/PORT/USER/PASSWORD 환경변수 모두 불필요.
+  # 환경별 overlay 에서 AWS_REGION + MAIL_FROM 박음 (overlays/skala/patches/configmap-env.yaml).
   BRIEFING_RECIPIENTS: "pm@example.co.kr,executive@example.co.kr"
   BRIEFING_TIME: "08:30"
 
