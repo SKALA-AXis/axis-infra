@@ -41,12 +41,17 @@ axis-frontend   ← React 대시보드 (TypeScript)
 
 ### 이 레포(axis-infra)가 하는 일
 
-- `docker-compose.yml` — 전체 서비스 로컬 실행
+- `docker-compose.yml` — 로컬 개발 환경 (개인 Mac)
+- `k8s/` — Kubernetes 매니페스트 (SKALA EKS 운영 배포)
+  - `base/` — 공통 매니페스트, `overlays/skala/` — 클러스터별 kustomize overlay
+  - `argocd/` — ArgoCD Application CR + repo Secret (공용 `skala-argocd` 사용)
+  - `argocd-self/` — 자체 ArgoCD 비상용 spec (현재 미사용)
 - `db/schema.sql` — PostgreSQL DDL (Single Source of Truth)
 - `api/openapi.yaml` — REST API 계약서 (SpringBoot ↔ Frontend)
 - `api/ai-internal-api.yaml` — 내부 API 계약서 (SpringBoot ↔ Python AI)
-- `docs/` — ADR, 컨벤션, 회의록
+- `docs/` — ADR, 컨벤션, 회의록, CI/CD plan, HANDOVER, SES integration
 - `docs/conventions/CONVENTION.md` — Git 브랜치·커밋 규칙
+- `scripts/env-to-skala-secret.sh` — `.env` → cluster Secret 변환
 
 ---
 
@@ -78,14 +83,22 @@ PostgreSQL (원문 아카이브)    Qdrant (벡터 검색엔진)
 6. SpringBoot → React (응답)
 ```
 
-### 통신 흐름 예시 — 오전 8:30 자동 브리핑 (v3: 이메일 발송)
+### 통신 흐름 예시 — 오전 8:30 자동 브리핑 (v4: AWS SES IRSA)
 
 ```
-1. SpringBoot 스케줄러 → POST http://ai:8001/pipeline/run (1시간마다)
-2. Python AI → 크롤링 → credibility → dedup → classify → issue_card → evidence → DB 저장
-3. SpringBoot 스케줄러 → POST http://ai:8001/pipeline/delivery (오전 8:30)
-4. Python AI → 동향 카드 + 검증 첨부 4종 조회 → 이메일 본문 구성 → 발송
+1. SpringBoot 스케줄러 또는 CronJob (axis-cron-delivery) → POST /api/pipeline/delivery
+2. (수집은 별도) SpringBoot 스케줄러 → POST http://ai:8001/pipeline/run (1시간마다)
+3. Python AI → 크롤링 → credibility → dedup → classify → issue_card → evidence → DB 저장
+4. SpringBoot 의 /api/pipeline/delivery 핸들러:
+   a. POST http://axis-ai:8001/pipeline/delivery (본문 데이터 요청)
+   b. Python AI → 동향 카드 + 검증 첨부 4종 조회 + HTML/Text 본문 구성 → 반환
+   c. SesMailService → AWS SES V2 SDK (IRSA 인증, sender: noreply@skala-ai.com) → 발송
+5. 수신자 6명 (team13, 운영 시 SK AX 사업전략팀) inbox 도착
 ```
+
+> v3 → v4 변경: Python AI 의 smtplib SMTP 발송 폐기. axis-backend 의 `SesMailService` 가
+> AWS SES V2 SDK 로 발송 통합 (IRSA + ses-mailer-sa). Python AI 는 본문 데이터만 반환.
+> 자세한 spec: [docs/SES_INTEGRATION.md](docs/SES_INTEGRATION.md).
 
 ---
 
@@ -102,16 +115,21 @@ PostgreSQL (원문 아카이브)    Qdrant (벡터 검색엔진)
 | AI 서버 | FastAPI + uv | FastAPI 0.115.x | Python 내부 서버 |
 | 백엔드 | SpringBoot | 3.x (Java 17) | REST API 서버 |
 | 프론트 | React + Vite | React 18.x | TypeScript |
-| 배포 | Docker Compose | v2.x | MVP 단계 |
-| 모니터링 | MLflow | 2.x | 실험·메트릭 추적 |
-| CI/CD | GitHub Actions | - | 각 레포 독립 CI |
+| 로컬 개발 | Docker Compose | v2.x | 개인 Mac (선택) |
+| 운영 배포 | **SKALA EKS** | `skala-2025` (ap-northeast-2) | namespace `skala3-finalproj-class3-team13` |
+| 이미지 레지스트리 | **Harbor** | `amdp-registry.skala-ai.com` | project `skala26a-ai3`, robot `robot$skala26a-ai3` |
+| CD 도구 | **공용 ArgoCD** (`skala-argocd`) | v3.4.1 (HA × 3) | UI: https://argocd.skala25a.project.skala-ai.com |
+| CI/CD | **GitHub Actions** + ArgoCD (GitOps) | - | service repo push → Harbor → axis-infra deploy commit → ArgoCD sync |
+| 이메일 발송 | **AWS SES V2 SDK** | IRSA (ses-mailer-sa) | sender `noreply@skala-ai.com`, backend 통합 |
+| 모니터링 | MLflow + ArgoCD UI | 2.x | 실험·메트릭 + sync 시각 추적 |
 
 ---
 
-## Docker Compose 서비스 구성
+## 배포 환경 — 로컬 vs SKALA EKS
+
+### 로컬 개발 (Docker Compose)
 
 ```yaml
-# docker-compose.yml 서비스 목록
 services:
   postgres:   포트 5432, DB명 axis
   qdrant:     포트 6333 (HTTP), 6334 (gRPC)
@@ -120,16 +138,33 @@ services:
   frontend:   포트 3000 (React)
 ```
 
-**전체 실행 명령어:**
 ```bash
-docker compose up -d
+docker compose up -d                     # 전체
+docker compose up -d postgres qdrant     # DB만 (앱은 각자 로컬에서)
 ```
 
-**로컬 개발 시 (각 서비스 별도 실행):**
-```bash
-docker compose up -d postgres qdrant  # DB만 올리고
-# backend/ai/frontend는 각자 로컬에서 실행
+### SKALA EKS 운영 (GitOps)
+
 ```
+namespace: skala3-finalproj-class3-team13
+cluster:   skala-2025 (ap-northeast-2)
+ALB:       skala3-team13-axis-alb-1349892737.ap-northeast-2.elb.amazonaws.com
+ArgoCD:    https://argocd.skala25a.project.skala-ai.com (공용 skala-argocd)
+```
+
+**배포 흐름** (자세히는 [docs/ci-cd-plan.md](docs/ci-cd-plan.md)):
+
+```
+service repo push (axis-ai/backend/frontend develop)
+  → GitHub Actions (ci.yml 통과 후 build-and-push.yml)
+  → Harbor push (:SHA + :develop + :buildcache)
+  → axis-infra develop 에 "deploy: SVC → SHA" auto-commit
+  → 공용 ArgoCD 가 develop 변경 감지 (3분 polling)
+  → kustomize build + ServerSideApply
+  → Pod rollout
+```
+
+`git push` 하나로 production deploy. Rollback = `git revert <commit>` (P6 drill 23초 자동 복원 검증됨).
 
 ---
 
@@ -249,7 +284,7 @@ low      < 0.40
 | 3주 | 수집·정제 파이프라인 완성 + 골든셋 레이블링 |
 | 4주 | AI 분석 파이프라인 완성 + 스테이징 배포 |
 | 5주 | RAG + Generative Search + 프론트 연동 |
-| 6주 | 통합 테스트 + Slack 브리핑 + 골든셋 최종 평가 |
+| 6주 | 통합 테스트 + 이메일 브리핑 + 골든셋 최종 평가 |
 | 7주 | 약한 신호 감지기 구현 |
 | 8주 | 버그 수정 + 성능 최적화 + 인수 기준 검증 |
 | 9주 | 발표 준비 + 데모 리허설 |
@@ -268,13 +303,27 @@ low      < 0.40
 
 ---
 
-## 이번 주 최우선 과제
+## 진행 상태 (9주차 — 발표 준비 단계)
 
-1. 🔴 BGE-M3 + Qdrant PoC — 한국어 IT뉴스 50건 Hit@5 측정 (AI Engineer A)
-2. 🔴 네이버뉴스 크롤러 프로토타입 — 기사 10건 PostgreSQL 저장 (AI Engineer B)
-3. 🔴 팀장 인터뷰 일정 확정 (PM)
-4. 🟡 GitHub Actions CI 세팅 (Backend Lead)
-5. 🟡 골든셋 레이블링 20건 착수 (AI Engineer B)
+### 완료 ✅
+- BGE-M3 + Qdrant 하이브리드 검색 (RAG)
+- 크롤러 (네이버 / DART / KIPRIS / RSS / 채용 사이트)
+- AI 파이프라인 (수집 / 분류 / 이슈카드 / evidence chain)
+- Frontend (designing → develop merge 완료, 디자인 대규모 개편)
+- **CI/CD 자동화** — GitHub Actions + Harbor + 공용 ArgoCD (GitOps 전 사이클 검증, P6 rollback drill 23초 자동 복원)
+- **SKALA EKS 배포** — namespace 운영 + ALB endpoint
+- **AWS SES IRSA 인프라** — ses-mailer-sa + noreply@skala-ai.com verified (boto3 pod 검증 통과)
+
+### 외부 작업 대기 ⏳
+- **axis-backend SES 코드** (박지원) — `SesMailService` + `/api/pipeline/delivery` 의 SES SDK 발송 통합 ([docs/SES_INTEGRATION.md](docs/SES_INTEGRATION.md))
+- **axis-ai EmailAgent 폐기** (박진/심유정) — `/pipeline/delivery` 응답을 본문 데이터만 반환으로 변경
+- **SES → Gmail deliverability 진단** (매니저) — Bounce/Complaint/Suppression dashboard 확인
+
+### 발표 직전 (체크리스트)
+1. `BRIEFING_RECIPIENTS` placeholder → team13 6명 박기
+2. `axis-cron-delivery` CronJob suspend 풀기 (backend 코드 박힌 후)
+3. Application finalizer 제거 (cascade delete 안전장치)
+4. ArgoCD UI / GH Actions / ALB / inbox 4 화면 사전 점검
 
 ---
 
@@ -282,12 +331,14 @@ low      < 0.40
 
 ```
 axis-infra/
-├── CLAUDE.md                    ← 이 파일
-├── README.md
+├── CLAUDE.md                    ← 이 파일 (프로젝트 마스터 컨텍스트)
+├── README.md                    ← 레포 entry
+├── AGENTS.md                    ← Claude agent 안내
 ├── .env.example                 ← 환경변수 템플릿 (실제 값 절대 커밋 금지)
 ├── .gitignore
-├── docker-compose.yml           ← 로컬 전체 실행
-├── docker-compose.prod.yml      ← 운영 배포
+├── docker-compose.yml           ← 로컬 개발 (개인 Mac)
+├── docker-compose.prod.yml      ← (Legacy — production 은 SKALA EKS GitOps)
+├── Makefile                     ← skala-build / skala-push / skala-secret 등
 ├── .github/
 │   └── workflows/
 │       └── validate.yml         ← SQL·OpenAPI 유효성 검사 CI
@@ -296,15 +347,34 @@ axis-infra/
 ├── api/
 │   ├── openapi.yaml             ← SpringBoot ↔ Frontend 계약
 │   └── ai-internal-api.yaml     ← SpringBoot ↔ Python AI 계약
+├── k8s/                         ← Kubernetes 매니페스트 (SKALA EKS 운영 배포)
+│   ├── base/                    ← 공통 매니페스트
+│   ├── overlays/
+│   │   ├── skala/               ← SKALA EKS overlay (kustomize)
+│   │   └── local/               ← 로컬 dev overlay
+│   ├── argocd/                  ← ArgoCD Application CR + repo Secret (공용 skala-argocd)
+│   └── argocd-self/             ← 비상용 자체 ArgoCD spec
+├── scripts/
+│   ├── env-to-skala-secret.sh   ← .env → cluster Secret 변환
+│   └── env-to-secret.sh         ← (legacy local 용)
 └── docs/
     ├── conventions/
     │   └── CONVENTION.md        ← 팀 개발 컨벤션
-    ├── adr/
+    ├── adr/                     ← Architecture Decision Records
     │   ├── 0001-springboot-selection.md
     │   ├── 0002-qdrant-selection.md
     │   ├── 0003-bge-m3-selection.md
     │   ├── 0004-pipeline-separation.md
-    │   └── 0005-two-storage-design.md
+    │   ├── 0005-two-storage-design.md
+    │   └── 0006-flyway-introduction.md
+    ├── ci-cd-plan.md            ← GitOps 자동화 + ArgoCD 운영 plan (v7)
+    ├── HANDOVER.md              ← 본인 떠난 후 인계 가이드 (PAT 회전 등)
+    ├── SES_INTEGRATION.md       ← AWS SES + IRSA spec (backend/ai 팀)
+    ├── SYSTEM_ARCHITECTURE.md   ← 시스템 흐름
+    ├── INFRASTRUCTURE_PLAN.md   ← 인프라 plan
+    ├── IMAGE_PIPELINE_CONTRACT.md
+    ├── DB_METADATA.md
+    ├── CI.md
     ├── meetings/                ← 회의록 (YYYY-MM-DD.md)
     └── sprints/                 ← 스프린트 계획 및 회고
 ```
@@ -318,3 +388,8 @@ axis-infra/
 - `schema.sql` 직접 수정 금지 (마이그레이션 파일로 관리)
 - Qdrant 페이로드에 원문 전체 텍스트 저장 금지
 - 수집 파이프라인과 전달 파이프라인을 같은 LangGraph 그래프에 묶는 것 금지
+- `k8s/argocd/repo-secret.yaml` 의 PAT 실값 커밋 금지 (gitignored)
+- `k8s/overlays/skala/secret.skala.yaml` 의 실 API key 커밋 금지 (gitignored)
+- SMTP_USER / SMTP_PASSWORD 환경변수 추가 금지 (SES SDK + IRSA 만 사용, SMTP 폐기)
+- 자체 ArgoCD (`axis-argocd` helm release) 임의 재설치 금지 — 공용 `skala-argocd` 사용 결정 (비상 시만 [k8s/argocd-self/](k8s/argocd-self/) 참조)
+- `kubectl patch` 로 cluster Secret 수정 후 helm upgrade 시 `--set configs.secret.argocdServerAdminPassword=...` 사용 금지 (SSA fieldManager 충돌)

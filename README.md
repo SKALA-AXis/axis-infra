@@ -9,21 +9,31 @@ AXIS는 Peer사(삼성SDS·LG CNS·현대오토에버·포스코DX)의 전략적
 ```
 axis-infra/                     ← 이 레포 (Single Source of Truth)
 ├── CLAUDE.md                   # Claude Code 프로젝트 컨텍스트
-├── docker-compose.yml          # 로컬 전체 실행
-├── docker-compose.prod.yml     # 운영 배포
+├── docker-compose.yml          # 로컬 개발 (개인 Mac)
 ├── .env.example                # 환경변수 템플릿
+├── Makefile                    # skala-build/push/secret 등
 ├── db/
 │   └── schema.sql              # PostgreSQL DDL
 ├── api/
 │   ├── openapi.yaml            # SpringBoot ↔ Frontend 계약
 │   └── ai-internal-api.yaml    # SpringBoot ↔ Python AI 계약
-├── .github/
-│   └── workflows/
-│       └── validate.yml        # SQL·OpenAPI 유효성 검사 CI
+├── k8s/                        # SKALA EKS 운영 배포 매니페스트
+│   ├── base/                   #   공통
+│   ├── overlays/{skala,local}/ #   환경별 kustomize overlay
+│   ├── argocd/                 #   ArgoCD Application + repo Secret (공용 skala-argocd)
+│   └── argocd-self/            #   비상용 자체 ArgoCD spec
+├── scripts/
+│   └── env-to-skala-secret.sh  # .env → cluster Secret
+├── .github/workflows/
+│   └── validate.yml            # SQL · OpenAPI 검증 CI
 └── docs/
-    ├── conventions/
-    │   └── CONVENTION.md       # 팀 개발 컨벤션
-    ├── adr/                    # 기술 결정 기록 (ADR)
+    ├── ci-cd-plan.md           # GitOps 자동화 plan (v7)
+    ├── HANDOVER.md             # 인계 가이드 (PAT 회전 등)
+    ├── SES_INTEGRATION.md      # AWS SES + IRSA spec
+    ├── SYSTEM_ARCHITECTURE.md  # 시스템 흐름
+    ├── INFRASTRUCTURE_PLAN.md  # 인프라 plan
+    ├── conventions/CONVENTION.md
+    ├── adr/                    # Architecture Decision Records
     ├── meetings/               # 회의록
     └── sprints/                # 스프린트 계획 및 회고
 ```
@@ -120,10 +130,23 @@ docker compose --profile local --env-file .env.local up -d postgres qdrant
 
 | 레포 | 기술 스택 | 담당 |
 |---|---|---|
-| [axis-infra](https://github.com/skala-ai-13/axis-infra) | Docker, DB, API 스펙 | 전체 |
-| [axis-backend](https://github.com/skala-ai-13/axis-backend) | SpringBoot 3.x (Java 17) | 박지원 |
-| [axis-ai](https://github.com/skala-ai-13/axis-ai) | Python 3.11, FastAPI, LangGraph | 김가은·박진·심유정 |
-| [axis-frontend](https://github.com/skala-ai-13/axis-frontend) | React 18 + TypeScript | 안가은·최종민 |
+| [axis-infra](https://github.com/SKALA-AXis/axis-infra) | k8s, ArgoCD, DB, API 스펙 | 전체 |
+| [axis-backend](https://github.com/SKALA-AXis/axis-backend) | SpringBoot 3.x (Java 17) + AWS SES SDK | 박지원 |
+| [axis-ai](https://github.com/SKALA-AXis/axis-ai) | Python 3.11, FastAPI, LangGraph | 김가은·박진·심유정 |
+| [axis-frontend](https://github.com/SKALA-AXis/axis-frontend) | React 18 + TypeScript + Vite | 안가은·최종민 |
+
+## 운영 배포 (SKALA EKS GitOps)
+
+| 항목 | 값 |
+|---|---|
+| Cluster | `skala-2025` (EKS, ap-northeast-2) |
+| Namespace | `skala3-finalproj-class3-team13` |
+| ALB endpoint | http://skala3-team13-axis-alb-1349892737.ap-northeast-2.elb.amazonaws.com |
+| ArgoCD UI | https://argocd.skala25a.project.skala-ai.com (공용 `skala-argocd`) |
+| 이미지 레지스트리 | Harbor (`amdp-registry.skala-ai.com/skala26a-ai3`) |
+| 이메일 발송 | AWS SES V2 SDK + IRSA (sender `noreply@skala-ai.com`) |
+
+자세한 흐름: [docs/ci-cd-plan.md](docs/ci-cd-plan.md), 인계 가이드: [docs/HANDOVER.md](docs/HANDOVER.md), SES 통합: [docs/SES_INTEGRATION.md](docs/SES_INTEGRATION.md).
 
 ---
 
