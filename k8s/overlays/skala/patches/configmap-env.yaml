@@ -25,8 +25,12 @@ data:
   # sender: noreply@skala-ai.com (매니저 SES verified domain).
   AWS_REGION: "ap-northeast-2"
   MAIL_FROM: "noreply@skala-ai.com"
-  BRIEFING_RECIPIENTS: "REPLACE_RECIPIENT_EMAILS"
+  BRIEFING_RECIPIENTS: "meniscus220@gmail.com,jins006945@gmail.com,a45047385@gmail.com,kgaeun0118@gmail.com,tladbwjd04899@gmail.com,gaeundks@gmail.com"
   BRIEFING_TIME: "08:30"
+
+  # Spring @Scheduled 활성화 — SchedulerConfig 의 @ConditionalOnProperty (default false).
+  # 08:30 KST MON-FRI 자동 발송 + 매시 ingestion trigger.
+  AXIS_SCHEDULER_ENABLED: "true"
 
   # 프론트 — 빌드타임 baked-in.  Ingress / LB 결정 후 갱신.
   VITE_API_BASE_URL: "https://axis.skala.ai"
