@@ -120,6 +120,8 @@ OTHER_KEYS="
     SMTP_PASSWORD
     JWT_SECRET
     CRON_INTERNAL_TOKEN
+    LANGFUSE_PUBLIC_KEY
+    LANGFUSE_SECRET_KEY
 "
 
 for key in $OTHER_KEYS; do
@@ -127,3 +129,13 @@ for key in $OTHER_KEYS; do
     escaped=$(yaml_escape "$value")
     printf '  %s: "%s"\n' "$key" "$escaped"
 done
+
+# Langfuse host — .env 의 LANGFUSE_BASE_URL (JS SDK 컨벤션) → LANGFUSE_HOST
+# (Python SDK 가 환경변수 이름으로 LANGFUSE_HOST 를 읽음). 둘 다 박아 둠.
+LF_BASE=$(get_env LANGFUSE_BASE_URL)
+if [ -z "$LF_BASE" ]; then
+    LF_BASE=$(get_env LANGFUSE_HOST)
+fi
+LF_ESC=$(yaml_escape "$LF_BASE")
+printf '  LANGFUSE_HOST: "%s"\n' "$LF_ESC"
+printf '  LANGFUSE_BASE_URL: "%s"\n' "$LF_ESC"

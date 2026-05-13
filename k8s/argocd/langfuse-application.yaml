@@ -1,0 +1,138 @@
+# ArgoCD Application — Langfuse v2 self-host (team13 namespace).
+#
+# axis-team13 Application 과 분리된 별도 Application — Langfuse 는 외부 chart
+# (langfuse/langfuse-k8s) 를 source 로 하고 우리 git 의 values.yaml 을 override.
+#
+# 사전 조건:
+#   1) helm/langfuse/values.yaml 파일 존재 (이 PR 에 포함)
+#   2) k8s/base/langfuse-secret.yaml 가 cluster 에 적용되어 있음
+#      (NEXTAUTH_SECRET / SALT / POSTGRES_PASSWORD 채운 상태)
+#   3) 매니저에게 ingress host (langfuse.skala25a.project.skala-ai.com) 등록 신청 완료
+#
+# 적용:
+#   kubectl apply -f k8s/argocd/langfuse-application.yaml
+#
+# 검증:
+#   kubectl get applications.argoproj.io -n skala-argocd langfuse \
+#     -o jsonpath='{.status.sync.status} {.status.health.status}{"\n"}'
+#   # 기대: Synced Healthy (initial provisioning ~3분)
+#
+# 운영 spec: docs/OBSERVABILITY_LANGFUSE.md
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: langfuse
+  namespace: skala-argocd
+  labels:
+    team: team13
+    app.kubernetes.io/part-of: axis
+    app.kubernetes.io/component: observability
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  sources:
+    # 1) 외부 Helm chart (Langfuse 공식, v2 마지막 0.8.0)
+    - repoURL: https://langfuse.github.io/langfuse-k8s
+      chart: langfuse
+      # v2 마지막 호환 chart (확인 2026-05-13: helm search 결과 0.8.0 = AppVersion 2,
+      # 0.9.0+ = AppVersion 3). v3 chart 는 ClickHouse + Valkey + Zookeeper + MinIO
+      # 5+ PVC 필요해 team13 quota 초과. v3 는 매니저 quota 상향 또는 별도 ns 필요.
+      targetRevision: 0.8.0
+      helm:
+        # helm/langfuse/values.yaml 와 schema 동등 (chart 0.8.0 의 v2 schema 기준).
+        valuesObject:
+          image:
+            repository: ghcr.io/langfuse/langfuse
+            tag: "2"
+          langfuse:
+            port: 3000
+            nodeEnv: production
+            nextauth:
+              url: https://langfuse.skala25a.project.skala-ai.com
+              # chart 가 자체 random secret 생성. sync 시 재생성 → session 무효화.
+              # 발표 1회 데모 범위에선 acceptable. P10+ ExternalSecrets 로 보강.
+              secret: changeme-chart-handles
+            salt: changeme
+            telemetryEnabled: false
+            nextPublicSignUpDisabled: true
+          postgresql:
+            deploy: true
+            architecture: standalone
+            # Bitnami 2024-08 secure-images 정책 — bitnamilegacy mirror 사용
+            image:
+              registry: docker.io
+              repository: bitnamilegacy/postgresql
+            auth:
+              username: langfuse
+              database: langfuse
+              existingSecret: langfuse-postgresql
+              secretKeys:
+                adminPasswordKey: postgres-password
+                userPasswordKey: password
+            primary:
+              service:
+                ports:
+                  postgresql: 5432
+              persistence:
+                enabled: true
+                size: 5Gi
+                storageClass: gp3
+              resources:
+                requests: { cpu: 100m, memory: 256Mi }
+                limits:   { cpu: 500m, memory: 1Gi }
+          ingress:
+            enabled: true
+            className: public-nginx
+            annotations:
+              nginx.ingress.kubernetes.io/proxy-body-size: "16m"
+            hosts:
+              - host: langfuse.skala25a.project.skala-ai.com
+                paths:
+                  - path: /
+                    pathType: Prefix
+            tls:
+              - hosts:
+                  - langfuse.skala25a.project.skala-ai.com
+          resources:
+            limits:   { cpu: 1, memory: 2Gi }
+            requests: { cpu: 200m, memory: 512Mi }
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: skala3-finalproj-class3-team13
+
+  syncPolicy:
+    automated:
+      selfHeal: false           # 초기 안정화 전까지 false (axis-team13 와 동일 정책)
+      prune: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=false   # team13 namespace 는 이미 존재
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - ServerSideApply=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+
+  # 외부 관리 필드 — ArgoCD 의 drift 판정에서 제외
+  ignoreDifferences:
+    # 우리가 kubectl apply 로 직접 관리하는 secret 2종 (env-to-langfuse-secret.sh 생성)
+    - group: ""
+      kind: Secret
+      name: langfuse-postgresql
+      jsonPointers:
+        - /stringData
+        - /data
+    - group: ""
+      kind: Secret
+      name: langfuse-secret
+      jsonPointers:
+        - /stringData
+        - /data
