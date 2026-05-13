@@ -1,43 +1,63 @@
-# Langfuse v2 self-host — values reference.
+# Langfuse v2 self-host — values reference (chart 0.8.0, v2 마지막 호환).
 #
 # 본 파일은 ArgoCD 의 helm.valuesObject (k8s/argocd/langfuse-application.yaml) 와
 # 동등한 값을 git 으로 추적 가능한 형태로 별도 보존한 것.
 #
 # 운영 spec: docs/OBSERVABILITY_LANGFUSE.md §9, §14
+#
 # 결정:
-#   · v2 채택 (v3 는 PVC 3개 필요 → team13 quota 여유 2개로 부족)
-#   · namespace: skala3-finalproj-class3-team13 (학생 권한 admin)
-#   · 내장 PG 5Gi gp3 (ClickHouse / Redis 비활성)
+#   · v2 채택 (v3 는 ClickHouse + Valkey + Zookeeper + MinIO 5+ PVC 필요 →
+#     team13 quota 5개 한도 + 기존 axis 3개 PVC → 초과)
+#   · chart 0.8.0 (AppVersion 2) — 0.9.0+ 부터 v3 transition
+#   · postgresql 의 Bitnami subchart 가 docker.io 의 deprecated tag 만 가리킴
+#     (2024-08 secure-images 정책) → bitnamilegacy mirror override
+#   · NEXTAUTH_SECRET / SALT 는 chart default 사용 (random helm + "changeme")
+#     — 학생 프로젝트 / 발표 데모 범위에선 acceptable. P10+ 에서 보강
 #
 # 적용 (ArgoCD 사용 시 직접 helm install 불필요):
-#   helm repo add langfuse https://langfuse.github.io/langfuse-k8s
-#   helm template langfuse langfuse/langfuse --version 0.10.0 -f values.yaml | less
-#   # ArgoCD 가 자동 reconcile
+#   helm template langfuse langfuse/langfuse --version 0.8.0 -f values.yaml | less
 
 image:
-  # Langfuse v2 마지막 안정 image (v3 전환 직전 release). v3 활성 시 3.x 로 bump.
-  tag: "2.94"
+  repository: ghcr.io/langfuse/langfuse
+  # v2 마지막 안정 image. chart default 가 "2" (major tag) 라 자동으로 최신 2.x 받음.
+  # 결정적 재현성 원하면 "2.94" 등 specific tag pinning.
+  tag: "2"
 
-# 내장 PostgreSQL 활성 (Langfuse 전용). axis-postgres 와 별도.
+langfuse:
+  port: 3000
+  nodeEnv: production
+  nextauth:
+    # Ingress URL (TLS). 매니저에게 ingress host 등록 후 본 값과 일치.
+    url: https://langfuse.skala25a.project.skala-ai.com
+    # chart 가 자동으로 random secret 생성 후 NEXTAUTH_SECRET env 로 mount.
+    # 매 helm upgrade / ArgoCD sync 시 재생성 → 기존 session 무효화 (재로그인 필요).
+    # 학생 프로젝트 9주 + 발표 1회 데모라 acceptable. P10+ 에서 ExternalSecrets 로 보강.
+    secret: changeme-chart-handles
+  salt: changeme
+  telemetryEnabled: false              # Langfuse 내부 telemetry 끔
+  nextPublicSignUpDisabled: true       # 초기 admin 가입 후 신규 가입 차단
+
+# 내장 PostgreSQL — Bitnami subchart
 postgresql:
-  enabled: true
-  # Bitnami 2024-08 secure-images 정책으로 docker.io/bitnami/postgresql 의
-  # specific tag 가 docker.io 에서 제거됨 → bitnamilegacy mirror 사용 (free,
-  # maintenance 중단 deprecated 지만 학생 프로젝트 9주 일정엔 충분).
-  # P10+ 에서 secure premium 또는 다른 vendor 검토.
+  deploy: true
+  architecture: standalone
+  # Bitnami 2024-08 secure-images 정책 — docker.io/bitnami/postgresql 의 specific
+  # tag 가 docker.io 에서 제거됨. legacy mirror 사용 (free, deprecated).
   image:
     registry: docker.io
     repository: bitnamilegacy/postgresql
   auth:
     username: langfuse
     database: langfuse
-    # Bitnami 가 자동 인식하는 secret 이름 'langfuse-postgresql' + default key
-    # 'postgres-password' / 'password' 사용. env-to-langfuse-secret.sh 가 생성.
+    # 우리가 직접 만든 langfuse-postgresql secret 의 키 사용 (Bitnami convention).
     existingSecret: langfuse-postgresql
     secretKeys:
       adminPasswordKey: postgres-password
       userPasswordKey: password
   primary:
+    service:
+      ports:
+        postgresql: 5432
     persistence:
       enabled: true
       size: 5Gi
@@ -46,43 +66,10 @@ postgresql:
       requests: { cpu: 100m, memory: 256Mi }
       limits:   { cpu: 500m, memory: 1Gi }
 
-# v2 의 blob storage (file upload / large trace) — 우리 안 씀 + Bitnami image 정책
-# 영향 + PVC 절약. 명시적 비활성. v3 로 가면 다시 검토.
-minio:
-  enabled: false
-
-# v2 에선 ClickHouse / Redis 미사용. 명시적 비활성 (chart default 이지만 안전 차원).
-clickhouse:
-  enabled: false
-redis:
-  enabled: false
-
-# 인증 / 시크릿
-auth:
-  signupDisabled: true                # 초기 admin 가입 후 신규 가입 차단
-
-# Langfuse application env (값은 langfuse-secret 의 stringData 로 주입)
-extraEnv:
-  - name: TELEMETRY_ENABLED
-    value: "false"
-  - name: NEXTAUTH_URL
-    value: https://langfuse.skala25a.project.skala-ai.com
-  - name: NEXTAUTH_SECRET
-    valueFrom:
-      secretKeyRef:
-        name: langfuse-secret
-        key: NEXTAUTH_SECRET
-  - name: SALT
-    valueFrom:
-      secretKeyRef:
-        name: langfuse-secret
-        key: SALT
-
 ingress:
   enabled: true
   className: public-nginx              # 클러스터 기존 loki/tempo/jaeger 와 동일
   annotations:
-    # 매니저 측 ALB target 등록 후 필요한 annotation 추가 (예: cert ARN)
     nginx.ingress.kubernetes.io/proxy-body-size: "16m"
   hosts:
     - host: langfuse.skala25a.project.skala-ai.com
@@ -92,20 +79,11 @@ ingress:
   tls:
     - hosts:
         - langfuse.skala25a.project.skala-ai.com
-      # secretName 은 매니저가 발급한 wildcard cert 사용 — ingress 가 자동 인지 시 빈 값 가능
 
 resources:
   limits:
-    cpu: 2
-    memory: 4Gi
+    cpu: 1
+    memory: 2Gi
   requests:
-    cpu: 500m
-    memory: 1Gi
-
-# Worker (background processing). v2 에선 web 과 분리됨.
-worker:
-  enabled: true
-  replicas: 1
-  resources:
-    limits:   { cpu: 1, memory: 2Gi }
-    requests: { cpu: 200m, memory: 512Mi }
+    cpu: 200m
+    memory: 512Mi

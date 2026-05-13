@@ -8,7 +8,7 @@ LLM trace / prompt 본문 / cost 추적용 self-host observability. SKALA EKS te
 ## 구성
 
 - **Chart**: [`langfuse/langfuse-k8s`](https://github.com/langfuse/langfuse-k8s) (Helm)
-- **version**: `0.10.x` (v2 마지막 호환 — `helm search repo langfuse/langfuse` 로 정확한 버전 확인 후 ArgoCD `targetRevision` 갱신)
+- **version**: `0.6.0` (v2 마지막 호환 — `helm search repo langfuse/langfuse` 로 정확한 버전 확인 후 ArgoCD `targetRevision` 갱신)
 - **image tag**: `2.94` (Langfuse v2 안정)
 - **Namespace**: `skala3-finalproj-class3-team13`
 - **Pods**: 3 (web + worker + 내장 PG)

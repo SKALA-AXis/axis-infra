@@ -34,22 +34,35 @@ spec:
   project: default
 
   sources:
-    # 1) 외부 Helm chart (Langfuse 공식)
+    # 1) 외부 Helm chart (Langfuse 공식, v2 마지막 0.8.0)
     - repoURL: https://langfuse.github.io/langfuse-k8s
       chart: langfuse
-      # v2 마지막 호환 chart. helm repo update 후 정확한 버전 확인 필요.
-      # 0.11.x 부터 v3 only — bump 시 v2 → v3 마이그레이션 plan (PVC quota) 동반.
-      targetRevision: 0.10.0
+      # v2 마지막 호환 chart (확인 2026-05-13: helm search 결과 0.8.0 = AppVersion 2,
+      # 0.9.0+ = AppVersion 3). v3 chart 는 ClickHouse + Valkey + Zookeeper + MinIO
+      # 5+ PVC 필요해 team13 quota 초과. v3 는 매니저 quota 상향 또는 별도 ns 필요.
+      targetRevision: 0.8.0
       helm:
-        # values 는 우리 git 의 helm/langfuse/values.yaml 와 동등. ArgoCD 가 chart 와
-        # 함께 적용하기 위해 inline valuesObject 로 표현 (multi-source 패턴 회피해 단순화).
+        # helm/langfuse/values.yaml 와 schema 동등 (chart 0.8.0 의 v2 schema 기준).
         valuesObject:
           image:
-            tag: "2.94"
+            repository: ghcr.io/langfuse/langfuse
+            tag: "2"
+          langfuse:
+            port: 3000
+            nodeEnv: production
+            nextauth:
+              url: https://langfuse.skala25a.project.skala-ai.com
+              # chart 가 자체 random secret 생성. sync 시 재생성 → session 무효화.
+              # 발표 1회 데모 범위에선 acceptable. P10+ ExternalSecrets 로 보강.
+              secret: changeme-chart-handles
+            salt: changeme
+            telemetryEnabled: false
+            nextPublicSignUpDisabled: true
           postgresql:
-            enabled: true
+            deploy: true
+            architecture: standalone
+            # Bitnami 2024-08 secure-images 정책 — bitnamilegacy mirror 사용
             image:
-              # Bitnami 2024-08 secure-images 정책 — bitnamilegacy mirror 사용
               registry: docker.io
               repository: bitnamilegacy/postgresql
             auth:
@@ -60,6 +73,9 @@ spec:
                 adminPasswordKey: postgres-password
                 userPasswordKey: password
             primary:
+              service:
+                ports:
+                  postgresql: 5432
               persistence:
                 enabled: true
                 size: 5Gi
@@ -67,31 +83,6 @@ spec:
               resources:
                 requests: { cpu: 100m, memory: 256Mi }
                 limits:   { cpu: 500m, memory: 1Gi }
-          # v2 blob storage 비활성 — 우리 안 씀 + Bitnami image 정책 영향 + PVC 절약
-          minio:
-            enabled: false
-          # 명시적 비활성 (chart default 지만 안전 차원)
-          clickhouse:
-            enabled: false
-          redis:
-            enabled: false
-          auth:
-            signupDisabled: true
-          extraEnv:
-            - name: TELEMETRY_ENABLED
-              value: "false"
-            - name: NEXTAUTH_URL
-              value: https://langfuse.skala25a.project.skala-ai.com
-            - name: NEXTAUTH_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: langfuse-secret
-                  key: NEXTAUTH_SECRET
-            - name: SALT
-              valueFrom:
-                secretKeyRef:
-                  name: langfuse-secret
-                  key: SALT
           ingress:
             enabled: true
             className: public-nginx
@@ -106,14 +97,8 @@ spec:
               - hosts:
                   - langfuse.skala25a.project.skala-ai.com
           resources:
-            limits:   { cpu: 2, memory: 4Gi }
-            requests: { cpu: 500m, memory: 1Gi }
-          worker:
-            enabled: true
-            replicas: 1
-            resources:
-              limits:   { cpu: 1, memory: 2Gi }
-              requests: { cpu: 200m, memory: 512Mi }
+            limits:   { cpu: 1, memory: 2Gi }
+            requests: { cpu: 200m, memory: 512Mi }
 
   destination:
     server: https://kubernetes.default.svc
