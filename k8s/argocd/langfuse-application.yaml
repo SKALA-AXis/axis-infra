@@ -48,13 +48,17 @@ spec:
             tag: "2.94"
           postgresql:
             enabled: true
+            image:
+              # Bitnami 2024-08 secure-images 정책 — bitnamilegacy mirror 사용
+              registry: docker.io
+              repository: bitnamilegacy/postgresql
             auth:
               username: langfuse
               database: langfuse
-              existingSecret: langfuse-secret
+              existingSecret: langfuse-postgresql
               secretKeys:
-                adminPasswordKey: POSTGRES_PASSWORD
-                userPasswordKey: POSTGRES_PASSWORD
+                adminPasswordKey: postgres-password
+                userPasswordKey: password
             primary:
               persistence:
                 enabled: true
@@ -63,6 +67,14 @@ spec:
               resources:
                 requests: { cpu: 100m, memory: 256Mi }
                 limits:   { cpu: 500m, memory: 1Gi }
+          # v2 blob storage 비활성 — 우리 안 씀 + Bitnami image 정책 영향 + PVC 절약
+          minio:
+            enabled: false
+          # 명시적 비활성 (chart default 지만 안전 차원)
+          clickhouse:
+            enabled: false
+          redis:
+            enabled: false
           auth:
             signupDisabled: true
           extraEnv:
@@ -126,7 +138,13 @@ spec:
 
   # 외부 관리 필드 — ArgoCD 의 drift 판정에서 제외
   ignoreDifferences:
-    # Langfuse 가 자체적으로 갱신하는 admin 사용자 생성 시점의 hash
+    # 우리가 kubectl apply 로 직접 관리하는 secret 2종 (env-to-langfuse-secret.sh 생성)
+    - group: ""
+      kind: Secret
+      name: langfuse-postgresql
+      jsonPointers:
+        - /stringData
+        - /data
     - group: ""
       kind: Secret
       name: langfuse-secret

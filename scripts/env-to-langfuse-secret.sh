@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 #
-# .env → Langfuse self-host 용 langfuse-secret 생성. stdout 으로 출력.
+# .env → Langfuse self-host 용 secret **2개** 생성 (stdout multi-doc YAML).
 #
-# axis-secrets / axis-postgres-bootstrap 과 별개 (Langfuse pod 의 bootstrap 전용):
-#   · POSTGRES_PASSWORD — Langfuse 내장 PG 의 user/admin password (한 값으로 둘 다 사용)
-#   · NEXTAUTH_SECRET   — session token 서명 / 암호화 키
-#   · SALT              — DB 안의 sensitive value salt
+# Chart 0.10.x 가 두 secret 을 별개로 인식:
+#   1) langfuse-postgresql — Bitnami PostgreSQL subchart 가 hardcoded 로 찾음
+#                            (release-{subchart} naming).
+#                            keys: postgres-password / password
+#   2) langfuse-secret     — app pod (web/worker) 의 env (NextAuth / SALT)
+#                            keys: NEXTAUTH_SECRET / SALT
 #
 # 사용:
 #   ./scripts/env-to-langfuse-secret.sh .env > k8s/base/langfuse-secret.yaml
@@ -82,6 +84,24 @@ cat <<HEADER
 #   · k8s/argocd/langfuse-application.yaml 의 ignoreDifferences 가 stringData drift 무시.
 #   · Prune=false annotation 으로 ArgoCD 가 실수로 삭제 못 하게 보호.
 ---
+# 1) Bitnami PostgreSQL subchart 가 'langfuse-postgresql' 이름을 hardcoded 로 찾음.
+#    key 이름은 Bitnami convention (postgres-password / password).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: langfuse-postgresql
+  namespace: $NS
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false
+  labels:
+    app.kubernetes.io/part-of: axis
+    app.kubernetes.io/component: observability
+type: Opaque
+stringData:
+  postgres-password: "$(yaml_escape "$LF_PG_PW")"
+  password:          "$(yaml_escape "$LF_PG_PW")"
+---
+# 2) Langfuse web/worker 의 app env (NextAuth session + DB salt).
 apiVersion: v1
 kind: Secret
 metadata:
@@ -94,7 +114,6 @@ metadata:
     app.kubernetes.io/component: observability
 type: Opaque
 stringData:
-  POSTGRES_PASSWORD: "$(yaml_escape "$LF_PG_PW")"
   NEXTAUTH_SECRET: "$(yaml_escape "$LF_NEXTAUTH")"
-  SALT: "$(yaml_escape "$LF_SALT")"
+  SALT:            "$(yaml_escape "$LF_SALT")"
 HEADER

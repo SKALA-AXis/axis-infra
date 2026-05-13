@@ -21,14 +21,22 @@ image:
 # 내장 PostgreSQL 활성 (Langfuse 전용). axis-postgres 와 별도.
 postgresql:
   enabled: true
+  # Bitnami 2024-08 secure-images 정책으로 docker.io/bitnami/postgresql 의
+  # specific tag 가 docker.io 에서 제거됨 → bitnamilegacy mirror 사용 (free,
+  # maintenance 중단 deprecated 지만 학생 프로젝트 9주 일정엔 충분).
+  # P10+ 에서 secure premium 또는 다른 vendor 검토.
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/postgresql
   auth:
     username: langfuse
     database: langfuse
-    # password: existingSecret 으로 주입 (아래 langfuse-secret 참조)
-    existingSecret: langfuse-secret
+    # Bitnami 가 자동 인식하는 secret 이름 'langfuse-postgresql' + default key
+    # 'postgres-password' / 'password' 사용. env-to-langfuse-secret.sh 가 생성.
+    existingSecret: langfuse-postgresql
     secretKeys:
-      adminPasswordKey: POSTGRES_PASSWORD
-      userPasswordKey: POSTGRES_PASSWORD
+      adminPasswordKey: postgres-password
+      userPasswordKey: password
   primary:
     persistence:
       enabled: true
@@ -38,7 +46,16 @@ postgresql:
       requests: { cpu: 100m, memory: 256Mi }
       limits:   { cpu: 500m, memory: 1Gi }
 
-# v2 에선 ClickHouse / Redis 미사용 — 해당 키 제거 (chart 기본값이 false)
+# v2 의 blob storage (file upload / large trace) — 우리 안 씀 + Bitnami image 정책
+# 영향 + PVC 절약. 명시적 비활성. v3 로 가면 다시 검토.
+minio:
+  enabled: false
+
+# v2 에선 ClickHouse / Redis 미사용. 명시적 비활성 (chart default 이지만 안전 차원).
+clickhouse:
+  enabled: false
+redis:
+  enabled: false
 
 # 인증 / 시크릿
 auth:

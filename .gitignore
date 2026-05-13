@@ -76,6 +76,7 @@ secrets/
 # 후속 overlay (eks-staging / eks-prod) 추가 시 동일 패턴 추가.
 k8s/base/secret.yaml
 k8s/base/langfuse-secret.yaml
+k8s/base/langfuse-postgresql.yaml
 k8s/overlays/local/secret.yaml
 k8s/overlays/local/secret.local.yaml
 k8s/overlays/local/secret.local.yaml.real
