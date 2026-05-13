@@ -1,0 +1,94 @@
+# Langfuse v2 self-host — values reference.
+#
+# 본 파일은 ArgoCD 의 helm.valuesObject (k8s/argocd/langfuse-application.yaml) 와
+# 동등한 값을 git 으로 추적 가능한 형태로 별도 보존한 것.
+#
+# 운영 spec: docs/OBSERVABILITY_LANGFUSE.md §9, §14
+# 결정:
+#   · v2 채택 (v3 는 PVC 3개 필요 → team13 quota 여유 2개로 부족)
+#   · namespace: skala3-finalproj-class3-team13 (학생 권한 admin)
+#   · 내장 PG 5Gi gp3 (ClickHouse / Redis 비활성)
+#
+# 적용 (ArgoCD 사용 시 직접 helm install 불필요):
+#   helm repo add langfuse https://langfuse.github.io/langfuse-k8s
+#   helm template langfuse langfuse/langfuse --version 0.10.0 -f values.yaml | less
+#   # ArgoCD 가 자동 reconcile
+
+image:
+  # Langfuse v2 마지막 안정 image (v3 전환 직전 release). v3 활성 시 3.x 로 bump.
+  tag: "2.94"
+
+# 내장 PostgreSQL 활성 (Langfuse 전용). axis-postgres 와 별도.
+postgresql:
+  enabled: true
+  auth:
+    username: langfuse
+    database: langfuse
+    # password: existingSecret 으로 주입 (아래 langfuse-secret 참조)
+    existingSecret: langfuse-secret
+    secretKeys:
+      adminPasswordKey: POSTGRES_PASSWORD
+      userPasswordKey: POSTGRES_PASSWORD
+  primary:
+    persistence:
+      enabled: true
+      size: 5Gi
+      storageClass: gp3
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits:   { cpu: 500m, memory: 1Gi }
+
+# v2 에선 ClickHouse / Redis 미사용 — 해당 키 제거 (chart 기본값이 false)
+
+# 인증 / 시크릿
+auth:
+  signupDisabled: true                # 초기 admin 가입 후 신규 가입 차단
+
+# Langfuse application env (값은 langfuse-secret 의 stringData 로 주입)
+extraEnv:
+  - name: TELEMETRY_ENABLED
+    value: "false"
+  - name: NEXTAUTH_URL
+    value: https://langfuse.skala25a.project.skala-ai.com
+  - name: NEXTAUTH_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: langfuse-secret
+        key: NEXTAUTH_SECRET
+  - name: SALT
+    valueFrom:
+      secretKeyRef:
+        name: langfuse-secret
+        key: SALT
+
+ingress:
+  enabled: true
+  className: public-nginx              # 클러스터 기존 loki/tempo/jaeger 와 동일
+  annotations:
+    # 매니저 측 ALB target 등록 후 필요한 annotation 추가 (예: cert ARN)
+    nginx.ingress.kubernetes.io/proxy-body-size: "16m"
+  hosts:
+    - host: langfuse.skala25a.project.skala-ai.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - hosts:
+        - langfuse.skala25a.project.skala-ai.com
+      # secretName 은 매니저가 발급한 wildcard cert 사용 — ingress 가 자동 인지 시 빈 값 가능
+
+resources:
+  limits:
+    cpu: 2
+    memory: 4Gi
+  requests:
+    cpu: 500m
+    memory: 1Gi
+
+# Worker (background processing). v2 에선 web 과 분리됨.
+worker:
+  enabled: true
+  replicas: 1
+  resources:
+    limits:   { cpu: 1, memory: 2Gi }
+    requests: { cpu: 200m, memory: 512Mi }
