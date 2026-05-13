@@ -159,7 +159,7 @@ SKALA_BACKEND    := $(HARBOR_HOST)/$(HARBOR_PROJECT)/axis-backend:$(SKALA_TAG)
 SKALA_AI         := $(HARBOR_HOST)/$(HARBOR_PROJECT)/axis-ai:$(SKALA_TAG)
 
 .PHONY: skala-build skala-push skala-apply skala-delete skala-status skala-logs \
-        skala-pull-secret skala-validate skala-tag skala-secret
+        skala-pull-secret skala-validate skala-tag skala-secret langfuse-secret
 
 skala-secret:  ## .env 에서 secret.skala.yaml 생성 (axis-postgres-bootstrap + axis-secrets 두 Secret)
 	@if [ ! -f .env ]; then \
@@ -167,6 +167,14 @@ skala-secret:  ## .env 에서 secret.skala.yaml 생성 (axis-postgres-bootstrap 
 	fi
 	@./scripts/env-to-skala-secret.sh .env > k8s/overlays/skala/secret.skala.yaml
 	@echo "✓ secret.skala.yaml 생성 (axis-postgres-bootstrap + axis-secrets) — source: .env"
+
+langfuse-secret:  ## .env 에서 langfuse-secret.yaml 생성 (Langfuse pod bootstrap 전용)
+	@if [ ! -f .env ]; then \
+		echo "❌ .env 없음 — cp .env.example .env 후 실값 채우세요"; exit 1; \
+	fi
+	@./scripts/env-to-langfuse-secret.sh .env > k8s/base/langfuse-secret.yaml
+	@echo "✓ langfuse-secret.yaml 생성 — source: .env"
+	@echo "  적용: kubectl apply -f k8s/base/langfuse-secret.yaml"
 
 skala-validate:  ## SKALA overlay schema 검증
 	@if [ ! -f k8s/overlays/skala/secret.skala.yaml ]; then \
