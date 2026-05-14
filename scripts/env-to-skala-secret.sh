@@ -130,12 +130,13 @@ for key in $OTHER_KEYS; do
     printf '  %s: "%s"\n' "$key" "$escaped"
 done
 
-# Langfuse host — .env 의 LANGFUSE_BASE_URL (JS SDK 컨벤션) → LANGFUSE_HOST
-# (Python SDK 가 환경변수 이름으로 LANGFUSE_HOST 를 읽음). 둘 다 박아 둠.
-LF_BASE=$(get_env LANGFUSE_BASE_URL)
-if [ -z "$LF_BASE" ]; then
-    LF_BASE=$(get_env LANGFUSE_HOST)
+# Langfuse Cloud — .env 의 LANGFUSE_BASE_URL (JS SDK 컨벤션) 그대로 LANGFUSE_HOST 로 박음.
+# Python SDK (v4+) 는 LANGFUSE_BASE_URL 또는 LANGFUSE_HOST 둘 다 인식. 우리는 1 키만 박음.
+# self-host 폐기 (2026-05-14): v2 chart=OTel 미지원, v3 chart=PVC quota 초과
+# → Cloud SaaS 채택. 자세한 spec docs/OBSERVABILITY_LANGFUSE.md.
+LF_HOST=$(get_env LANGFUSE_BASE_URL)
+if [ -z "$LF_HOST" ]; then
+    LF_HOST=$(get_env LANGFUSE_HOST)
 fi
-LF_ESC=$(yaml_escape "$LF_BASE")
-printf '  LANGFUSE_HOST: "%s"\n' "$LF_ESC"
-printf '  LANGFUSE_BASE_URL: "%s"\n' "$LF_ESC"
+LF_HOST_ESC=$(yaml_escape "$LF_HOST")
+printf '  LANGFUSE_HOST: "%s"\n' "$LF_HOST_ESC"
