@@ -28,9 +28,13 @@ data:
   BRIEFING_RECIPIENTS: "meniscus220@gmail.com,jins006945@gmail.com,a45047385@gmail.com,kgaeun0118@gmail.com,tladbwjd04899@gmail.com,gaeundks@gmail.com"
   BRIEFING_TIME: "08:30"
 
-  # Spring @Scheduled 활성화 — SchedulerConfig 의 @ConditionalOnProperty (default false).
-  # 08:30 KST MON-FRI 자동 발송 + 매시 ingestion trigger.
-  AXIS_SCHEDULER_ENABLED: "true"
+  # Spring @Scheduled 비활성화 — GitOps standard 인 CronJob (axis-cron-{delivery,ingestion-a/b/c})
+  # 만 단일 trigger 사용. 과거 true 였을 때 backend 의 @Scheduled (sendDailyBriefing
+  # @ "0 30 8 * * MON-FRI" Asia/Seoul + triggerIngestionPipeline @ "0 0 * * * *") 이
+  # CronJob 과 *동시 trigger* 하여 일일 브리핑 이메일이 *2번* 발송되는 버그 (2026-05-15).
+  # 해결: AXIS_SCHEDULER_ENABLED=false → SchedulerConfig 의 @ConditionalOnProperty 가
+  # bean 등록 자체 skip. CronJob 만 남아 1번 발송.
+  AXIS_SCHEDULER_ENABLED: "false"
 
   # 프론트 — 빌드타임 baked-in.  Ingress / LB 결정 후 갱신.
   VITE_API_BASE_URL: "https://axis.skala.ai"
