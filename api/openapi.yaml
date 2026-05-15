@@ -2924,6 +2924,52 @@ paths:
           $ref: "#/components/responses/NotFound"
         '500':
           $ref: "#/components/responses/InternalServerError"
+  /api/global/trends/run:
+    post:
+      tags:
+      - global
+      summary: 글로벌 트렌드 분석 실행
+      description: |
+        GlobalTrendsAgent (axis-ai) 위임. 글로벌 빅테크 6사 (NVIDIA/Apple/Microsoft/
+        Google/Amazon/Meta) 의 최근 동향이 SK AX 의 국내 IT 서비스 사업에 미치는
+        영향을 5-phase CoT 로 분석.
+
+        - Phase 1 (Snapshot, 산식): 회사별 카드 수 + top themes
+        - Phase 2 (Trend Detection, 산식): theme frequency ±20/30/50% band
+        - Phase 3 (Impact Mapping, LLM): trend × sk_ax_line 매트릭스
+        - Phase 4 (Forecast, LLM): 1Q/6M/1Y 시나리오
+        - Phase 5 (Synthesis, LLM): final_one_liner + sk_ax_implication
+
+        spec: axis-ai/design/30-analysis/global-trends.md
+      operationId: runGlobalTrends
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GlobalTrendsRequest"
+      responses:
+        '200':
+          description: 글로벌 트렌드 분석 결과
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/ApiResponse"
+                - type: object
+                  properties:
+                    data:
+                      $ref: "#/components/schemas/GlobalTrendsResult"
+        '400':
+          $ref: "#/components/responses/BadRequest"
+        '422':
+          $ref: "#/components/responses/ValidationError"
+        '503':
+          $ref: "#/components/responses/ServiceUnavailable"
+        '504':
+          $ref: "#/components/responses/GatewayTimeout"
+        '500':
+          $ref: "#/components/responses/InternalServerError"
   # ════════════════════════════════════════════════════════
   # 원문 아카이브 / 플로팅 AI 채팅
   # ════════════════════════════════════════════════════════
@@ -6814,6 +6860,108 @@ components:
           type: boolean
           default: false
         user_question:
+          type: string
+          nullable: true
+    GlobalTrendsRequest:
+      type: object
+      description: |
+        GlobalTrendsAgent 입력. spec: axis-ai/design/30-analysis/global-trends.md §4.
+      properties:
+        company_ids:
+          type: array
+          description: 분석 대상 글로벌 회사 ids. 비어 있으면 default 6사 (NVIDIA / Apple / MS / Google / Amazon / Meta).
+          items:
+            type: string
+          nullable: true
+        focus_themes:
+          type: array
+          description: 특정 theme 필터 (옵션)
+          items:
+            type: string
+          nullable: true
+        window_days:
+          type: integer
+          default: 30
+          minimum: 1
+          maximum: 365
+        sk_ax_business_lines:
+          type: array
+          description: impact matrix 컬럼 축. 비어 있으면 default 5종 (ai_managed / cloud_msp / security / smart_factory / data_platform).
+          items:
+            type: string
+          nullable: true
+    GlobalTrendsResult:
+      type: object
+      description: |
+        GlobalTrendsAgent 출력 (5-phase + 3-tier observability).
+        spec: axis-ai/design/30-analysis/global-trends.md §5.
+      properties:
+        analysis_period:
+          type: object
+          additionalProperties: true
+        snapshots:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        trend_detections:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        impact_matrix:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        forecasts:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        final_one_liner:
+          type: string
+        sk_ax_implication:
+          type: string
+        follow_up_questions:
+          type: array
+          items:
+            type: string
+        risk_assumptions:
+          type: array
+          items:
+            type: string
+        reasoning_trail:
+          type: array
+          description: 3-tier observability Tier 1 — 사용자 default
+          items:
+            type: object
+            additionalProperties: true
+        reasoning_steps:
+          type: array
+          description: 3-tier observability Tier 2 — 상세
+          items:
+            type: object
+            additionalProperties: true
+        langfuse_trace_id:
+          type: string
+          nullable: true
+          description: 3-tier observability Tier 3 — admin deep link
+        confidence:
+          type: number
+          format: float
+        sources_used:
+          type: array
+          items:
+            type: string
+        company_ids:
+          type: array
+          items:
+            type: string
+        provenance:
+          type: object
+          additionalProperties: true
+        warning:
           type: string
           nullable: true
     RawArticleListResponse:
