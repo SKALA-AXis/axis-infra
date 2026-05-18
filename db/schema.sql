@@ -455,9 +455,10 @@ LEFT JOIN raw_article_metadata_social social
     ON social.raw_article_id = ra.id;
 
 -- ============================================================
--- 2-2. raw_article normalized nested metadata projections
+-- 2-2. raw_article parser summary
 -- ============================================================
--- Refresh functions/triggers are owned by Flyway V23.
+-- Source-specific payloads stay in raw_article_metadata_*.
+-- Only the lightweight parser summary is projected for indexed reads.
 CREATE TABLE IF NOT EXISTS raw_article_parse_results (
     raw_article_id BIGINT PRIMARY KEY REFERENCES raw_articles(id) ON DELETE CASCADE,
     source_type VARCHAR(50) NOT NULL,
@@ -479,132 +480,10 @@ CREATE TABLE IF NOT EXISTS raw_article_parse_results (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS raw_article_document_sections (
-    id BIGSERIAL PRIMARY KEY,
-    raw_article_id BIGINT NOT NULL REFERENCES raw_articles(id) ON DELETE CASCADE,
-    section_uid TEXT NOT NULL,
-    section_source TEXT NOT NULL,
-    section_key TEXT,
-    section_order INT,
-    section_title TEXT,
-    pages JSONB NOT NULL DEFAULT '[]',
-    topics JSONB NOT NULL DEFAULT '[]',
-    signals JSONB NOT NULL DEFAULT '[]',
-    text_chars INT,
-    chunk_count INT,
-    snippet TEXT,
-    payload JSONB NOT NULL DEFAULT '{}',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_raw_article_document_section UNIQUE (raw_article_id, section_uid)
-);
-
-CREATE TABLE IF NOT EXISTS raw_article_document_chunks (
-    id BIGSERIAL PRIMARY KEY,
-    raw_article_id BIGINT NOT NULL REFERENCES raw_articles(id) ON DELETE CASCADE,
-    chunk_uid TEXT NOT NULL,
-    chunk_source TEXT NOT NULL,
-    chunk_id TEXT,
-    section_key TEXT,
-    section_title TEXT,
-    chunk_index INT,
-    page INT,
-    text_chars INT,
-    text TEXT,
-    topics JSONB NOT NULL DEFAULT '[]',
-    topic_signals JSONB NOT NULL DEFAULT '{}',
-    payload JSONB NOT NULL DEFAULT '{}',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_raw_article_document_chunk UNIQUE (raw_article_id, chunk_uid)
-);
-
-CREATE TABLE IF NOT EXISTS raw_article_document_tables (
-    id BIGSERIAL PRIMARY KEY,
-    raw_article_id BIGINT NOT NULL REFERENCES raw_articles(id) ON DELETE CASCADE,
-    table_uid TEXT NOT NULL,
-    table_source TEXT NOT NULL,
-    table_index INT,
-    page INT,
-    filename TEXT,
-    title TEXT,
-    row_count INT,
-    column_count INT,
-    text TEXT,
-    payload JSONB NOT NULL DEFAULT '{}',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_raw_article_document_table UNIQUE (raw_article_id, table_uid)
-);
-
-CREATE TABLE IF NOT EXISTS raw_article_media_assets (
-    id BIGSERIAL PRIMARY KEY,
-    raw_article_id BIGINT NOT NULL REFERENCES raw_articles(id) ON DELETE CASCADE,
-    asset_uid TEXT NOT NULL,
-    asset_type VARCHAR(40) NOT NULL,
-    source_field TEXT NOT NULL,
-    asset_order INT,
-    url TEXT,
-    local_path TEXT,
-    caption TEXT,
-    page INT,
-    payload JSONB NOT NULL DEFAULT '{}',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_raw_article_media_asset UNIQUE (raw_article_id, asset_uid)
-);
-
-CREATE TABLE IF NOT EXISTS raw_article_search_trend_keywords (
-    id BIGSERIAL PRIMARY KEY,
-    raw_article_id BIGINT NOT NULL REFERENCES raw_articles(id) ON DELETE CASCADE,
-    keyword_order INT NOT NULL,
-    keyword TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_raw_article_search_trend_keyword_order
-        UNIQUE (raw_article_id, keyword_order)
-);
-
-CREATE TABLE IF NOT EXISTS raw_article_market_data_points (
-    id BIGSERIAL PRIMARY KEY,
-    raw_article_id BIGINT NOT NULL REFERENCES raw_articles(id) ON DELETE CASCADE,
-    point_order INT NOT NULL,
-    point_date DATE,
-    open NUMERIC,
-    high NUMERIC,
-    low NUMERIC,
-    close NUMERIC,
-    volume BIGINT,
-    change_pct NUMERIC,
-    payload JSONB NOT NULL DEFAULT '{}',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_raw_article_market_data_point_order
-        UNIQUE (raw_article_id, point_order)
-);
-
 CREATE INDEX IF NOT EXISTS idx_raw_article_parse_results_source_period
     ON raw_article_parse_results (source_type, period);
 CREATE INDEX IF NOT EXISTS idx_raw_article_parse_results_quality
     ON raw_article_parse_results (parser_quality_label);
-CREATE INDEX IF NOT EXISTS idx_raw_article_document_sections_article
-    ON raw_article_document_sections (raw_article_id);
-CREATE INDEX IF NOT EXISTS idx_raw_article_document_sections_key
-    ON raw_article_document_sections (section_key);
-CREATE INDEX IF NOT EXISTS idx_raw_article_document_sections_topics
-    ON raw_article_document_sections USING GIN(topics);
-CREATE INDEX IF NOT EXISTS idx_raw_article_document_chunks_article
-    ON raw_article_document_chunks (raw_article_id);
-CREATE INDEX IF NOT EXISTS idx_raw_article_document_chunks_section
-    ON raw_article_document_chunks (section_key);
-CREATE INDEX IF NOT EXISTS idx_raw_article_document_tables_article
-    ON raw_article_document_tables (raw_article_id);
-CREATE INDEX IF NOT EXISTS idx_raw_article_document_tables_page
-    ON raw_article_document_tables (page);
-CREATE INDEX IF NOT EXISTS idx_raw_article_media_assets_article
-    ON raw_article_media_assets (raw_article_id);
-CREATE INDEX IF NOT EXISTS idx_raw_article_media_assets_type
-    ON raw_article_media_assets (asset_type);
-CREATE INDEX IF NOT EXISTS idx_raw_article_media_assets_url
-    ON raw_article_media_assets (url);
-CREATE INDEX IF NOT EXISTS idx_raw_article_search_trend_keywords_keyword
-    ON raw_article_search_trend_keywords (keyword);
-CREATE INDEX IF NOT EXISTS idx_raw_article_market_data_points_date
-    ON raw_article_market_data_points (point_date);
 
 
 -- ============================================================
