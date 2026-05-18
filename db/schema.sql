@@ -325,6 +325,18 @@ CREATE TABLE IF NOT EXISTS raw_article_metadata_market_data (
         FOREIGN KEY (raw_article_id) REFERENCES raw_articles(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS raw_article_metadata_social (
+    raw_article_id BIGINT PRIMARY KEY,
+    source_metadata JSONB NOT NULL DEFAULT '{}',
+    platform TEXT GENERATED ALWAYS AS (source_metadata ->> 'platform') STORED,
+    author TEXT GENERATED ALWAYS AS (source_metadata ->> 'author') STORED,
+    engagement_count TEXT GENERATED ALWAYS AS (source_metadata ->> 'engagement_count') STORED,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_raw_article_metadata_social_article
+        FOREIGN KEY (raw_article_id) REFERENCES raw_articles(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_ram_news_source_metadata
     ON raw_article_metadata_news USING GIN(source_metadata);
 CREATE INDEX IF NOT EXISTS idx_ram_news_search_query
@@ -373,6 +385,10 @@ CREATE INDEX IF NOT EXISTS idx_ram_market_data_source_metadata
     ON raw_article_metadata_market_data USING GIN(source_metadata);
 CREATE INDEX IF NOT EXISTS idx_ram_market_data_peer_id
     ON raw_article_metadata_market_data (peer_id);
+CREATE INDEX IF NOT EXISTS idx_ram_social_source_metadata
+    ON raw_article_metadata_social USING GIN(source_metadata);
+CREATE INDEX IF NOT EXISTS idx_ram_social_platform
+    ON raw_article_metadata_social (platform);
 
 CREATE OR REPLACE VIEW raw_article_metadata_unified AS
 SELECT
@@ -392,6 +408,7 @@ SELECT
             WHEN 'search_trend' THEN search_trend.source_metadata
             WHEN 'job' THEN job.source_metadata
             WHEN 'market_data' THEN market_data.source_metadata
+            WHEN 'social' THEN social.source_metadata
             ELSE '{}'::jsonb
         END,
         '{}'::jsonb
@@ -408,6 +425,7 @@ SELECT
             WHEN 'search_trend' THEN search_trend.source_metadata
             WHEN 'job' THEN job.source_metadata
             WHEN 'market_data' THEN market_data.source_metadata
+            WHEN 'social' THEN social.source_metadata
             ELSE '{}'::jsonb
         END,
         '{}'::jsonb
@@ -432,7 +450,9 @@ LEFT JOIN raw_article_metadata_search_trend search_trend
 LEFT JOIN raw_article_metadata_job job
     ON job.raw_article_id = ra.id
 LEFT JOIN raw_article_metadata_market_data market_data
-    ON market_data.raw_article_id = ra.id;
+    ON market_data.raw_article_id = ra.id
+LEFT JOIN raw_article_metadata_social social
+    ON social.raw_article_id = ra.id;
 
 -- ============================================================
 -- 2-2. raw_article normalized nested metadata projections
@@ -679,7 +699,71 @@ CREATE INDEX IF NOT EXISTS idx_pipeline_logs_company
     ON pipeline_logs (company);
 
 -- ============================================================
--- 7. crawl_logs — 크롤러 실행 로그
+-- 7. crawl_cursors / crawl_runs / crawl_run_articles — 크롤링 실행 상태·이력
+-- ============================================================
+CREATE TABLE IF NOT EXISTS crawl_cursors (
+    source_name VARCHAR(100) PRIMARY KEY,
+    cursor_date DATE NOT NULL,
+    until_date DATE NOT NULL,
+    window_days INT NOT NULL,
+    max_windows_per_run INT NOT NULL DEFAULT 1,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS crawl_runs (
+    id UUID PRIMARY KEY,
+    run_type VARCHAR(30) NOT NULL,
+    source_name VARCHAR(100) NOT NULL,
+    window_start DATE NOT NULL,
+    window_end DATE NOT NULL,
+    status VARCHAR(30) NOT NULL,
+    inserted_count INT NOT NULL DEFAULT 0,
+    skipped_count INT NOT NULL DEFAULT 0,
+    error_message TEXT,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    finished_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_crawl_runs_source_started
+    ON crawl_runs (source_name, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_crawl_runs_status
+    ON crawl_runs (status);
+CREATE INDEX IF NOT EXISTS idx_crawl_runs_window
+    ON crawl_runs (window_start, window_end);
+
+ALTER TABLE raw_articles
+    ADD COLUMN IF NOT EXISTS crawl_run_id UUID NULL;
+CREATE INDEX IF NOT EXISTS idx_raw_articles_crawl_run_id
+    ON raw_articles (crawl_run_id);
+
+CREATE TABLE IF NOT EXISTS crawl_run_articles (
+    id BIGSERIAL PRIMARY KEY,
+    crawl_run_id UUID NOT NULL REFERENCES crawl_runs(id) ON DELETE CASCADE,
+    raw_article_id BIGINT REFERENCES raw_articles(id) ON DELETE SET NULL,
+    url TEXT NOT NULL,
+    url_hash VARCHAR(32) NOT NULL,
+    discovered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    action VARCHAR(30) NOT NULL,
+    fetch_status VARCHAR(30),
+    error_message TEXT,
+    source_rank INT,
+    raw_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_crawl_run_articles_run_url UNIQUE (crawl_run_id, url_hash)
+);
+
+CREATE INDEX IF NOT EXISTS idx_crawl_run_articles_run
+    ON crawl_run_articles (crawl_run_id);
+CREATE INDEX IF NOT EXISTS idx_crawl_run_articles_article
+    ON crawl_run_articles (raw_article_id);
+CREATE INDEX IF NOT EXISTS idx_crawl_run_articles_action
+    ON crawl_run_articles (action);
+CREATE INDEX IF NOT EXISTS idx_crawl_run_articles_url_hash
+    ON crawl_run_articles (url_hash);
+
+-- ============================================================
+-- 7-legacy. crawl_logs — 크롤러 실행 로그
 -- ============================================================
 CREATE TABLE IF NOT EXISTS crawl_logs (
     id              BIGSERIAL    PRIMARY KEY,
