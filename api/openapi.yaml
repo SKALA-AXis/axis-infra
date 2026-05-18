@@ -4664,11 +4664,6 @@ components:
           format: float
           minimum: 0
           maximum: 1
-        trust_score:
-          type: number
-          format: float
-          minimum: 0
-          maximum: 100
         implication:
           $ref: "#/components/schemas/Implication"
         sources:
@@ -5029,18 +5024,6 @@ components:
         published_at:
           type: string
           format: date-time
-        credibility_grade:
-          type: string
-          enum:
-          - High
-          - Medium
-          - Low
-          - Unverified
-        credibility_score:
-          type: number
-          format: float
-          minimum: 0
-          maximum: 1
         link_status:
           type: string
           enum:
@@ -5065,9 +5048,6 @@ components:
                 type: string
               url:
                 type: string
-              credibility_score:
-                type: number
-                format: float
         provenance:
           type: object
           properties:
@@ -7014,12 +6994,6 @@ components:
         properties:
           content:
             type: string
-          credibilityScore:
-            type: number
-            nullable: true
-          credibilityGrade:
-            type: string
-            nullable: true
           clusterId:
             type: integer
             nullable: true

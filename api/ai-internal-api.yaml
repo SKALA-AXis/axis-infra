@@ -366,7 +366,6 @@ components:
               title: { type: string }
               source_name: { type: string }
               url: { type: string }
-              credibility_score: { type: number, format: float }
         provenance:
           type: object
           properties:

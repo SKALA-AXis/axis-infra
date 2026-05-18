@@ -68,9 +68,6 @@ CREATE TABLE IF NOT EXISTS raw_articles (
     processing_status   VARCHAR(40)  NOT NULL DEFAULT 'RAW',
     metadata            JSONB        NOT NULL DEFAULT '{}',
 
-    credibility_score   FLOAT,
-    credibility_grade   VARCHAR(20),
-
     relevance_score     FLOAT,
     relevance_label     VARCHAR(20),
     relevance_reason    TEXT,

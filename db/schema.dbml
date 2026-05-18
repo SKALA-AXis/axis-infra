@@ -42,8 +42,6 @@ Table raw_articles {
   url text [not null, unique, note: '멱등성 보장 키']
   published_at timestamptz [not null]
   collected_at timestamptz [default: `now()`]
-  credibility_score float
-  credibility_grade varchar(20) [note: 'High/Medium/Low/Unverified']
   cluster_id bigint
   is_representative boolean [default: false]
   processing_status varchar(30) [default: 'RAW', note: 'RAW/CLUSTERED_REP/DUPE/CLASSIFIED/SKIPPED_*']
