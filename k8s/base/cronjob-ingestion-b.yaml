@@ -1,5 +1,5 @@
-# Track B · 매일 02:00 공시·특허·재무.
-#   · 재무 PDF 파싱 등 무거운 작업 — timeout 1시간 허용.
+# Track B · 평일 마켓/증권 리포트 인제스션.
+#   · stock / naver_research
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -9,7 +9,7 @@ metadata:
     app.kubernetes.io/component: cron
     app.kubernetes.io/part-of: axis
 spec:
-  schedule: "0 2 * * *"
+  schedule: "0 8,12,16 * * 1-5"
   timeZone: "Asia/Seoul"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3

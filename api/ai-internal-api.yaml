@@ -50,7 +50,7 @@ paths:
       summary: 수집 파이프라인 실행
       description: |
         크롤링 → 전처리 → 품질 게이트 → 신뢰도 게이트 → 중복 제거 → 임베딩 → Qdrant 적재
-        실행 주기: 1시간마다 (SpringBoot Scheduler에서 호출)
+        실행 주기: Kubernetes CronJob에서 track별로 호출
       operationId: runCollectionPipeline
       requestBody:
         required: true
@@ -62,7 +62,7 @@ paths:
               properties:
                 track:
                   type: string
-                  enum: [A, B, C, ALL]
+                  enum: [A, B, C, D, ALL]
                   default: A
                   example: B
                 company:

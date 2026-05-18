@@ -26,7 +26,7 @@ k8s/
     ├── ai-{deployment,service}.yaml         # ai 는 HPA 없음 (콜드스타트 1~3분)
     ├── ingress.yaml                # AWS ALB Ingress (internal)
     ├── networkpolicy.yaml          # default-deny + 명시적 allow
-    └── cronjob-{ingestion-a,ingestion-b,delivery,weak-signal}.yaml
+    └── cronjob-{ingestion-a,ingestion-b,ingestion-c,ingestion-d,delivery,weak-signal}.yaml
 ```
 
 ---

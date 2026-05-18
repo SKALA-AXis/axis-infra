@@ -28,7 +28,7 @@ data:
   BRIEFING_RECIPIENTS: "meniscus220@gmail.com,jins006945@gmail.com,a45047385@gmail.com,kgaeun0118@gmail.com,tladbwjd04899@gmail.com,gaeundks@gmail.com"
   BRIEFING_TIME: "08:30"
 
-  # Spring @Scheduled 비활성화 — GitOps standard 인 CronJob (axis-cron-{delivery,ingestion-a/b/c})
+  # Spring @Scheduled 비활성화 — GitOps standard 인 CronJob (axis-cron-{delivery,ingestion-a/b/c/d})
   # 만 단일 trigger 사용. 과거 true 였을 때 backend 의 @Scheduled (sendDailyBriefing
   # @ "0 30 8 * * MON-FRI" Asia/Seoul + triggerIngestionPipeline @ "0 0 * * * *") 이
   # CronJob 과 *동시 trigger* 하여 일일 브리핑 이메일이 *2번* 발송되는 버그 (2026-05-15).

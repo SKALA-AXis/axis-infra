@@ -50,5 +50,6 @@ resources:
   - cronjob-ingestion-a.yaml
   - cronjob-ingestion-b.yaml
   - cronjob-ingestion-c.yaml
+  - cronjob-ingestion-d.yaml
   - cronjob-delivery.yaml
   - cronjob-weak-signal.yaml

@@ -4034,6 +4034,7 @@ paths:
           - A
           - B
           - C
+          - D
           - ALL
           default: A
       requestBody:

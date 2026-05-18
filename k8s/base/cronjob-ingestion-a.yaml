@@ -1,4 +1,5 @@
-# Track A · 매시간 뉴스 인제스션.
+# Track A · 뉴스성 고빈도 인제스션.
+#   · naver_news / global_newsroom
 #   · backend 의 /api/pipeline/trigger?track=A 호출 (B1 코드 변경 후 동작).
 #   · concurrencyPolicy: Forbid — 직전 Job 안 끝났으면 새 Job 미생성.
 #   · 인증: CRON_INTERNAL_TOKEN (B7 + D7=a) — backend 가 Authorization 헤더 검증.
