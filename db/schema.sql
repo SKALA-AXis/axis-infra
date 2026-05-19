@@ -1,11 +1,12 @@
--- AXIS minimal product schema, V30 target
+-- AXIS crawler/parser-aware product schema, V31 target
 -- Snapshot date: 2026-05-19 KST
 --
 -- Physical app tables after V30:
---   peer_companies, raw_articles, raw_article_source_metadata,
---   raw_article_parse_results, card_news, market_price_ohlcv,
---   briefing_reports, mixer_results, insight_reports,
---   global_industry_trends, crawl_cursors, legacy_records.
+--   peer_companies, raw_articles, raw_article_parse_results,
+--   raw_article_financial_metrics, raw_article_business_signals,
+--   card_news, market_price_ohlcv, briefing_reports, mixer_results,
+--   insight_reports, global_industry_trends, crawl_cursors, crawl_runs,
+--   crawl_run_articles, legacy_records.
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
@@ -54,6 +55,25 @@ CREATE TABLE IF NOT EXISTS crawl_cursors (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS crawl_runs (
+    id UUID PRIMARY KEY,
+    run_type VARCHAR(30) NOT NULL,
+    source_name VARCHAR(100) NOT NULL,
+    window_start DATE NOT NULL,
+    window_end DATE NOT NULL,
+    status VARCHAR(30) NOT NULL,
+    inserted_count INT NOT NULL DEFAULT 0,
+    skipped_count INT NOT NULL DEFAULT 0,
+    error_message TEXT,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    finished_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_crawl_runs_source_started
+    ON crawl_runs(source_name, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_crawl_runs_status ON crawl_runs(status);
+CREATE INDEX IF NOT EXISTS idx_crawl_runs_window ON crawl_runs(window_start, window_end);
+
 CREATE TABLE IF NOT EXISTS raw_articles (
     id BIGSERIAL PRIMARY KEY,
     source_name VARCHAR(100) NOT NULL,
@@ -83,13 +103,7 @@ CREATE TABLE IF NOT EXISTS raw_articles (
     matched_sectors JSONB NOT NULL DEFAULT '[]'::jsonb,
     importance_level VARCHAR(20),
     qdrant_vector_id UUID,
-    crawl_run_id UUID,
-    peer_company_ids TEXT[] NOT NULL DEFAULT '{}',
-    peer_company_links JSONB NOT NULL DEFAULT '[]'::jsonb,
-    financial_metrics JSONB NOT NULL DEFAULT '[]'::jsonb,
-    business_signals JSONB NOT NULL DEFAULT '[]'::jsonb,
-    crawl_events JSONB NOT NULL DEFAULT '[]'::jsonb,
-    legacy_payload JSONB NOT NULL DEFAULT '{}'::jsonb
+    crawl_run_id UUID REFERENCES crawl_runs(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_raw_articles_url_hash ON raw_articles(url_hash);
@@ -98,26 +112,31 @@ CREATE INDEX IF NOT EXISTS idx_raw_articles_published_at ON raw_articles(publish
 CREATE INDEX IF NOT EXISTS idx_raw_articles_processing_status ON raw_articles(processing_status);
 CREATE INDEX IF NOT EXISTS idx_raw_articles_company ON raw_articles USING GIN(company);
 CREATE INDEX IF NOT EXISTS idx_raw_articles_matched_companies ON raw_articles USING GIN(matched_companies);
-CREATE INDEX IF NOT EXISTS idx_raw_articles_peer_company_ids ON raw_articles USING GIN(peer_company_ids);
 
-CREATE TABLE IF NOT EXISTS raw_article_source_metadata (
-    raw_article_id BIGINT PRIMARY KEY REFERENCES raw_articles(id) ON DELETE CASCADE,
-    source_type VARCHAR(50) NOT NULL,
-    source_name VARCHAR(100),
-    source_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-    external_id TEXT,
-    period TEXT,
-    document_url TEXT,
-    company_name TEXT,
-    parser_quality_label TEXT,
+CREATE TABLE IF NOT EXISTS crawl_run_articles (
+    id BIGSERIAL PRIMARY KEY,
+    crawl_run_id UUID NOT NULL REFERENCES crawl_runs(id) ON DELETE CASCADE,
+    raw_article_id BIGINT REFERENCES raw_articles(id) ON DELETE SET NULL,
+    url TEXT NOT NULL,
+    url_hash VARCHAR(32) NOT NULL,
+    discovered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    action VARCHAR(30) NOT NULL,
+    fetch_status VARCHAR(30),
+    error_message TEXT,
+    source_rank INT,
+    raw_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    CONSTRAINT uq_crawl_run_articles_run_url UNIQUE (crawl_run_id, url_hash)
 );
 
-CREATE INDEX IF NOT EXISTS idx_raw_article_source_metadata_source
-    ON raw_article_source_metadata(source_type, source_name);
-CREATE INDEX IF NOT EXISTS idx_raw_article_source_metadata_gin
-    ON raw_article_source_metadata USING GIN(source_metadata);
+CREATE INDEX IF NOT EXISTS idx_crawl_run_articles_run
+    ON crawl_run_articles(crawl_run_id);
+CREATE INDEX IF NOT EXISTS idx_crawl_run_articles_article
+    ON crawl_run_articles(raw_article_id);
+CREATE INDEX IF NOT EXISTS idx_crawl_run_articles_action
+    ON crawl_run_articles(action);
+CREATE INDEX IF NOT EXISTS idx_crawl_run_articles_url_hash
+    ON crawl_run_articles(url_hash);
 
 CREATE TABLE IF NOT EXISTS raw_article_parse_results (
     raw_article_id BIGINT PRIMARY KEY REFERENCES raw_articles(id) ON DELETE CASCADE,
@@ -131,6 +150,91 @@ CREATE TABLE IF NOT EXISTS raw_article_parse_results (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS raw_article_financial_metrics (
+    id BIGSERIAL PRIMARY KEY,
+    raw_article_id BIGINT NOT NULL REFERENCES raw_articles(id) ON DELETE CASCADE,
+    metric_uid TEXT NOT NULL,
+    source_type VARCHAR(50) NOT NULL,
+    source_name VARCHAR(100),
+    peer_id VARCHAR(50),
+    period TEXT,
+    period_year INT,
+    period_quarter INT,
+    period_type TEXT,
+    metric_name TEXT NOT NULL,
+    metric_label TEXT,
+    metric_scope TEXT,
+    business_area TEXT,
+    value_numeric NUMERIC(24, 6),
+    value_krwbn DOUBLE PRECISION,
+    value_krw NUMERIC(24, 2),
+    unit TEXT,
+    currency VARCHAR(10) DEFAULT 'KRW',
+    source_page INT,
+    source_table_uid TEXT,
+    source_chunk_uid TEXT,
+    confidence DOUBLE PRECISION,
+    extraction_method TEXT,
+    evidence_text TEXT,
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_raw_article_financial_metric UNIQUE (raw_article_id, metric_uid),
+    CONSTRAINT chk_raw_article_financial_metrics_confidence
+        CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1))
+);
+
+CREATE INDEX IF NOT EXISTS idx_raw_article_financial_metrics_peer_period
+    ON raw_article_financial_metrics(peer_id, period);
+CREATE INDEX IF NOT EXISTS idx_raw_article_financial_metrics_metric
+    ON raw_article_financial_metrics(metric_name, period);
+CREATE INDEX IF NOT EXISTS idx_raw_article_financial_metrics_source
+    ON raw_article_financial_metrics(source_type, source_name);
+CREATE INDEX IF NOT EXISTS idx_raw_article_financial_metrics_payload_gin
+    ON raw_article_financial_metrics USING GIN(payload);
+
+CREATE TABLE IF NOT EXISTS raw_article_business_signals (
+    id BIGSERIAL PRIMARY KEY,
+    raw_article_id BIGINT NOT NULL REFERENCES raw_articles(id) ON DELETE CASCADE,
+    signal_uid TEXT NOT NULL,
+    source_type VARCHAR(50) NOT NULL,
+    source_name VARCHAR(100),
+    peer_id VARCHAR(50),
+    period TEXT,
+    period_year INT,
+    period_quarter INT,
+    period_type TEXT,
+    business_area TEXT NOT NULL,
+    signal_type TEXT NOT NULL,
+    sentiment TEXT,
+    summary TEXT NOT NULL,
+    evidence_text TEXT,
+    source_page INT,
+    source_chunk_uid TEXT,
+    confidence DOUBLE PRECISION,
+    extraction_method TEXT,
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_raw_article_business_signal UNIQUE (raw_article_id, signal_uid),
+    CONSTRAINT chk_raw_article_business_signals_confidence
+        CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
+    CONSTRAINT chk_raw_article_business_signals_sentiment
+        CHECK (
+            sentiment IS NULL
+            OR sentiment IN ('positive', 'neutral', 'negative', 'mixed', 'unknown')
+        )
+);
+
+CREATE INDEX IF NOT EXISTS idx_raw_article_business_signals_peer_period
+    ON raw_article_business_signals(peer_id, period);
+CREATE INDEX IF NOT EXISTS idx_raw_article_business_signals_area_type
+    ON raw_article_business_signals(business_area, signal_type);
+CREATE INDEX IF NOT EXISTS idx_raw_article_business_signals_source
+    ON raw_article_business_signals(source_type, source_name);
+CREATE INDEX IF NOT EXISTS idx_raw_article_business_signals_payload_gin
+    ON raw_article_business_signals USING GIN(payload);
 
 CREATE TABLE IF NOT EXISTS card_news (
     id VARCHAR(50) PRIMARY KEY,
@@ -346,11 +450,9 @@ SELECT
     ra.source_type,
     ra.source_name,
     ra.metadata AS common_metadata,
-    COALESCE(rasm.source_metadata, '{}'::jsonb) AS source_metadata,
-    ra.metadata || COALESCE(rasm.source_metadata, '{}'::jsonb) AS metadata
-FROM raw_articles ra
-LEFT JOIN raw_article_source_metadata rasm
-    ON rasm.raw_article_id = ra.id;
+    '{}'::jsonb AS source_metadata,
+    ra.metadata AS metadata
+FROM raw_articles ra;
 
 COMMENT ON TABLE legacy_records IS
     'Row-level archive for V30-collapsed tables. Not part of the product ERD.';

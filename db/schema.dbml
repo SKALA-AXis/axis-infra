@@ -1,19 +1,19 @@
 // ============================================================
-// AXIS - Minimal DBML after V30
+// AXIS - DBML after V31 crawler/parser fact restoration
 // Snapshot date: 2026-05-19
-// Scope: 12 app tables + flyway_schema_history. Views noted below.
+// Scope: 14 app tables + flyway_schema_history. Views noted below.
 // ============================================================
 
 Project axis {
   database_type: 'PostgreSQL'
   Note: '''
-    V30 minimal product schema.
-    Dropped legacy tables are archived row-by-row in legacy_records, then
-    folded into owner read-model columns where useful.
+    V31 crawler/parser-aware product schema.
+    V30 legacy archive remains in legacy_records, while crawler runs and
+    parser fact tables are restored as first-class operational data.
 
     Views not rendered:
       - issue_cards: SELECT * FROM card_news
-      - raw_article_metadata_unified
+      - raw_article_metadata_unified: raw_articles metadata compatibility view
   '''
 }
 
@@ -69,6 +69,26 @@ Table crawl_cursors {
   updated_at timestamptz [not null, default: `now()`]
 }
 
+Table crawl_runs {
+  id uuid [pk]
+  run_type varchar(30) [not null]
+  source_name varchar(100) [not null]
+  window_start date [not null]
+  window_end date [not null]
+  status varchar(30) [not null]
+  inserted_count int [not null, default: 0]
+  skipped_count int [not null, default: 0]
+  error_message text
+  started_at timestamptz [not null, default: `now()`]
+  finished_at timestamptz
+
+  indexes {
+    (source_name, started_at) [name: 'idx_crawl_runs_source_started']
+    status [name: 'idx_crawl_runs_status']
+    (window_start, window_end) [name: 'idx_crawl_runs_window']
+  }
+}
+
 Table raw_articles {
   id bigserial [pk]
   source_name varchar(100) [not null]
@@ -98,13 +118,7 @@ Table raw_articles {
   matched_sectors jsonb [not null, default: `'[]'::jsonb`]
   importance_level varchar(20)
   qdrant_vector_id uuid
-  crawl_run_id uuid
-  peer_company_ids "text[]" [not null, default: `'{}'`]
-  peer_company_links jsonb [not null, default: `'[]'::jsonb`]
-  financial_metrics jsonb [not null, default: `'[]'::jsonb`]
-  business_signals jsonb [not null, default: `'[]'::jsonb`]
-  crawl_events jsonb [not null, default: `'[]'::jsonb`]
-  legacy_payload jsonb [not null, default: `'{}'::jsonb`]
+  crawl_run_id uuid [ref: > crawl_runs.id, note: 'ON DELETE SET NULL']
 
   indexes {
     url_hash [name: 'idx_raw_articles_url_hash']
@@ -112,22 +126,30 @@ Table raw_articles {
     processing_status [name: 'idx_raw_articles_processing_status']
     company [name: 'idx_raw_articles_company', type: gin]
     matched_companies [name: 'idx_raw_articles_matched_companies', type: gin]
-    peer_company_ids [name: 'idx_raw_articles_peer_company_ids', type: gin]
   }
 }
 
-Table raw_article_source_metadata {
-  raw_article_id bigint [pk, ref: > raw_articles.id, note: 'ON DELETE CASCADE']
-  source_type varchar(50) [not null]
-  source_name varchar(100)
-  source_metadata jsonb [not null, default: `'{}'::jsonb`]
-  external_id text
-  period text
-  document_url text
-  company_name text
-  parser_quality_label text
+Table crawl_run_articles {
+  id bigserial [pk]
+  crawl_run_id uuid [not null, ref: > crawl_runs.id, note: 'ON DELETE CASCADE']
+  raw_article_id bigint [ref: > raw_articles.id, note: 'ON DELETE SET NULL']
+  url text [not null]
+  url_hash varchar(32) [not null]
+  discovered_at timestamptz [not null, default: `now()`]
+  action varchar(30) [not null]
+  fetch_status varchar(30)
+  error_message text
+  source_rank int
+  raw_payload jsonb [not null, default: `'{}'::jsonb`]
   created_at timestamptz [not null, default: `now()`]
-  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (crawl_run_id, url_hash) [unique, name: 'uq_crawl_run_articles_run_url']
+    crawl_run_id [name: 'idx_crawl_run_articles_run']
+    raw_article_id [name: 'idx_crawl_run_articles_article']
+    action [name: 'idx_crawl_run_articles_action']
+    url_hash [name: 'idx_crawl_run_articles_url_hash']
+  }
 }
 
 Table raw_article_parse_results {
@@ -141,6 +163,78 @@ Table raw_article_parse_results {
   warnings jsonb [not null, default: `'[]'::jsonb`]
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
+}
+
+Table raw_article_financial_metrics {
+  id bigserial [pk]
+  raw_article_id bigint [not null, ref: > raw_articles.id, note: 'ON DELETE CASCADE']
+  metric_uid text [not null]
+  source_type varchar(50) [not null]
+  source_name varchar(100)
+  peer_id varchar(50)
+  period text
+  period_year int
+  period_quarter int
+  period_type text
+  metric_name text [not null]
+  metric_label text
+  metric_scope text
+  business_area text
+  value_numeric numeric(24,6)
+  value_krwbn double
+  value_krw numeric(24,2)
+  unit text
+  currency varchar(10) [default: 'KRW']
+  source_page int
+  source_table_uid text
+  source_chunk_uid text
+  confidence double
+  extraction_method text
+  evidence_text text
+  payload jsonb [not null, default: `'{}'::jsonb`]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (raw_article_id, metric_uid) [unique, name: 'uq_raw_article_financial_metric']
+    (peer_id, period) [name: 'idx_raw_article_financial_metrics_peer_period']
+    (metric_name, period) [name: 'idx_raw_article_financial_metrics_metric']
+    (source_type, source_name) [name: 'idx_raw_article_financial_metrics_source']
+    payload [name: 'idx_raw_article_financial_metrics_payload_gin', type: gin]
+  }
+}
+
+Table raw_article_business_signals {
+  id bigserial [pk]
+  raw_article_id bigint [not null, ref: > raw_articles.id, note: 'ON DELETE CASCADE']
+  signal_uid text [not null]
+  source_type varchar(50) [not null]
+  source_name varchar(100)
+  peer_id varchar(50)
+  period text
+  period_year int
+  period_quarter int
+  period_type text
+  business_area text [not null]
+  signal_type text [not null]
+  sentiment text
+  summary text [not null]
+  evidence_text text
+  source_page int
+  source_chunk_uid text
+  confidence double
+  extraction_method text
+  payload jsonb [not null, default: `'{}'::jsonb`]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (raw_article_id, signal_uid) [unique, name: 'uq_raw_article_business_signal']
+    (peer_id, period) [name: 'idx_raw_article_business_signals_peer_period']
+    (business_area, signal_type) [name: 'idx_raw_article_business_signals_area_type']
+    (source_type, source_name) [name: 'idx_raw_article_business_signals_source']
+    payload [name: 'idx_raw_article_business_signals_payload_gin', type: gin]
+  }
 }
 
 Table card_news {
@@ -327,8 +421,9 @@ Table legacy_records {
 TableGroup "Minimal Product ERD" {
   peer_companies
   raw_articles
-  raw_article_source_metadata
   raw_article_parse_results
+  raw_article_financial_metrics
+  raw_article_business_signals
   card_news
   market_price_ohlcv
   briefing_reports
@@ -339,6 +434,8 @@ TableGroup "Minimal Product ERD" {
 
 TableGroup "Operational State / Retention" {
   crawl_cursors
+  crawl_runs
+  crawl_run_articles
   legacy_records
 }
 
