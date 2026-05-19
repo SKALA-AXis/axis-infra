@@ -1,0 +1,50 @@
+# axis-infra · docker compose override — Cluster DB 모드
+#
+# 용도: 로컬에서 docker compose 로 풀 스택 (backend + ai + frontend) 띄우되,
+#       DB / 임베딩은 *클러스터의 Postgres + Qdrant* 에 연결.
+#       로컬 docker postgres / qdrant 컨테이너는 안 띄움.
+#
+# 사용 (Makefile target `make up-cluster` 권장):
+#   1. kubectl port-forward 먼저 (host 5432 / 6333 으로 cluster svc 노출):
+#        kubectl port-forward -n skala3-finalproj-class3-team13 svc/postgres 5432:5432 &
+#        kubectl port-forward -n skala3-finalproj-class3-team13 svc/qdrant   6333:6333 &
+#
+#   2. compose 띄우기 (postgres·qdrant 서비스는 명시 안 함 → 안 뜸):
+#        docker compose -f docker-compose.yml -f docker-compose.cluster-db.yml \
+#          up -d backend ai frontend
+#
+# 안전장치:
+#   - SPRING_FLYWAY_ENABLED=false 명시 (PR #20 의 application-local.yml 와 별개의
+#     환경변수 차원 이중 안전). cluster DB 에 silent 자동 migrate 절대 금지.
+#   - profile 별 docker postgres 가 안 뜨므로 host:5432 가 cluster 만 가리킴.
+#
+# 주의:
+#   - host.docker.internal 는 Docker Desktop (macOS/Windows) 전용 hostname.
+#     Linux 는 docker run 시 --add-host=host.docker.internal:host-gateway 필요
+#     (compose 의 extra_hosts 로 자동 처리도 가능).
+#   - port-forward 가 끊기면 backend·ai 가 connection 실패. Makefile target 이
+#     자동 재시작 처리.
+
+services:
+  backend:
+    environment:
+      # host 의 port-forward 통해 cluster Postgres
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://host.docker.internal:5432/axis"
+      SPRING_DATASOURCE_USERNAME: "axuser"
+      SPRING_DATASOURCE_PASSWORD: "axpass"
+      # cluster DB 보호 — Flyway 자동 migrate 차단 (이중 안전)
+      SPRING_FLYWAY_ENABLED: "false"
+      SPRING_PROFILES_ACTIVE: "local"
+    extra_hosts:
+      # Linux 호환 (Docker Desktop 은 자동, Linux 는 명시 필요)
+      - "host.docker.internal:host-gateway"
+
+  ai:
+    environment:
+      DATABASE_URL: "postgresql://axuser:axpass@host.docker.internal:5432/axis"
+      QDRANT_HOST: "http://host.docker.internal"
+      QDRANT_PORT: "6333"
+      # Qdrant in-cluster 는 API key 없음. 빈 값 명시.
+      QDRANT_API_KEY: ""
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
