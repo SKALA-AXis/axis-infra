@@ -212,7 +212,7 @@ service repo push (axis-ai/backend/frontend develop)
 - 크롤링된 원문 → PostgreSQL 전량 저장 (Gate 통과 여부 무관)
 - Gate 1(품질) + Gate 2(신뢰도) + Gate 3(중복) 통과한 대표 기사만 → Qdrant
 - Qdrant 페이로드: rdb_id(FK), peer_id, event_type, sector, exposure_band, exposure_score, pub_date, cluster_id, title, summary
-- 동향 카드 검증 첨부 4종(source_links / provenance / financial_refs / mbb_refs)은 `evidence_chain` 테이블에 별도 저장
+- 동향 카드 검증 첨부 4종(source_links / provenance / financial_refs / mbb_refs)은 V30 이후 `card_news.evidence_payload`에 저장
 
 ---
 

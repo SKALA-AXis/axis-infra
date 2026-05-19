@@ -1,39 +1,72 @@
 // ============================================================
-// AXIS - DBML (ERD visualization)
-// Usage: paste into https://dbdiagram.io/d
-// Sync source: axis-backend Flyway migrations V1..V28
+// AXIS - Minimal DBML after V30
 // Snapshot date: 2026-05-19
-// Scope: 42 physical tables. Views are noted in comments.
+// Scope: 12 app tables + flyway_schema_history. Views noted below.
 // ============================================================
 
 Project axis {
   database_type: 'PostgreSQL'
   Note: '''
-    AXIS - Peer company monitoring and AI briefing system.
-    This DBML mirrors the accumulated backend Flyway schema through V28.
+    V30 minimal product schema.
+    Dropped legacy tables are archived row-by-row in legacy_records, then
+    folded into owner read-model columns where useful.
 
-    Compatibility views not rendered as separate ERD nodes:
+    Views not rendered:
       - issue_cards: SELECT * FROM card_news
-      - raw_article_metadata_unified: source metadata compatibility view
+      - raw_article_metadata_unified
   '''
 }
 
-// ============================================================
-// 1. Peer master and collected raw content
-// ============================================================
+Table flyway_schema_history {
+  installed_rank int [pk]
+  version varchar(50)
+  description varchar(200) [not null]
+  type varchar(20) [not null]
+  script varchar(1000) [not null]
+  checksum int
+  installed_by varchar(100) [not null]
+  installed_on timestamp [not null, default: `now()`]
+  execution_time int [not null]
+  success boolean [not null]
+
+  Note: 'Flyway-managed migration history table.'
+}
 
 Table peer_companies {
-  id varchar(50) [pk, note: 'samsung_sds | lg_cns | hyundai_autoever | posco_dx | sk_ax']
+  id varchar(50) [pk]
   name varchar(100) [not null]
-  tier varchar(20) [not null, default: 'domestic', note: 'CHECK: self | domestic | overseas']
+  tier varchar(20) [not null, default: 'domestic']
   keywords "text[]" [default: `'{}'`]
+  dart_period text
+  dart_revenue_krwbn numeric(18,2)
+  dart_operating_profit_krwbn numeric(18,2)
+  dart_operating_margin_pct numeric(9,4)
+  dart_revenue_growth_pct numeric(9,4)
+  dart_operating_profit_growth_pct numeric(9,4)
+  ax_revenue_share_pct numeric(9,4)
+  contract_count int [not null, default: 0]
+  core_keywords "text[]" [not null, default: `'{}'`]
+  peer_plus_payload jsonb [not null, default: `'{}'::jsonb`]
+  financial_history jsonb [not null, default: `'[]'::jsonb`]
+  job_posting_history jsonb [not null, default: `'[]'::jsonb`]
+  legacy_payload jsonb [not null, default: `'{}'::jsonb`]
+  financial_updated_at timestamptz
   is_active boolean [default: true]
   created_at timestamptz [default: `now()`]
 
-  Note: '''
-    Monitoring peer company master.
-    SK AX is stored as tier='self' for baseline crawling.
-  '''
+  indexes {
+    core_keywords [name: 'idx_peer_companies_core_keywords', type: gin]
+  }
+}
+
+Table crawl_cursors {
+  source_name varchar(100) [pk]
+  cursor_date date [not null]
+  until_date date [not null]
+  window_days int [not null]
+  max_windows_per_run int [not null, default: 1]
+  enabled boolean [not null, default: true]
+  updated_at timestamptz [not null, default: `now()`]
 }
 
 Table raw_articles {
@@ -48,13 +81,12 @@ Table raw_articles {
   is_representative boolean
   processing_status varchar(40) [not null, default: 'RAW']
   importance_score float
-  metadata jsonb [not null, default: `'{}'::jsonb`, note: 'Common crawl/provenance metadata after V22 split']
+  metadata jsonb [not null, default: `'{}'::jsonb`]
   created_at timestamptz [default: `now()`]
-
   source_type varchar(50) [not null, default: 'news']
   publisher varchar(150)
   url_hash varchar(32) [not null]
-  company jsonb [not null, default: `'[]'::jsonb`, note: 'Legacy company tokens array']
+  company jsonb [not null, default: `'[]'::jsonb`]
   language varchar(10) [not null, default: 'ko']
   content_type varchar(30) [not null, default: 'news']
   crawl_status varchar(20) [not null, default: 'success']
@@ -66,442 +98,93 @@ Table raw_articles {
   matched_sectors jsonb [not null, default: `'[]'::jsonb`]
   importance_level varchar(20)
   qdrant_vector_id uuid
-  crawl_run_id uuid [ref: > crawl_runs.id]
+  crawl_run_id uuid
+  peer_company_ids "text[]" [not null, default: `'{}'`]
+  peer_company_links jsonb [not null, default: `'[]'::jsonb`]
+  financial_metrics jsonb [not null, default: `'[]'::jsonb`]
+  business_signals jsonb [not null, default: `'[]'::jsonb`]
+  crawl_events jsonb [not null, default: `'[]'::jsonb`]
+  legacy_payload jsonb [not null, default: `'{}'::jsonb`]
 
   indexes {
     url_hash [name: 'idx_raw_articles_url_hash']
     source_type [name: 'idx_raw_articles_source_type']
-    source_name [name: 'idx_raw_articles_source_name']
-    published_at [name: 'idx_raw_articles_published_at']
     processing_status [name: 'idx_raw_articles_processing_status']
     company [name: 'idx_raw_articles_company', type: gin]
-    metadata [name: 'idx_raw_articles_metadata', type: gin]
     matched_companies [name: 'idx_raw_articles_matched_companies', type: gin]
-    matched_sectors [name: 'idx_raw_articles_matched_sectors', type: gin]
-    cluster_id [name: 'idx_raw_articles_cluster_id']
-    is_representative [name: 'idx_raw_articles_is_representative']
-    qdrant_vector_id [name: 'idx_raw_articles_qdrant_vector_id']
-    crawl_run_id [name: 'idx_raw_articles_crawl_run_id']
+    peer_company_ids [name: 'idx_raw_articles_peer_company_ids', type: gin]
   }
-
-  Note: '''
-    Canonical crawled article archive.
-    V7 removed peer_id/source_tier and aligned with axis-ai writer fields.
-    V20 added crawl_run_id. V27 dropped credibility_score/credibility_grade.
-  '''
 }
-
-Table article_peer_companies {
-  id bigserial [pk]
-  raw_article_id bigint [not null, ref: > raw_articles.id, note: 'ON DELETE CASCADE']
-  peer_company_id varchar(50) [not null, ref: > peer_companies.id, note: 'ON DELETE RESTRICT']
-  relevance_score decimal(5,4)
-  matched_reason text
-  created_at timestamptz [not null, default: `now()`]
-
-  indexes {
-    (raw_article_id, peer_company_id) [unique, name: 'uq_article_peer_company']
-    peer_company_id [name: 'idx_article_peer_companies_peer_company_id']
-    raw_article_id [name: 'idx_article_peer_companies_raw_article_id']
-  }
-
-  Note: 'Normalized N:M link between raw articles and peer companies.'
-}
-
-// ============================================================
-// 2. Raw article metadata and extracted facts
-// ============================================================
 
 Table raw_article_source_metadata {
   raw_article_id bigint [pk, ref: > raw_articles.id, note: 'ON DELETE CASCADE']
   source_type varchar(50) [not null]
   source_name varchar(100)
   source_metadata jsonb [not null, default: `'{}'::jsonb`]
-  external_id text [note: 'Generated from common external id keys such as rcept_no, receipt_no, emp_seqno, content_hash, item_code']
-  period text [note: 'Generated from source_metadata.period']
-  document_url text [note: 'Generated from pdf_url/detail_url/source_url/list_url']
-  company_name text [note: 'Generated from company_name/corp_name/company']
-  parser_quality_label text [note: 'Generated from source_metadata.parser_quality_label']
+  external_id text
+  period text
+  document_url text
+  company_name text
+  parser_quality_label text
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
-
-  indexes {
-    (source_type, source_name) [name: 'idx_raw_article_source_metadata_type_name']
-    source_metadata [name: 'idx_raw_article_source_metadata_payload_gin', type: gin]
-    external_id [name: 'idx_raw_article_source_metadata_external_id', note: 'Partial index WHERE external_id IS NOT NULL']
-    period [name: 'idx_raw_article_source_metadata_period', note: 'Partial index WHERE period IS NOT NULL']
-    document_url [name: 'idx_raw_article_source_metadata_document_url', note: 'Partial index WHERE document_url IS NOT NULL']
-    company_name [name: 'idx_raw_article_source_metadata_company_name', note: 'Partial index WHERE company_name IS NOT NULL']
-  }
-
-  Note: '''
-    V28 canonical source metadata sidecar. Replaces the 11 per-source
-    raw_article_metadata_* tables while preserving raw_article_metadata_unified
-    as a compatibility view.
-  '''
 }
 
 Table raw_article_parse_results {
   raw_article_id bigint [pk, ref: > raw_articles.id, note: 'ON DELETE CASCADE']
-  source_type varchar(50) [not null]
-  parser text
-  parser_ok boolean
-  period text
-  period_year int
-  period_quarter int
-  period_type text
-  published_at text
-  parser_quality_score "double precision"
+  parser_version text
+  parse_status text
   parser_quality_label text
-  parser_quality_reason text
+  parser_result jsonb [not null, default: `'{}'::jsonb`]
   financial_record jsonb [not null, default: `'{}'::jsonb`]
-  result_metadata jsonb [not null, default: `'{}'::jsonb`]
+  raw_payload jsonb [not null, default: `'{}'::jsonb`]
   warnings jsonb [not null, default: `'[]'::jsonb`]
-  raw_result jsonb [not null, default: `'{}'::jsonb`]
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
-
-  indexes {
-    (source_type, period) [name: 'idx_raw_article_parse_results_source_period']
-    parser_quality_label [name: 'idx_raw_article_parse_results_quality']
-  }
 }
-
-Table raw_article_financial_metrics {
-  id bigserial [pk]
-  raw_article_id bigint [not null, ref: > raw_articles.id, note: 'ON DELETE CASCADE']
-  metric_uid text [not null]
-  source_type varchar(50) [not null]
-  source_name varchar(100)
-  peer_id varchar(50)
-  period text
-  period_year int
-  period_quarter int
-  period_type text
-  metric_name text [not null]
-  metric_label text
-  metric_scope text
-  business_area text
-  value_numeric numeric(24,6)
-  value_krwbn "double precision"
-  value_krw numeric(24,2)
-  unit text
-  currency varchar(10) [default: 'KRW']
-  source_page int
-  source_table_uid text
-  source_chunk_uid text
-  confidence "double precision" [note: 'CHECK 0..1 when present']
-  extraction_method text
-  evidence_text text
-  payload jsonb [not null, default: `'{}'::jsonb`]
-  created_at timestamptz [not null, default: `now()`]
-  updated_at timestamptz [not null, default: `now()`]
-
-  indexes {
-    (raw_article_id, metric_uid) [unique, name: 'uq_raw_article_financial_metric']
-    (peer_id, period) [name: 'idx_raw_article_financial_metrics_peer_period']
-    (metric_name, period) [name: 'idx_raw_article_financial_metrics_metric']
-    (source_type, source_name) [name: 'idx_raw_article_financial_metrics_source']
-    payload [name: 'idx_raw_article_financial_metrics_payload_gin', type: gin]
-  }
-}
-
-Table raw_article_business_signals {
-  id bigserial [pk]
-  raw_article_id bigint [not null, ref: > raw_articles.id, note: 'ON DELETE CASCADE']
-  signal_uid text [not null]
-  source_type varchar(50) [not null]
-  source_name varchar(100)
-  peer_id varchar(50)
-  period text
-  period_year int
-  period_quarter int
-  period_type text
-  business_area text [not null]
-  signal_type text [not null]
-  sentiment text [note: 'CHECK: positive | neutral | negative | mixed | unknown']
-  summary text [not null]
-  evidence_text text
-  source_page int
-  source_chunk_uid text
-  confidence "double precision" [note: 'CHECK 0..1 when present']
-  extraction_method text
-  payload jsonb [not null, default: `'{}'::jsonb`]
-  created_at timestamptz [not null, default: `now()`]
-  updated_at timestamptz [not null, default: `now()`]
-
-  indexes {
-    (raw_article_id, signal_uid) [unique, name: 'uq_raw_article_business_signal']
-    (peer_id, period) [name: 'idx_raw_article_business_signals_peer_period']
-    (business_area, signal_type) [name: 'idx_raw_article_business_signals_area_type']
-    (source_type, source_name) [name: 'idx_raw_article_business_signals_source']
-    payload [name: 'idx_raw_article_business_signals_payload_gin', type: gin]
-  }
-}
-
-// ============================================================
-// 3. Cards, evidence, images, weak signals, analysis ledger
-// ============================================================
 
 Table card_news {
-  id varchar(50) [pk, note: 'IC-YYYYMMDD-NNN']
-  company varchar(50) [not null, note: 'Legacy writer-facing peer id string']
+  id varchar(50) [pk]
+  company varchar(50) [not null]
+  peer_company_id varchar(50) [ref: > peer_companies.id]
   cluster_id bigint
   title varchar(500) [not null]
   summary_lines "text[]" [not null, default: `'{}'`]
-  event_type varchar(50) [not null, default: 'tech']
-  importance varchar(20) [not null, default: 'low']
-  importance_score float [not null, default: 0.0]
+  event_type varchar(50) [default: 'tech']
+  importance varchar(20) [default: 'low']
+  importance_score float [default: 0.0]
   implication jsonb [not null, default: `'{}'::jsonb`]
   sources jsonb [not null, default: `'[]'::jsonb`]
-  validation_pass boolean [not null, default: false]
-  validation_sc_score float [not null, default: 0.0]
-  is_human_reviewed boolean [default: false]
+  primary_keyword_category varchar(80)
+  keyword_categories jsonb [not null, default: `'[]'::jsonb`]
+  keywords "text[]" [not null, default: `'{}'`]
+  keyword_frequency jsonb [not null, default: `'{}'::jsonb`]
+  source_raw_article_ids "bigint[]" [not null, default: `'{}'`]
+  source_articles jsonb [not null, default: `'[]'::jsonb`]
+  evidence_payload jsonb [not null, default: `'{}'::jsonb`]
+  image_assets jsonb [not null, default: `'[]'::jsonb`]
+  legacy_payload jsonb [not null, default: `'{}'::jsonb`]
+  validation_pass boolean [default: false]
+  validation_sc_score float [default: 0.0]
   created_at timestamptz [default: `now()`]
-  peer_company_id varchar(50) [ref: > peer_companies.id]
 
   indexes {
-    company [name: 'idx_card_news_company']
-    cluster_id [name: 'idx_card_news_cluster_id']
-    event_type [name: 'idx_card_news_event_type']
-    importance [name: 'idx_card_news_importance']
-    validation_pass [name: 'idx_card_news_validation_pass']
     peer_company_id [name: 'idx_card_news_peer_company_id']
+    keywords [name: 'idx_card_news_keywords', type: gin]
+    keyword_categories [name: 'idx_card_news_keyword_categories', type: gin]
+    source_raw_article_ids [name: 'idx_card_news_source_raw_article_ids', type: gin]
   }
-
-  Note: '''
-    Renamed from issue_cards in V9.
-    PostgreSQL compatibility view issue_cards remains as SELECT * FROM card_news.
-  '''
-}
-
-Table card_news_articles {
-  id bigserial [pk]
-  card_news_id varchar(50) [not null, ref: > card_news.id, note: 'ON DELETE CASCADE']
-  raw_article_id bigint [not null, ref: > raw_articles.id, note: 'ON DELETE RESTRICT']
-  article_order int
-  relation_source varchar(40) [not null, default: 'evidence_provenance']
-  created_at timestamptz [not null, default: `now()`]
-
-  indexes {
-    (card_news_id, raw_article_id) [unique, name: 'uq_card_news_article']
-    raw_article_id [name: 'idx_card_news_articles_raw_article_id']
-    (card_news_id, article_order) [name: 'idx_card_news_articles_card_news_order']
-  }
-}
-
-Table evidence_chain {
-  issue_card_id varchar(50) [pk, ref: > card_news.id, note: 'Legacy PK, ON DELETE CASCADE']
-  source_links jsonb [not null, default: `'[]'::jsonb`]
-  provenance jsonb [not null, default: `'{}'::jsonb`, note: 'May contain raw_article_ids[]']
-  financial_refs jsonb [not null, default: `'[]'::jsonb`]
-  mbb_refs jsonb [not null, default: `'[]'::jsonb`]
-  financial_link jsonb [not null, default: `'{}'::jsonb`]
-  evidence_version varchar(20) [not null, default: 'v3.0']
-  pass boolean [not null, default: false]
-  missing "text[]" [not null, default: `'{}'`]
-  created_at timestamptz [default: `now()`]
-  card_news_id varchar(50) [unique, ref: > card_news.id, note: 'Nullable normalized alias, ON DELETE CASCADE']
-
-  indexes {
-    pass [name: 'idx_evidence_chain_pass']
-    evidence_version [name: 'idx_evidence_chain_version']
-    card_news_id [name: 'idx_evidence_chain_card_news_id']
-  }
-}
-
-Table article_images {
-  id bigserial [pk]
-  article_id bigint [ref: > raw_articles.id, note: 'Legacy FK, ON DELETE SET NULL']
-  cluster_id bigint
-  issue_card_id varchar(50) [ref: > card_news.id, note: 'Legacy FK, ON DELETE SET NULL']
-  source_url text [not null]
-  source_url_hash varchar(64) [not null, unique]
-  storage_path text [not null]
-  content_type varchar(50)
-  width int
-  height int
-  file_size_bytes int
-  alt_text text
-  attribution text
-  fetched_at timestamptz
-  created_at timestamptz [default: `now()`]
-  raw_article_id bigint [ref: > raw_articles.id, note: 'Normalized alias, ON DELETE SET NULL']
-  card_news_id varchar(50) [ref: > card_news.id, note: 'Normalized alias, ON DELETE SET NULL']
-  image_order int
-  caption text
-  updated_at timestamptz
-
-  indexes {
-    issue_card_id [name: 'idx_article_images_card']
-    cluster_id [name: 'idx_article_images_cluster']
-    raw_article_id [name: 'idx_article_images_raw_article_id']
-    card_news_id [name: 'idx_article_images_card_news_id']
-  }
-}
-
-Table weak_signal_cards {
-  id varchar(40) [pk, note: 'WS-YYYYMMDD-NNN']
-  detected_at timestamptz [not null, default: `now()`]
-  signal_type varchar(40) [not null, note: 'hiring_surge | new_role | dept_concentration | seniority_shift | tone_anomaly']
-  peer_id varchar(40) [not null, note: 'Legacy writer-facing peer id']
-  strength varchar(10) [not null, note: 'weak | medium | strong']
-  confidence numeric(3,2) [not null, note: 'CHECK 0..1']
-  evidence jsonb [not null, default: `'[]'::jsonb`]
-  interpretation text
-  window_days int [not null, default: 90]
-  metadata jsonb [not null, default: `'{}'::jsonb`]
-  alerts_dispatched int [not null, default: 0]
-  routing_log jsonb
-  peer_company_id varchar(50) [ref: > peer_companies.id]
-  source_raw_article_id bigint [ref: > raw_articles.id, note: 'ON DELETE SET NULL']
-  card_news_id varchar(50) [ref: > card_news.id, note: 'ON DELETE SET NULL']
-
-  indexes {
-    (peer_id, detected_at) [name: 'idx_weak_signal_peer_time']
-    (signal_type, strength, detected_at) [name: 'idx_weak_signal_type_strength']
-    detected_at [name: 'idx_weak_signal_strong_recent', note: 'Partial index WHERE strength=strong']
-    peer_company_id [name: 'idx_weak_signal_cards_peer_company_id']
-    source_raw_article_id [name: 'idx_weak_signal_cards_source_raw_article_id']
-    card_news_id [name: 'idx_weak_signal_cards_card_news_id']
-  }
-}
-
-Table weak_signal_card_articles {
-  id bigserial [pk]
-  weak_signal_card_id varchar(40) [not null, ref: > weak_signal_cards.id, note: 'ON DELETE CASCADE']
-  raw_article_id bigint [not null, ref: > raw_articles.id, note: 'ON DELETE RESTRICT']
-  article_order int
-  created_at timestamptz [not null, default: `now()`]
-
-  indexes {
-    (weak_signal_card_id, raw_article_id) [unique, name: 'uq_weak_signal_card_article']
-    raw_article_id [name: 'idx_weak_signal_card_articles_raw_article_id']
-    (weak_signal_card_id, article_order) [name: 'idx_weak_signal_card_articles_signal_order']
-  }
-}
-
-Table analysis_ledger {
-  id bigserial [pk]
-  analysis_type varchar(20) [not null]
-  analysis_id varchar(100) [not null]
-  peer_ids jsonb [not null, note: 'Legacy JSONB peer id array']
-  conclusion_one_liner text [not null]
-  strategy_label varchar(30)
-  confidence real [not null]
-  source_card_ids jsonb [not null, note: 'Legacy JSONB card id array']
-  sk_ax_implication text
-  langfuse_trace_id varchar(64)
-  prompt_version varchar(20)
-  git_sha varchar(12)
-  included_in_pack boolean [not null, default: true]
-  superseded_by bigint [ref: > analysis_ledger.id]
-  created_at timestamptz [default: `now()`]
-
-  indexes {
-    peer_ids [name: 'idx_ledger_peer_active', type: gin]
-    created_at [name: 'idx_ledger_active_recent', note: 'Partial active index']
-    superseded_by [name: 'idx_ledger_supersede', note: 'Partial index WHERE superseded_by IS NOT NULL']
-  }
-}
-
-Table analysis_ledger_card_news {
-  id bigserial [pk]
-  analysis_ledger_id bigint [not null, ref: > analysis_ledger.id, note: 'ON DELETE CASCADE']
-  card_news_id varchar(50) [not null, ref: > card_news.id, note: 'ON DELETE RESTRICT']
-  card_order int
-  created_at timestamptz [not null, default: `now()`]
-
-  indexes {
-    (analysis_ledger_id, card_news_id) [unique, name: 'uq_analysis_ledger_card_news']
-    card_news_id [name: 'idx_analysis_ledger_card_news_card_news_id']
-    (analysis_ledger_id, card_order) [name: 'idx_analysis_ledger_card_news_ledger_order']
-  }
-}
-
-Table analysis_ledger_peer_companies {
-  id bigserial [pk]
-  analysis_ledger_id bigint [not null, ref: > analysis_ledger.id, note: 'ON DELETE CASCADE']
-  peer_company_id varchar(50) [not null, ref: > peer_companies.id, note: 'ON DELETE RESTRICT']
-  created_at timestamptz [not null, default: `now()`]
-
-  indexes {
-    (analysis_ledger_id, peer_company_id) [unique, name: 'uq_analysis_ledger_peer_company']
-    peer_company_id [name: 'idx_analysis_ledger_peer_companies_peer_company_id']
-  }
-}
-
-// ============================================================
-// 4. Business baselines and briefing delivery
-// ============================================================
-
-Table job_postings {
-  id bigserial [pk]
-  peer_id varchar(50) [not null, ref: > peer_companies.id, note: 'Legacy writer-facing FK']
-  job_title text [not null]
-  department varchar(100)
-  tech_stack "text[]" [default: `'{}'`]
-  snapshot_week date [not null]
-  is_new boolean [default: true]
-  url text
-  collected_at timestamptz [default: `now()`]
-  peer_company_id varchar(50) [ref: > peer_companies.id]
-
-  indexes {
-    (peer_id, snapshot_week) [name: 'idx_job_postings_peer_week']
-    peer_company_id [name: 'idx_job_postings_peer_company_id']
-  }
-}
-
-Table peer_financials {
-  id bigserial [pk]
-  peer_id varchar(50) [not null, ref: > peer_companies.id, note: 'Legacy writer-facing FK']
-  period varchar(10) [not null]
-  report_date date
-  dart_rcept_no varchar(40)
-  ir_page int
-  revenue_total_krwbn float
-  operating_profit_krwbn float
-  segment_revenue jsonb [default: `'{}'::jsonb`]
-  ai_revenue_share_pct float
-  headcount jsonb [default: `'{}'::jsonb`]
-  raw_payload jsonb
-  source varchar(20) [default: 'stub_v0']
-  created_at timestamptz [default: `now()`]
-  peer_company_id varchar(50) [ref: > peer_companies.id]
-
-  indexes {
-    (peer_id, period) [unique, name: 'peer_financials_peer_id_period_key']
-    (peer_id, period) [name: 'idx_peer_financials_peer_period']
-    peer_company_id [name: 'idx_peer_financials_peer_company_id']
-  }
-}
-
-Table market_instruments {
-  id bigserial [pk]
-  peer_company_id varchar(50) [ref: > peer_companies.id, note: 'ON DELETE RESTRICT']
-  ticker varchar(20) [not null]
-  exchange varchar(20) [not null, default: 'KRX']
-  currency varchar(10) [not null, default: 'KRW']
-  instrument_name varchar(100)
-  is_active boolean [not null, default: true]
-  created_at timestamptz [not null, default: `now()`]
-  updated_at timestamptz [not null, default: `now()`]
-
-  indexes {
-    (exchange, ticker) [unique, name: 'uq_market_instruments_exchange_ticker']
-    peer_company_id [name: 'idx_market_instruments_peer_company', note: 'Partial index WHERE peer_company_id IS NOT NULL']
-  }
-
-  Note: 'Normalized stock/market instrument master introduced in V28.'
 }
 
 Table market_price_ohlcv {
   id bigserial [pk]
   raw_article_id bigint [ref: > raw_articles.id, note: 'ON DELETE SET NULL']
-  instrument_id bigint [ref: > market_instruments.id, note: 'ON DELETE RESTRICT']
-  peer_id text [note: 'Legacy writer-facing peer id retained for compatibility']
-  ticker text [not null, note: 'Legacy ticker retained for compatibility']
+  instrument_id bigint
+  peer_id text
+  peer_company_id varchar(50) [ref: > peer_companies.id, note: 'ON DELETE SET NULL']
+  ticker text [not null]
+  exchange varchar(20) [not null, default: 'KRX']
+  instrument_name varchar(100)
   trade_date date [not null]
   open numeric
   high numeric
@@ -515,511 +198,150 @@ Table market_price_ohlcv {
   publisher text
   collected_at timestamptz
   payload jsonb [not null, default: `'{}'::jsonb`]
+  instrument_payload jsonb [not null, default: `'{}'::jsonb`]
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
 
   indexes {
-    (ticker, trade_date, source_name) [unique, name: 'market_price_ohlcv_ticker_trade_date_source_name_key']
-    (peer_id, trade_date) [name: 'idx_market_price_ohlcv_peer_date']
-    (instrument_id, trade_date) [name: 'idx_market_price_ohlcv_instrument_date', note: 'Partial index WHERE instrument_id IS NOT NULL']
-    raw_article_id [name: 'idx_market_price_ohlcv_raw_article', note: 'Partial index WHERE raw_article_id IS NOT NULL']
-  }
-
-  Note: '''
-    Daily OHLCV stock data. V28 brings the live table under Flyway,
-    preserves accumulated stock rows, and adds instrument_id normalization.
-  '''
-}
-
-Table mbb_baseline {
-  id bigserial [pk]
-  source varchar(50) [not null]
-  report_id varchar(100)
-  title text [not null]
-  published_date date
-  url text
-  summary text
-  sectors "text[]" [default: `'{}'`]
-  keywords "text[]" [default: `'{}'`]
-  raw_payload jsonb [default: `'{}'::jsonb`]
-  is_active boolean [default: true]
-  created_at timestamptz [default: `now()`]
-
-  indexes {
-    (source, published_date) [name: 'idx_mbb_baseline_source_date']
-    is_active [name: 'idx_mbb_baseline_active']
-  }
-}
-
-Table recipients {
-  id bigserial [pk]
-  email varchar(255) [not null, unique]
-  name varchar(100)
-  role varchar(20) [not null, note: 'pm | executive | admin']
-  impact_threshold smallint [not null, default: 3]
-  locale varchar(10) [default: 'ko-KR']
-  is_active boolean [default: true]
-  created_at timestamptz [default: `now()`]
-  updated_at timestamptz [default: `now()`]
-
-  indexes {
-    (is_active, role) [name: 'idx_recipients_active']
-  }
-}
-
-Table briefing_history {
-  id bigserial [pk]
-  recipient_id bigint [not null, ref: > recipients.id, note: 'ON DELETE RESTRICT']
-  briefing_date date [not null]
-  run_id varchar(50)
-  card_count int [not null, default: 0]
-  card_ids "text[]" [default: `'{}'`, note: 'Legacy card_news.id array']
-  subject text
-  body_preview text
-  status varchar(20) [not null, note: 'sent | failed | skipped']
-  smtp_response text
-  error_msg text
-  retry_count smallint [default: 0]
-  sent_at timestamptz [default: `now()`]
-  created_at timestamptz [default: `now()`]
-  briefing_report_id varchar(40) [ref: > briefing_reports.id, note: 'ON DELETE SET NULL']
-
-  indexes {
-    (recipient_id, briefing_date) [name: 'idx_briefing_history_recipient_date']
-    run_id [name: 'idx_briefing_history_run']
-    status [name: 'idx_briefing_history_status']
-    briefing_report_id [name: 'idx_briefing_history_briefing_report_id']
+    (ticker, trade_date, source_name) [unique, name: 'uq_market_price_ohlcv_ticker_date_source']
+    (peer_company_id, trade_date) [name: 'idx_market_price_ohlcv_peer_company_date']
+    (exchange, ticker, trade_date) [name: 'idx_market_price_ohlcv_exchange_ticker_date']
   }
 }
 
 Table briefing_reports {
-  id varchar(40) [pk, note: 'BR-YYYYMMDD-NNN']
+  id varchar(40) [pk]
   title varchar(500) [not null]
-  briefing_type varchar(20) [not null, note: 'daily | weekly | custom']
+  briefing_type varchar(20) [not null]
   date_from date [not null]
   date_to date [not null]
+  report_date date
+  period_label text
   requested_by_user_id bigint
-  status varchar(20) [not null, default: 'queued', note: 'queued | running | completed | completed_partial | failed']
+  status varchar(20) [not null, default: 'queued']
   progress numeric(3,2) [not null, default: 0.0]
+  key_summary text
+  sk_implication text
+  related_card_ids "text[]" [not null, default: `'{}'`]
+  related_raw_article_ids "bigint[]" [not null, default: `'{}'`]
+  recipients jsonb [not null, default: `'[]'::jsonb`]
+  delivery_history jsonb [not null, default: `'[]'::jsonb`]
   payload jsonb
+  legacy_payload jsonb [not null, default: `'{}'::jsonb`]
   error_message text
   confidence numeric(3,2)
-  provenance jsonb [note: 'May contain source_card_ids[]']
+  provenance jsonb
   created_at timestamptz [not null, default: `now()`]
   completed_at timestamptz
-
-  indexes {
-    (status, created_at) [name: 'idx_briefing_status']
-    (requested_by_user_id, created_at) [name: 'idx_briefing_user', note: 'Partial index WHERE requested_by_user_id IS NOT NULL']
-    (date_from, date_to) [name: 'idx_briefing_date_range']
-  }
 }
 
-Table briefing_report_cards {
-  id bigserial [pk]
-  briefing_report_id varchar(40) [not null, ref: > briefing_reports.id, note: 'ON DELETE CASCADE']
-  card_news_id varchar(50) [not null, ref: > card_news.id, note: 'ON DELETE RESTRICT']
-  card_order int
-  created_at timestamptz [not null, default: `now()`]
-
-  indexes {
-    (briefing_report_id, card_news_id) [unique, name: 'uq_briefing_report_card']
-    card_news_id [name: 'idx_briefing_report_cards_card_news_id']
-    (briefing_report_id, card_order) [name: 'idx_briefing_report_cards_report_order']
-  }
-}
-
-Table briefing_report_articles {
-  id bigserial [pk]
-  briefing_report_id varchar(40) [not null, ref: > briefing_reports.id, note: 'ON DELETE CASCADE']
-  raw_article_id bigint [not null, ref: > raw_articles.id, note: 'ON DELETE RESTRICT']
-  article_order int
-  created_at timestamptz [not null, default: `now()`]
-
-  indexes {
-    (briefing_report_id, raw_article_id) [unique, name: 'uq_briefing_report_article']
-    raw_article_id [name: 'idx_briefing_report_articles_raw_article_id']
-    (briefing_report_id, article_order) [name: 'idx_briefing_report_articles_report_order']
-  }
-}
-
-Table briefing_recipients {
-  id bigserial [pk]
-  briefing_report_id varchar(40) [not null, ref: > briefing_reports.id, note: 'ON DELETE CASCADE']
-  recipient_id bigint [not null, ref: > recipients.id, note: 'ON DELETE RESTRICT']
-  delivery_status varchar(50)
-  sent_at timestamptz
-  created_at timestamptz [not null, default: `now()`]
-
-  indexes {
-    (briefing_report_id, recipient_id) [unique, name: 'uq_briefing_recipient']
-    recipient_id [name: 'idx_briefing_recipients_recipient_id']
-    delivery_status [name: 'idx_briefing_recipients_status']
-  }
-}
-
-Table briefing_history_cards {
-  id bigserial [pk]
-  briefing_history_id bigint [not null, ref: > briefing_history.id, note: 'ON DELETE CASCADE']
-  card_news_id varchar(50) [not null, ref: > card_news.id, note: 'ON DELETE RESTRICT']
-  card_order int
-  created_at timestamptz [not null, default: `now()`]
-
-  indexes {
-    (briefing_history_id, card_news_id) [unique, name: 'uq_briefing_history_card']
-    card_news_id [name: 'idx_briefing_history_cards_card_news_id']
-    (briefing_history_id, card_order) [name: 'idx_briefing_history_cards_history_order']
-  }
-}
-
-// ============================================================
-// 5. Chat, feedback, operations, audit, cost
-// ============================================================
-
-Table chat_sessions {
-  id uuid [pk, default: `gen_random_uuid()`]
-  user_id bigint
-  title varchar(200)
-  summary text
-  turn_count int [not null, default: 0]
-  last_message_at timestamptz
-  metadata jsonb [not null, default: `'{}'::jsonb`]
-  created_at timestamptz [not null, default: `now()`]
-  updated_at timestamptz [not null, default: `now()`]
-
-  indexes {
-    (user_id, last_message_at) [name: 'idx_chat_sessions_user', note: 'Partial index WHERE user_id IS NOT NULL']
-    last_message_at [name: 'idx_chat_sessions_recent']
-  }
-}
-
-Table chat_turns {
-  id bigserial [pk]
-  session_id uuid [not null, ref: > chat_sessions.id, note: 'ON DELETE CASCADE']
-  turn_idx int [not null]
-  role varchar(20) [not null, note: 'user | assistant | system']
-  content text [not null]
-  intent varchar(40)
-  entities jsonb
-  sources jsonb
-  follow_up_suggestions jsonb
+Table mixer_results {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  source_analysis_id varchar(100) [unique]
+  title varchar(300)
+  requested_by_user_id bigint
+  input_card_ids "text[]" [not null, default: `'{}'`]
+  input_peer_ids "text[]" [not null, default: `'{}'`]
+  input_keywords "text[]" [not null, default: `'{}'`]
+  ratios jsonb [not null, default: `'{}'::jsonb`]
+  generated_implication jsonb [not null, default: `'{}'::jsonb`]
+  insight_brief jsonb [not null, default: `'[]'::jsonb`]
+  radar_axes jsonb [not null, default: `'[]'::jsonb`]
+  connections jsonb [not null, default: `'[]'::jsonb`]
+  sk_ax_implication text
+  final_one_liner text
   confidence numeric(3,2)
-  langfuse_trace_id varchar(80)
+  payload jsonb [not null, default: `'{}'::jsonb`]
   created_at timestamptz [not null, default: `now()`]
-
-  indexes {
-    (session_id, turn_idx) [unique, name: 'chat_turns_session_id_turn_idx_key']
-    (session_id, turn_idx) [name: 'idx_chat_turns_session']
-    langfuse_trace_id [name: 'idx_chat_turns_trace', note: 'Partial index WHERE langfuse_trace_id IS NOT NULL']
-  }
-}
-
-Table feedback {
-  id bigserial [pk]
-  created_at timestamptz [not null, default: `now()`]
-  user_id bigint [not null]
-  artifact_type varchar(20) [not null, note: 'card | briefing | insight | mixer | chat_turn']
-  artifact_id varchar(80) [not null]
-  thumbs varchar(4) [note: 'up | down']
-  rating int [note: '1..5']
-  comment text
-  reported_issue varchar(40) [note: 'hallucination | outdated | irrelevant | low_quality | other']
-  langfuse_trace_id varchar(80)
-  langfuse_score_id varchar(80)
-  metadata jsonb [not null, default: `'{}'::jsonb`]
-  card_news_id varchar(50) [ref: > card_news.id, note: 'ON DELETE SET NULL']
-  briefing_report_id varchar(40) [ref: > briefing_reports.id, note: 'ON DELETE SET NULL']
-  chat_turn_id bigint [ref: > chat_turns.id, note: 'ON DELETE SET NULL']
-
-  indexes {
-    (artifact_type, artifact_id, created_at) [name: 'idx_feedback_artifact']
-    (user_id, created_at) [name: 'idx_feedback_user']
-    (reported_issue, created_at) [name: 'idx_feedback_issue', note: 'Partial index WHERE reported_issue IS NOT NULL']
-    langfuse_trace_id [name: 'idx_feedback_trace', note: 'Partial index WHERE langfuse_trace_id IS NOT NULL']
-    card_news_id [name: 'idx_feedback_card_news_id']
-    briefing_report_id [name: 'idx_feedback_briefing_report_id']
-    chat_turn_id [name: 'idx_feedback_chat_turn_id']
-  }
-}
-
-Table pipeline_logs {
-  id bigserial [pk]
-  pipeline_step varchar(50) [not null]
-  company varchar(50)
-  input_count int [not null, default: 0]
-  output_count int [not null, default: 0]
-  elapsed_ms int [not null, default: 0]
-  llm_tokens_used int [not null, default: 0]
-  error_msg text
-  created_at timestamptz [default: `now()`]
-  crawl_run_id uuid [ref: > crawl_runs.id, note: 'ON DELETE SET NULL']
-
-  indexes {
-    pipeline_step [name: 'idx_pipeline_logs_step']
-    company [name: 'idx_pipeline_logs_company']
-    crawl_run_id [name: 'idx_pipeline_logs_crawl_run_id']
-  }
-}
-
-Table crawl_logs {
-  id bigserial [pk]
-  peer_id varchar(50) [not null, note: 'Logical peer id, no SQL FK']
-  source_name varchar(100) [not null]
-  started_at timestamptz [not null]
-  finished_at timestamptz
-  total_count int [default: 0]
-  success_count int [default: 0]
-  skipped_count int [default: 0]
-  error_msg text
-  created_at timestamptz [default: `now()`]
-  crawl_run_id uuid [ref: > crawl_runs.id, note: 'ON DELETE SET NULL']
-
-  indexes {
-    crawl_run_id [name: 'idx_crawl_logs_crawl_run_id']
-  }
-}
-
-Table crawl_cursors {
-  source_name varchar(100) [pk]
-  cursor_date date [not null]
-  until_date date [not null]
-  window_days int [not null]
-  max_windows_per_run int [not null, default: 1]
-  enabled boolean [not null, default: true]
   updated_at timestamptz [not null, default: `now()`]
 }
 
-Table crawl_runs {
-  id uuid [pk]
-  run_type varchar(30) [not null]
-  source_name varchar(100) [not null]
-  window_start date [not null]
-  window_end date [not null]
-  status varchar(30) [not null]
-  inserted_count int [not null, default: 0]
-  skipped_count int [not null, default: 0]
-  error_message text
-  started_at timestamptz [not null, default: `now()`]
-  finished_at timestamptz
-
-  indexes {
-    (source_name, started_at) [name: 'idx_crawl_runs_source_started']
-    status [name: 'idx_crawl_runs_status']
-    (window_start, window_end) [name: 'idx_crawl_runs_window']
-  }
-}
-
-Table crawl_run_articles {
-  id bigserial [pk]
-  crawl_run_id uuid [not null, ref: > crawl_runs.id, note: 'ON DELETE CASCADE']
-  raw_article_id bigint [ref: > raw_articles.id, note: 'ON DELETE SET NULL']
-  url text [not null]
-  url_hash varchar(32) [not null]
-  discovered_at timestamptz [not null, default: `now()`]
-  action varchar(30) [not null]
-  fetch_status varchar(30)
-  error_message text
-  source_rank int
-  raw_payload jsonb [not null, default: `'{}'::jsonb`]
-  created_at timestamptz [not null, default: `now()`]
-
-  indexes {
-    (crawl_run_id, url_hash) [unique, name: 'uq_crawl_run_articles_run_url']
-    crawl_run_id [name: 'idx_crawl_run_articles_run']
-    raw_article_id [name: 'idx_crawl_run_articles_article']
-    action [name: 'idx_crawl_run_articles_action']
-    url_hash [name: 'idx_crawl_run_articles_url_hash']
-  }
-}
-
-Table golden_set {
-  id bigserial [pk]
-  query text [not null]
-  expected_card_ids "text[]" [default: `'{}'`, note: 'Legacy card_news.id array']
-  annotator varchar(50)
-  difficulty varchar(10)
-  created_at timestamptz [default: `now()`]
-}
-
-Table usage_logs {
-  id bigserial [pk]
-  occurred_at timestamptz [not null, default: `now()`]
-  occurred_date date [not null]
-  user_id bigint
-  actor_kind varchar(20) [not null, note: 'user | scheduler | admin']
-  agent varchar(120) [not null]
-  model varchar(60) [not null]
-  input_tokens int [not null]
-  output_tokens int [not null]
-  elapsed_ms int
-  cost_krw numeric(12,4) [not null]
-  success boolean [not null]
-  error_class varchar(80)
-  langfuse_trace_id varchar(80)
-  langfuse_observation_id varchar(80)
-  pipeline_log_id bigint [ref: > pipeline_logs.id, note: 'ON DELETE SET NULL']
-  metadata jsonb [not null, default: `'{}'::jsonb`]
-
-  indexes {
-    (occurred_date, model) [name: 'idx_usage_logs_date']
-    (agent, occurred_date) [name: 'idx_usage_logs_agent']
-    (user_id, occurred_date) [name: 'idx_usage_logs_user', note: 'Partial index WHERE user_id IS NOT NULL']
-    langfuse_trace_id [name: 'idx_usage_logs_trace', note: 'Partial index WHERE langfuse_trace_id IS NOT NULL']
-    pipeline_log_id [name: 'idx_usage_logs_pipeline_log_id']
-  }
-}
-
-Table cost_daily_billed {
-  id bigserial [pk]
-  date date [not null]
-  vendor varchar(40) [not null]
-  model varchar(60) [not null]
-  billed_cost_usd numeric(12,6) [not null]
-  billed_input_tokens bigint
-  billed_output_tokens bigint
-  krw_per_usd numeric(8,2) [not null]
-  billed_cost_krw numeric(14,4) [note: 'Generated: billed_cost_usd * krw_per_usd']
-  fetched_at timestamptz [not null, default: `now()`]
-  source_uri varchar(200)
-  raw_payload jsonb
-
-  indexes {
-    (date, vendor, model) [unique, name: 'cost_billed_unique']
-    date [name: 'idx_cost_billed_date']
-    (vendor, date) [name: 'idx_cost_billed_vendor_date']
-  }
-}
-
-Table infra_cost_daily {
-  id bigserial [pk]
-  date date [not null]
-  service varchar(80) [not null]
-  resource varchar(120)
-  cost_usd numeric(12,4) [not null]
-  fetched_at timestamptz [not null, default: `now()`]
-  raw_payload jsonb
-
-  indexes {
-    (date, service, resource) [unique, name: 'infra_cost_unique', note: 'UNIQUE NULLS NOT DISTINCT']
-    (date, service) [name: 'idx_infra_cost_date']
-    (service, date) [name: 'idx_infra_cost_service_date']
-  }
-}
-
-Table audit_logs {
-  id bigserial [pk]
-  occurred_at timestamptz [not null, default: `now()`]
-  actor_kind varchar(20) [not null, note: 'user | system | scheduler | admin']
-  actor_label varchar(200)
-  user_id bigint
-  action_type varchar(80) [not null]
-  resource_type varchar(40)
-  resource_id varchar(80)
-  ip inet
-  user_agent text
+Table insight_reports {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  source_analysis_id varchar(100) [unique]
+  title varchar(300)
+  insight_type varchar(40) [not null, default: 'cascade']
+  status varchar(30) [not null, default: 'completed']
+  requested_by_user_id bigint
+  focus_peer_ids "text[]" [not null, default: `'{}'`]
+  focus_card_ids "text[]" [not null, default: `'{}'`]
+  focus_keywords "text[]" [not null, default: `'{}'`]
+  date_from date
+  date_to date
+  summary text
+  final_one_liner text
+  sk_ax_implication text
+  reasoning_steps jsonb [not null, default: `'[]'::jsonb`]
+  evidence jsonb [not null, default: `'[]'::jsonb`]
+  source_card_ids "text[]" [not null, default: `'{}'`]
+  confidence numeric(3,2)
   payload jsonb [not null, default: `'{}'::jsonb`]
-  request_id uuid
-  outcome varchar(20) [not null, default: 'success', note: 'success | fail | denied']
-  error_message text
-
-  indexes {
-    (user_id, occurred_at) [name: 'idx_audit_user_date', note: 'Partial index WHERE user_id IS NOT NULL']
-    (action_type, occurred_at) [name: 'idx_audit_action_date']
-    (resource_type, resource_id) [name: 'idx_audit_resource', note: 'Partial index WHERE resource_type IS NOT NULL']
-    request_id [name: 'idx_audit_request_id', note: 'Partial index WHERE request_id IS NOT NULL']
-  }
-
-  Note: 'Append-only audit log. UPDATE/DELETE are blocked by triggers.'
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
 }
 
-Table user_events {
+Table global_industry_trends {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  source_analysis_id varchar(100) [unique]
+  trend_date date [not null, default: `current_date`]
+  industry varchar(100) [not null]
+  region varchar(50) [not null, default: 'global']
+  keyword varchar(120) [not null]
+  keyword_category varchar(80)
+  title varchar(300)
+  summary text
+  mention_count int [not null, default: 0]
+  impact_score numeric(5,2)
+  confidence numeric(3,2)
+  related_peer_ids "text[]" [not null, default: `'{}'`]
+  related_card_ids "text[]" [not null, default: `'{}'`]
+  source_raw_article_ids "bigint[]" [not null, default: `'{}'`]
+  sk_ax_implication text
+  payload jsonb [not null, default: `'{}'::jsonb`]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (trend_date, industry, region, keyword) [unique, name: 'uq_global_industry_trends_daily_keyword']
+  }
+}
+
+Table legacy_records {
   id bigserial [pk]
-  occurred_at timestamptz [not null, default: `now()`]
-  user_id bigint
-  session_id uuid
-  event_type varchar(40) [not null]
-  event_props jsonb [not null, default: `'{}'::jsonb`]
-  ip inet
-  user_agent text
-  request_id uuid
+  source_table varchar(100) [not null]
+  source_pk text
+  owner_table varchar(100)
+  owner_id text
+  payload jsonb [not null]
+  archived_at timestamptz [not null, default: `now()`]
 
   indexes {
-    (event_type, occurred_at) [name: 'idx_user_events_type_time']
-    (user_id, occurred_at) [name: 'idx_user_events_user_time', note: 'Partial index WHERE user_id IS NOT NULL']
-    (session_id, occurred_at) [name: 'idx_user_events_session_time', note: 'Partial index WHERE session_id IS NOT NULL']
-    event_props [name: 'idx_user_events_props', type: gin]
+    (source_table, source_pk) [unique, name: 'uq_legacy_records_source_pk']
+    (source_table, archived_at) [name: 'idx_legacy_records_source']
+    (owner_table, owner_id) [name: 'idx_legacy_records_owner']
   }
+
+  Note: 'Data-retention archive for V30-collapsed legacy tables; excluded from product ERD views.'
 }
 
-// ============================================================
-// Logical refs for legacy JSON/array fields and cluster ids
-// ============================================================
-
-Ref: "card_news"."cluster_id" > "raw_articles"."cluster_id"
-Ref: "article_images"."cluster_id" > "raw_articles"."cluster_id"
-
-// JSON/array logical references (not SQL-enforced):
-// - evidence_chain.provenance.raw_article_ids[] -> raw_articles.id
-// - briefing_history.card_ids[] -> card_news.id
-// - golden_set.expected_card_ids[] -> card_news.id
-// - analysis_ledger.peer_ids[] -> peer_companies.id
-// - analysis_ledger.source_card_ids[] -> card_news.id
-// - briefing_reports.provenance.source_card_ids[] -> card_news.id
-
-// ============================================================
-// Table groups
-// ============================================================
-
-TableGroup "1. Raw Collection" {
+TableGroup "Minimal Product ERD" {
   peer_companies
   raw_articles
-  article_peer_companies
   raw_article_source_metadata
   raw_article_parse_results
-  raw_article_financial_metrics
-  raw_article_business_signals
-}
-
-TableGroup "2. AI Outputs" {
   card_news
-  card_news_articles
-  evidence_chain
-  article_images
-  weak_signal_cards
-  weak_signal_card_articles
-  analysis_ledger
-  analysis_ledger_card_news
-  analysis_ledger_peer_companies
-}
-
-TableGroup "3. Baselines & Briefings" {
-  job_postings
-  peer_financials
-  market_instruments
   market_price_ohlcv
-  mbb_baseline
-  recipients
-  briefing_history
   briefing_reports
-  briefing_report_cards
-  briefing_report_articles
-  briefing_recipients
-  briefing_history_cards
+  mixer_results
+  insight_reports
+  global_industry_trends
 }
 
-TableGroup "4. Ops & Admin" {
-  chat_sessions
-  chat_turns
-  feedback
-  pipeline_logs
-  crawl_logs
+TableGroup "Operational State / Retention" {
   crawl_cursors
-  crawl_runs
-  crawl_run_articles
-  golden_set
-  usage_logs
-  cost_daily_billed
-  infra_cost_daily
-  audit_logs
-  user_events
+  legacy_records
+}
+
+TableGroup "DB Management" {
+  flyway_schema_history
 }

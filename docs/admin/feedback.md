@@ -17,7 +17,7 @@
 
 1. **수신** — frontend `POST /api/cards/{id}/feedback`, `POST /api/briefings/{id}/feedback`, `POST /api/insights/{id}/feedback`, `POST /api/mixer/{id}/feedback`, `POST /api/chat/turns/{turn_id}/feedback`
 2. **이중 적재** — `feedback` 테이블 (영구 비즈니스 데이터) + Langfuse score API (analytics drill-down)
-3. **링크** — `feedback.langfuse_trace_id` 가 `evidence_chain.provenance.langfuse_trace_id` 또는 chat_sessions.turns[i].langfuse_trace_id 와 일치
+3. **링크** — `feedback.langfuse_trace_id` 가 `card_news.evidence_payload.provenance.langfuse_trace_id` 또는 chat turn trace id 와 일치
 4. **batch eval (W10+)** — `news_quality_eval` job 이 prompt_version 별 thumbs_up / down 집계 → 약한 prompt 식별
 
 ## 3. 책임 NOT
@@ -74,7 +74,7 @@ public ApiResponse submitCardFeedback(@PathVariable String id, @RequestBody Feed
     long userId = SecurityContextHolder.getCurrentUserId();
 
     // 1) artifact 의 langfuse_trace_id 조회
-    String traceId = cardNewsService.getLangfuseTraceId(id);  // evidence_chain.provenance.langfuse_trace_id
+    String traceId = cardNewsService.getLangfuseTraceId(id);  // card_news.evidence_payload.provenance.langfuse_trace_id
 
     // 2) DB INSERT
     Feedback fb = feedbackService.save(userId, "card", id, input, traceId);

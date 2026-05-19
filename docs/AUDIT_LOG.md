@@ -37,7 +37,7 @@ BE Spring Security `@PreAuthorize("hasRole('SUPER_ADMIN')")` 등으로 강제.
 
 ## 3. 책임 NOT
 
-- **시스템 메트릭** — pipeline_logs (step latency, count) 별도
+- **시스템 메트릭** — V30 이후 active `pipeline_logs` 테이블 없음. 필요 시 Prometheus 또는 `legacy_records` archive 별도 조회
 - **LLM token usage** — usage_logs (TokenBudgetMiddleware)
 - **에러 trace** — application logs (Loki / OpenSearch)
 - **personally identifiable information masking** — 본 middleware 가 마킹만 (`sensitive=true`), 마스킹은 SettingsController 의 read 시점

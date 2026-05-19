@@ -1,410 +1,49 @@
--- ============================================================
--- AXIS — PostgreSQL DDL
--- Single Source of Truth: axis-infra/db/schema.sql
--- 직접 수정 금지. 변경은 마이그레이션 파일로 관리하세요.
--- ============================================================
+-- AXIS minimal product schema, V30 target
+-- Snapshot date: 2026-05-19 KST
+--
+-- Physical app tables after V30:
+--   peer_companies, raw_articles, raw_article_source_metadata,
+--   raw_article_parse_results, card_news, market_price_ohlcv,
+--   briefing_reports, mixer_results, insight_reports,
+--   global_industry_trends, crawl_cursors, legacy_records.
 
--- Extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 
--- ============================================================
--- 1. peer_companies — 모니터링 대상 Peer사 + 자사 (SK AX)
--- ============================================================
--- 4사 (samsung_sds · lg_cns · hyundai_autoever · posco_dx) — 풀 파이프라인
--- sk_ax — 자사. raw_articles 까지만 적재, card_news 생성 X (id 로 분기)
+CREATE OR REPLACE FUNCTION axis_touch_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE TABLE IF NOT EXISTS peer_companies (
-    id          VARCHAR(50)  PRIMARY KEY,            -- 'samsung_sds' · 'lg_cns' · 'hyundai_autoever' · 'posco_dx' · 'sk_ax'
-    name        VARCHAR(100) NOT NULL,
-    tier        VARCHAR(20)  NOT NULL DEFAULT 'domestic',
-    keywords    TEXT[]       DEFAULT '{}',            -- 수집 키워드 목록
-    is_active   BOOLEAN      DEFAULT TRUE,
-    created_at  TIMESTAMPTZ  DEFAULT NOW(),
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    tier VARCHAR(20) NOT NULL DEFAULT 'domestic',
+    keywords TEXT[] DEFAULT '{}',
+    dart_period TEXT,
+    dart_revenue_krwbn NUMERIC(18,2),
+    dart_operating_profit_krwbn NUMERIC(18,2),
+    dart_operating_margin_pct NUMERIC(9,4),
+    dart_revenue_growth_pct NUMERIC(9,4),
+    dart_operating_profit_growth_pct NUMERIC(9,4),
+    ax_revenue_share_pct NUMERIC(9,4),
+    contract_count INT NOT NULL DEFAULT 0,
+    core_keywords TEXT[] NOT NULL DEFAULT '{}',
+    peer_plus_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    financial_history JSONB NOT NULL DEFAULT '[]'::jsonb,
+    job_posting_history JSONB NOT NULL DEFAULT '[]'::jsonb,
+    legacy_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    financial_updated_at TIMESTAMPTZ,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
     CONSTRAINT chk_peer_companies_tier CHECK (tier IN ('self', 'domestic', 'overseas'))
 );
 
-ALTER TABLE peer_companies
-    ADD COLUMN IF NOT EXISTS tier VARCHAR(20) NOT NULL DEFAULT 'domestic';
+CREATE INDEX IF NOT EXISTS idx_peer_companies_core_keywords
+    ON peer_companies USING GIN(core_keywords);
 
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1
-        FROM pg_constraint
-        WHERE conname = 'chk_peer_companies_tier'
-          AND conrelid = 'peer_companies'::regclass
-    ) THEN
-        ALTER TABLE peer_companies
-            ADD CONSTRAINT chk_peer_companies_tier
-            CHECK (tier IN ('self', 'domestic', 'overseas'));
-    END IF;
-END $$;
-
-
--- ============================================================
--- 2. raw_articles — 크롤링 원문 전량 아카이브 (axis-ai current write path)
--- ============================================================
-CREATE TABLE IF NOT EXISTS raw_articles (
-    id                  BIGSERIAL    PRIMARY KEY,
-
-    source_type         VARCHAR(50)  NOT NULL,
-    source_name         VARCHAR(100) NOT NULL,
-    publisher           VARCHAR(150),
-
-    title               VARCHAR(500) NOT NULL,
-    content             TEXT,
-    url                 TEXT         NOT NULL UNIQUE,
-    url_hash            VARCHAR(32)  NOT NULL,
-
-    published_at        TIMESTAMPTZ,
-    collected_at        TIMESTAMPTZ  NOT NULL,
-
-    company             JSONB        NOT NULL DEFAULT '[]',
-    language            VARCHAR(10)  NOT NULL DEFAULT 'ko',
-    content_type        VARCHAR(30)  NOT NULL,
-
-    crawl_status        VARCHAR(20)  NOT NULL DEFAULT 'success',
-    error_message       TEXT,
-    processing_status   VARCHAR(40)  NOT NULL DEFAULT 'RAW',
-    metadata            JSONB        NOT NULL DEFAULT '{}',
-
-    relevance_score     FLOAT,
-    relevance_label     VARCHAR(20),
-    relevance_reason    TEXT,
-    matched_companies   JSONB        NOT NULL DEFAULT '[]',
-    matched_sectors     JSONB        NOT NULL DEFAULT '[]',
-
-    cluster_id          BIGINT,
-    is_representative   BOOLEAN,
-
-    importance_level    VARCHAR(20),
-    importance_score    FLOAT,
-    qdrant_vector_id    UUID,
-
-    created_at          TIMESTAMPTZ  DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_raw_articles_url_hash
-    ON raw_articles (url_hash);
-CREATE INDEX IF NOT EXISTS idx_raw_articles_source_type
-    ON raw_articles (source_type);
-CREATE INDEX IF NOT EXISTS idx_raw_articles_source_name
-    ON raw_articles (source_name);
-CREATE INDEX IF NOT EXISTS idx_raw_articles_published_at
-    ON raw_articles (published_at);
-CREATE INDEX IF NOT EXISTS idx_raw_articles_processing_status
-    ON raw_articles (processing_status);
-CREATE INDEX IF NOT EXISTS idx_raw_articles_company
-    ON raw_articles USING GIN(company);
-CREATE INDEX IF NOT EXISTS idx_raw_articles_metadata
-    ON raw_articles USING GIN(metadata);
-CREATE INDEX IF NOT EXISTS idx_raw_articles_matched_companies
-    ON raw_articles USING GIN(matched_companies);
-CREATE INDEX IF NOT EXISTS idx_raw_articles_matched_sectors
-    ON raw_articles USING GIN(matched_sectors);
-CREATE INDEX IF NOT EXISTS idx_raw_articles_cluster_id
-    ON raw_articles (cluster_id);
-CREATE INDEX IF NOT EXISTS idx_raw_articles_is_representative
-    ON raw_articles (is_representative);
-CREATE INDEX IF NOT EXISTS idx_raw_articles_qdrant_vector_id
-    ON raw_articles (qdrant_vector_id);
--- url 컬럼은 UNIQUE 제약으로 PG 가 자동 인덱스 생성 — 별도 인덱스 불필요.
-
--- ============================================================
--- 2-1. raw_article_source_metadata — source-specific metadata payloads
--- ============================================================
-CREATE OR REPLACE FUNCTION axis_raw_article_common_metadata(input_metadata JSONB)
-RETURNS JSONB
-LANGUAGE sql
-IMMUTABLE
-AS $$
-    SELECT COALESCE(jsonb_object_agg(e.key, e.value), '{}'::jsonb)
-    FROM jsonb_each(COALESCE(input_metadata, '{}'::jsonb)) AS e(key, value)
-    WHERE e.key = ANY (
-        ARRAY[
-            'url_hash',
-            'company_tier',
-            'peer_id',
-            'topic_scope',
-            'company_scope',
-            'company_fallback',
-            'collection_mode',
-            'crawl_run_id',
-            'crawl_source_name',
-            'track',
-            'window_start',
-            'window_end',
-            'link_check',
-            'document_scope',
-            'preprocess_note',
-            'signal_scope',
-            'skip_reason',
-            'matched_companies',
-            'matched_sectors',
-            'primary_company'
-        ]::text[]
-    );
-$$;
-
-CREATE OR REPLACE FUNCTION axis_raw_article_source_metadata(input_metadata JSONB)
-RETURNS JSONB
-LANGUAGE sql
-IMMUTABLE
-AS $$
-    SELECT COALESCE(jsonb_object_agg(e.key, e.value), '{}'::jsonb)
-    FROM jsonb_each(COALESCE(input_metadata, '{}'::jsonb)) AS e(key, value)
-    WHERE NOT e.key = ANY (
-        ARRAY[
-            'url_hash',
-            'company_tier',
-            'peer_id',
-            'topic_scope',
-            'company_scope',
-            'company_fallback',
-            'collection_mode',
-            'crawl_run_id',
-            'crawl_source_name',
-            'track',
-            'window_start',
-            'window_end',
-            'link_check',
-            'document_scope',
-            'preprocess_note',
-            'signal_scope',
-            'skip_reason',
-            'matched_companies',
-            'matched_sectors',
-            'primary_company'
-        ]::text[]
-    );
-$$;
-
-CREATE TABLE IF NOT EXISTS raw_article_source_metadata (
-    raw_article_id BIGINT PRIMARY KEY REFERENCES raw_articles(id) ON DELETE CASCADE,
-    source_type VARCHAR(50) NOT NULL,
-    source_name VARCHAR(100),
-    source_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-    external_id TEXT GENERATED ALWAYS AS (
-        COALESCE(
-            source_metadata ->> 'rcept_no',
-            source_metadata ->> 'receipt_no',
-            source_metadata ->> 'emp_seqno',
-            source_metadata ->> 'content_hash',
-            source_metadata ->> 'item_code'
-        )
-    ) STORED,
-    period TEXT GENERATED ALWAYS AS (source_metadata ->> 'period') STORED,
-    document_url TEXT GENERATED ALWAYS AS (
-        COALESCE(
-            source_metadata ->> 'pdf_url',
-            source_metadata ->> 'detail_url',
-            source_metadata ->> 'source_url',
-            source_metadata ->> 'list_url'
-        )
-    ) STORED,
-    company_name TEXT GENERATED ALWAYS AS (
-        COALESCE(
-            source_metadata ->> 'company_name',
-            source_metadata ->> 'corp_name',
-            source_metadata ->> 'company'
-        )
-    ) STORED,
-    parser_quality_label TEXT GENERATED ALWAYS AS (
-        source_metadata ->> 'parser_quality_label'
-    ) STORED,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_raw_article_source_metadata_type_name
-    ON raw_article_source_metadata (source_type, source_name);
-CREATE INDEX IF NOT EXISTS idx_raw_article_source_metadata_payload_gin
-    ON raw_article_source_metadata USING GIN(source_metadata);
-CREATE INDEX IF NOT EXISTS idx_raw_article_source_metadata_external_id
-    ON raw_article_source_metadata (external_id)
-    WHERE external_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_raw_article_source_metadata_period
-    ON raw_article_source_metadata (period)
-    WHERE period IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_raw_article_source_metadata_document_url
-    ON raw_article_source_metadata (document_url)
-    WHERE document_url IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_raw_article_source_metadata_company_name
-    ON raw_article_source_metadata (company_name)
-    WHERE company_name IS NOT NULL;
-
-CREATE OR REPLACE VIEW raw_article_metadata_unified AS
-SELECT
-    ra.id AS raw_article_id,
-    ra.source_type,
-    ra.source_name,
-    ra.metadata AS common_metadata,
-    COALESCE(sm.source_metadata, '{}'::jsonb) AS source_metadata,
-    ra.metadata || COALESCE(sm.source_metadata, '{}'::jsonb) AS metadata
-FROM raw_articles ra
-LEFT JOIN raw_article_source_metadata sm
-    ON sm.raw_article_id = ra.id;
-
-CREATE OR REPLACE FUNCTION axis_source_credibility_score(input_source_type TEXT)
-RETURNS DOUBLE PRECISION
-LANGUAGE sql
-IMMUTABLE
-AS $$
-    SELECT CASE LOWER(COALESCE(input_source_type, ''))
-        WHEN 'dart' THEN 1.00
-        WHEN 'ir' THEN 1.00
-        WHEN 'official' THEN 0.90
-        WHEN 'company_site' THEN 0.90
-        WHEN 'securities_report' THEN 0.80
-        WHEN 'trend_report' THEN 0.70
-        WHEN 'news' THEN 0.70
-        WHEN 'market_data' THEN 0.70
-        WHEN 'job' THEN 0.60
-        WHEN 'search_trend' THEN 0.55
-        WHEN 'social' THEN 0.40
-        ELSE 0.50
-    END;
-$$;
-
-CREATE OR REPLACE FUNCTION axis_source_credibility_grade(input_score DOUBLE PRECISION)
-RETURNS TEXT
-LANGUAGE sql
-IMMUTABLE
-AS $$
-    SELECT CASE
-        WHEN COALESCE(input_score, 0) >= 0.85 THEN 'High'
-        WHEN COALESCE(input_score, 0) >= 0.60 THEN 'Medium'
-        WHEN COALESCE(input_score, 0) >= 0.40 THEN 'Low'
-        ELSE 'Unverified'
-    END;
-$$;
-
--- ============================================================
--- 2-2. raw_article parser summary
--- ============================================================
--- Source-specific payloads stay in raw_article_source_metadata.
--- Only the lightweight parser summary is projected for indexed reads.
-CREATE TABLE IF NOT EXISTS raw_article_parse_results (
-    raw_article_id BIGINT PRIMARY KEY REFERENCES raw_articles(id) ON DELETE CASCADE,
-    source_type VARCHAR(50) NOT NULL,
-    parser TEXT,
-    parser_ok BOOLEAN,
-    period TEXT,
-    period_year INT,
-    period_quarter INT,
-    period_type TEXT,
-    published_at TEXT,
-    parser_quality_score DOUBLE PRECISION,
-    parser_quality_label TEXT,
-    parser_quality_reason TEXT,
-    financial_record JSONB NOT NULL DEFAULT '{}',
-    result_metadata JSONB NOT NULL DEFAULT '{}',
-    warnings JSONB NOT NULL DEFAULT '[]',
-    raw_result JSONB NOT NULL DEFAULT '{}',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_raw_article_parse_results_source_period
-    ON raw_article_parse_results (source_type, period);
-CREATE INDEX IF NOT EXISTS idx_raw_article_parse_results_quality
-    ON raw_article_parse_results (parser_quality_label);
-
-
--- ============================================================
--- 3. card_news — AI가 생성한 카드 뉴스 (axis-ai current write path)
--- ============================================================
--- v3 변경사항:
---   - company 컬럼: axis-ai IssueCardAgent (function-named, 보존) 가 company/peer_id 값을 문자열로 저장
---   - implication JSONB: v3 메타데이터 (sector, sectors, exposure_score, exposure_band,
---     signals, evidence_chain) 통합 저장. 향후 evidence_chain 테이블로 분리 마이그레이션 예정
---   - validation_pass / validation_sc_score: EvidenceAgent의 검증 첨부 결과
-CREATE TABLE IF NOT EXISTS card_news (
-    id                  VARCHAR(30)  PRIMARY KEY,     -- 'IC-YYYYMMDD-001' 형식
-    company             VARCHAR(50)  NOT NULL,
-    cluster_id          BIGINT,
-
-    title               VARCHAR(500) NOT NULL,
-    summary_lines       TEXT[]       NOT NULL DEFAULT '{}',
-
-    event_type          VARCHAR(50)  NOT NULL DEFAULT 'tech',
-    importance          VARCHAR(20)  NOT NULL DEFAULT 'low',
-    importance_score    FLOAT        NOT NULL DEFAULT 0.0,
-
-    implication         JSONB        NOT NULL DEFAULT '{}',
-    sources             JSONB        NOT NULL DEFAULT '[]',
-
-    validation_pass     BOOLEAN      NOT NULL DEFAULT FALSE,
-    validation_sc_score FLOAT        NOT NULL DEFAULT 0.0,
-    is_human_reviewed   BOOLEAN      DEFAULT FALSE,
-    created_at          TIMESTAMPTZ  DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_card_news_company
-    ON card_news (company);
-CREATE INDEX IF NOT EXISTS idx_card_news_cluster_id
-    ON card_news (cluster_id);
-CREATE INDEX IF NOT EXISTS idx_card_news_event_type
-    ON card_news (event_type);
-CREATE INDEX IF NOT EXISTS idx_card_news_importance
-    ON card_news (importance);
-CREATE INDEX IF NOT EXISTS idx_card_news_validation_pass
-    ON card_news (validation_pass);
-
--- ============================================================
--- 4. job_postings — 채용공고 (약한 신호 감지용)
--- ============================================================
-CREATE TABLE IF NOT EXISTS job_postings (
-    id              BIGSERIAL    PRIMARY KEY,
-    peer_id         VARCHAR(50)  NOT NULL REFERENCES peer_companies(id),
-    job_title       TEXT         NOT NULL,
-    department      VARCHAR(100),
-    tech_stack      TEXT[]       DEFAULT '{}',
-    snapshot_week   DATE         NOT NULL,            -- 주 단위 스냅샷 (월요일 기준)
-    is_new          BOOLEAN      DEFAULT TRUE,
-    url             TEXT,
-    collected_at    TIMESTAMPTZ  DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_job_postings_peer_week
-    ON job_postings (peer_id, snapshot_week DESC);
-
--- ============================================================
--- 5. golden_set — RAG 평가용 골든셋
--- ============================================================
-CREATE TABLE IF NOT EXISTS golden_set (
-    id                  BIGSERIAL   PRIMARY KEY,
-    query               TEXT        NOT NULL,
-    expected_card_ids   TEXT[]      DEFAULT '{}',
-    annotator           VARCHAR(50),
-    difficulty          VARCHAR(10),                  -- easy/hard
-    created_at          TIMESTAMPTZ DEFAULT NOW()
-);
-
-
--- ============================================================
--- 6. pipeline_logs — AI 파이프라인 실행 로그
--- ============================================================
-CREATE TABLE IF NOT EXISTS pipeline_logs (
-    id              BIGSERIAL    PRIMARY KEY,
-    pipeline_step   VARCHAR(50)  NOT NULL,
-    company         VARCHAR(50),
-    input_count     INT          NOT NULL DEFAULT 0,
-    output_count    INT          NOT NULL DEFAULT 0,
-    elapsed_ms      INT          NOT NULL DEFAULT 0,
-    llm_tokens_used INT          NOT NULL DEFAULT 0,
-    error_msg       TEXT,
-    created_at      TIMESTAMPTZ  DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_pipeline_logs_step
-    ON pipeline_logs (pipeline_step);
-CREATE INDEX IF NOT EXISTS idx_pipeline_logs_company
-    ON pipeline_logs (company);
-
--- ============================================================
--- 7. crawl_cursors / crawl_runs / crawl_run_articles — 크롤링 실행 상태·이력
--- ============================================================
 CREATE TABLE IF NOT EXISTS crawl_cursors (
     source_name VARCHAR(100) PRIMARY KEY,
     cursor_date DATE NOT NULL,
@@ -415,127 +54,127 @@ CREATE TABLE IF NOT EXISTS crawl_cursors (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS crawl_runs (
-    id UUID PRIMARY KEY,
-    run_type VARCHAR(30) NOT NULL,
+CREATE TABLE IF NOT EXISTS raw_articles (
+    id BIGSERIAL PRIMARY KEY,
     source_name VARCHAR(100) NOT NULL,
-    window_start DATE NOT NULL,
-    window_end DATE NOT NULL,
-    status VARCHAR(30) NOT NULL,
-    inserted_count INT NOT NULL DEFAULT 0,
-    skipped_count INT NOT NULL DEFAULT 0,
-    error_message TEXT,
-    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    finished_at TIMESTAMPTZ
-);
-
-CREATE INDEX IF NOT EXISTS idx_crawl_runs_source_started
-    ON crawl_runs (source_name, started_at DESC);
-CREATE INDEX IF NOT EXISTS idx_crawl_runs_status
-    ON crawl_runs (status);
-CREATE INDEX IF NOT EXISTS idx_crawl_runs_window
-    ON crawl_runs (window_start, window_end);
-
-ALTER TABLE raw_articles
-    ADD COLUMN IF NOT EXISTS crawl_run_id UUID NULL;
-CREATE INDEX IF NOT EXISTS idx_raw_articles_crawl_run_id
-    ON raw_articles (crawl_run_id);
-
-CREATE TABLE IF NOT EXISTS crawl_run_articles (
-    id BIGSERIAL PRIMARY KEY,
-    crawl_run_id UUID NOT NULL REFERENCES crawl_runs(id) ON DELETE CASCADE,
-    raw_article_id BIGINT REFERENCES raw_articles(id) ON DELETE SET NULL,
-    url TEXT NOT NULL,
+    title VARCHAR(500) NOT NULL,
+    content TEXT,
+    url TEXT NOT NULL UNIQUE,
+    published_at TIMESTAMPTZ,
+    collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    cluster_id BIGINT,
+    is_representative BOOLEAN,
+    processing_status VARCHAR(40) NOT NULL DEFAULT 'RAW',
+    importance_score FLOAT,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    source_type VARCHAR(50) NOT NULL DEFAULT 'news',
+    publisher VARCHAR(150),
     url_hash VARCHAR(32) NOT NULL,
-    discovered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    action VARCHAR(30) NOT NULL,
-    fetch_status VARCHAR(30),
+    company JSONB NOT NULL DEFAULT '[]'::jsonb,
+    language VARCHAR(10) NOT NULL DEFAULT 'ko',
+    content_type VARCHAR(30) NOT NULL DEFAULT 'news',
+    crawl_status VARCHAR(20) NOT NULL DEFAULT 'success',
     error_message TEXT,
-    source_rank INT,
+    relevance_score FLOAT,
+    relevance_label VARCHAR(20),
+    relevance_reason TEXT,
+    matched_companies JSONB NOT NULL DEFAULT '[]'::jsonb,
+    matched_sectors JSONB NOT NULL DEFAULT '[]'::jsonb,
+    importance_level VARCHAR(20),
+    qdrant_vector_id UUID,
+    crawl_run_id UUID,
+    peer_company_ids TEXT[] NOT NULL DEFAULT '{}',
+    peer_company_links JSONB NOT NULL DEFAULT '[]'::jsonb,
+    financial_metrics JSONB NOT NULL DEFAULT '[]'::jsonb,
+    business_signals JSONB NOT NULL DEFAULT '[]'::jsonb,
+    crawl_events JSONB NOT NULL DEFAULT '[]'::jsonb,
+    legacy_payload JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE INDEX IF NOT EXISTS idx_raw_articles_url_hash ON raw_articles(url_hash);
+CREATE INDEX IF NOT EXISTS idx_raw_articles_source_type ON raw_articles(source_type);
+CREATE INDEX IF NOT EXISTS idx_raw_articles_published_at ON raw_articles(published_at);
+CREATE INDEX IF NOT EXISTS idx_raw_articles_processing_status ON raw_articles(processing_status);
+CREATE INDEX IF NOT EXISTS idx_raw_articles_company ON raw_articles USING GIN(company);
+CREATE INDEX IF NOT EXISTS idx_raw_articles_matched_companies ON raw_articles USING GIN(matched_companies);
+CREATE INDEX IF NOT EXISTS idx_raw_articles_peer_company_ids ON raw_articles USING GIN(peer_company_ids);
+
+CREATE TABLE IF NOT EXISTS raw_article_source_metadata (
+    raw_article_id BIGINT PRIMARY KEY REFERENCES raw_articles(id) ON DELETE CASCADE,
+    source_type VARCHAR(50) NOT NULL,
+    source_name VARCHAR(100),
+    source_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    external_id TEXT,
+    period TEXT,
+    document_url TEXT,
+    company_name TEXT,
+    parser_quality_label TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_raw_article_source_metadata_source
+    ON raw_article_source_metadata(source_type, source_name);
+CREATE INDEX IF NOT EXISTS idx_raw_article_source_metadata_gin
+    ON raw_article_source_metadata USING GIN(source_metadata);
+
+CREATE TABLE IF NOT EXISTS raw_article_parse_results (
+    raw_article_id BIGINT PRIMARY KEY REFERENCES raw_articles(id) ON DELETE CASCADE,
+    parser_version TEXT,
+    parse_status TEXT,
+    parser_quality_label TEXT,
+    parser_result JSONB NOT NULL DEFAULT '{}'::jsonb,
+    financial_record JSONB NOT NULL DEFAULT '{}'::jsonb,
     raw_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    warnings JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_crawl_run_articles_run_url UNIQUE (crawl_run_id, url_hash)
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_crawl_run_articles_run
-    ON crawl_run_articles (crawl_run_id);
-CREATE INDEX IF NOT EXISTS idx_crawl_run_articles_article
-    ON crawl_run_articles (raw_article_id);
-CREATE INDEX IF NOT EXISTS idx_crawl_run_articles_action
-    ON crawl_run_articles (action);
-CREATE INDEX IF NOT EXISTS idx_crawl_run_articles_url_hash
-    ON crawl_run_articles (url_hash);
-
--- ============================================================
--- 7-legacy. crawl_logs — 크롤러 실행 로그
--- ============================================================
-CREATE TABLE IF NOT EXISTS crawl_logs (
-    id              BIGSERIAL    PRIMARY KEY,
-    peer_id         VARCHAR(50)  NOT NULL,
-    source_name     VARCHAR(100) NOT NULL,
-    started_at      TIMESTAMPTZ  NOT NULL,
-    finished_at     TIMESTAMPTZ,
-    total_count     INT          DEFAULT 0,
-    success_count   INT          DEFAULT 0,
-    skipped_count   INT          DEFAULT 0,
-    error_msg       TEXT,
-    created_at      TIMESTAMPTZ  DEFAULT NOW()
+CREATE TABLE IF NOT EXISTS card_news (
+    id VARCHAR(50) PRIMARY KEY,
+    company VARCHAR(50) NOT NULL,
+    peer_company_id VARCHAR(50) REFERENCES peer_companies(id),
+    cluster_id BIGINT,
+    title VARCHAR(500) NOT NULL,
+    summary_lines TEXT[] NOT NULL DEFAULT '{}',
+    event_type VARCHAR(50) DEFAULT 'tech',
+    importance VARCHAR(20) DEFAULT 'low',
+    importance_score FLOAT DEFAULT 0.0,
+    implication JSONB NOT NULL DEFAULT '{}'::jsonb,
+    sources JSONB NOT NULL DEFAULT '[]'::jsonb,
+    primary_keyword_category VARCHAR(80),
+    keyword_categories JSONB NOT NULL DEFAULT '[]'::jsonb,
+    keywords TEXT[] NOT NULL DEFAULT '{}',
+    keyword_frequency JSONB NOT NULL DEFAULT '{}'::jsonb,
+    source_raw_article_ids BIGINT[] NOT NULL DEFAULT '{}',
+    source_articles JSONB NOT NULL DEFAULT '[]'::jsonb,
+    evidence_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    image_assets JSONB NOT NULL DEFAULT '[]'::jsonb,
+    legacy_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    validation_pass BOOLEAN DEFAULT FALSE,
+    validation_sc_score FLOAT DEFAULT 0.0,
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ============================================================
--- 8. peer_financials — Peer사 분기·연간 재무 시계열 (v3 §5.1)
--- ============================================================
--- IR PDF / DART 공시에서 추출한 매출·영업이익·사업부별 매출·AI 비중·헤드카운트.
--- FinancialLinkerAgent가 뉴스 카드와 연결하여 evidence_chain.financial_refs에 첨부.
--- PoC: data/peer_financials/{peer_id}.json 기반. 마이그레이션 후 이 테이블로 전환.
-CREATE TABLE IF NOT EXISTS peer_financials (
-    id                  BIGSERIAL    PRIMARY KEY,
-    peer_id             VARCHAR(50)  NOT NULL REFERENCES peer_companies(id),
-    period              VARCHAR(10)  NOT NULL,           -- 'YYYYQn' (예: '2026Q1')
-    report_date         DATE,                            -- 공시·발표일
-    dart_rcept_no       VARCHAR(40),                     -- DART 공시번호 (검증 추적용)
-    ir_page             INT,                             -- IR 자료 페이지 번호
-    revenue_total_krwbn FLOAT,                           -- 전체 매출 (억원)
-    operating_profit_krwbn FLOAT,                        -- 영업이익 (억원)
-    segment_revenue     JSONB        DEFAULT '{}',       -- {segment_id: 매출_억원}
-    ai_revenue_share_pct FLOAT,                          -- AI 매출 비중 (%)
-    headcount           JSONB        DEFAULT '{}',       -- {total, rd, ai_engineers_est}
-    raw_payload         JSONB,                           -- 파싱 원본 / IRParserAgent 후처리 결과
-    source              VARCHAR(20)  DEFAULT 'stub_v0',  -- stub_v0 / dart / ir_pdf / manual
-    created_at          TIMESTAMPTZ  DEFAULT NOW(),
-    UNIQUE (peer_id, period)
-);
+CREATE INDEX IF NOT EXISTS idx_card_news_peer_company_id ON card_news(peer_company_id);
+CREATE INDEX IF NOT EXISTS idx_card_news_importance ON card_news(importance, importance_score DESC);
+CREATE INDEX IF NOT EXISTS idx_card_news_keywords ON card_news USING GIN(keywords);
+CREATE INDEX IF NOT EXISTS idx_card_news_keyword_categories ON card_news USING GIN(keyword_categories);
+CREATE INDEX IF NOT EXISTS idx_card_news_source_raw_article_ids ON card_news USING GIN(source_raw_article_ids);
 
-CREATE INDEX IF NOT EXISTS idx_peer_financials_peer_period
-    ON peer_financials (peer_id, period);
-
--- ============================================================
--- 8-1. market_instruments / market_price_ohlcv — stock OHLCV
--- ============================================================
-CREATE TABLE IF NOT EXISTS market_instruments (
-    id BIGSERIAL PRIMARY KEY,
-    peer_company_id VARCHAR(50) REFERENCES peer_companies(id) ON DELETE RESTRICT,
-    ticker VARCHAR(20) NOT NULL,
-    exchange VARCHAR(20) NOT NULL DEFAULT 'KRX',
-    currency VARCHAR(10) NOT NULL DEFAULT 'KRW',
-    instrument_name VARCHAR(100),
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_market_instruments_exchange_ticker
-        UNIQUE (exchange, ticker)
-);
-
-CREATE INDEX IF NOT EXISTS idx_market_instruments_peer_company
-    ON market_instruments (peer_company_id)
-    WHERE peer_company_id IS NOT NULL;
+CREATE OR REPLACE VIEW issue_cards AS SELECT * FROM card_news;
 
 CREATE TABLE IF NOT EXISTS market_price_ohlcv (
     id BIGSERIAL PRIMARY KEY,
     raw_article_id BIGINT REFERENCES raw_articles(id) ON DELETE SET NULL,
-    instrument_id BIGINT REFERENCES market_instruments(id) ON DELETE RESTRICT,
+    instrument_id BIGINT,
     peer_id TEXT,
+    peer_company_id VARCHAR(50) REFERENCES peer_companies(id) ON DELETE SET NULL,
     ticker TEXT NOT NULL,
+    exchange VARCHAR(20) NOT NULL DEFAULT 'KRX',
+    instrument_name VARCHAR(100),
     trade_date DATE NOT NULL,
     open NUMERIC,
     high NUMERIC,
@@ -549,182 +188,169 @@ CREATE TABLE IF NOT EXISTS market_price_ohlcv (
     publisher TEXT,
     collected_at TIMESTAMPTZ,
     payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    instrument_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT market_price_ohlcv_ticker_trade_date_source_name_key
-        UNIQUE (ticker, trade_date, source_name)
+    CONSTRAINT uq_market_price_ohlcv_ticker_date_source UNIQUE (ticker, trade_date, source_name)
 );
 
-CREATE INDEX IF NOT EXISTS idx_market_price_ohlcv_peer_date
-    ON market_price_ohlcv (peer_id, trade_date DESC);
-CREATE INDEX IF NOT EXISTS idx_market_price_ohlcv_instrument_date
-    ON market_price_ohlcv (instrument_id, trade_date DESC)
-    WHERE instrument_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_market_price_ohlcv_raw_article
-    ON market_price_ohlcv (raw_article_id)
-    WHERE raw_article_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_market_price_ohlcv_ticker_date
+    ON market_price_ohlcv(ticker, trade_date DESC);
+CREATE INDEX IF NOT EXISTS idx_market_price_ohlcv_peer_company_date
+    ON market_price_ohlcv(peer_company_id, trade_date DESC)
+    WHERE peer_company_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_market_price_ohlcv_exchange_ticker_date
+    ON market_price_ohlcv(exchange, ticker, trade_date DESC);
 
-
--- ============================================================
--- 9. evidence_chain — 검증 체인 4종 (v3 §3.2, §5.6)
--- ============================================================
--- 모든 카드뉴스의 4종 검증 정보 (source_links / provenance / financial_refs / mbb_refs).
--- API: GET /api/evidence/{issue_card_id} 가 이 테이블을 조회.
--- V9 (2026-05-12): card_news 테이블 rename 후에도 본 FK 컬럼은 issue_card_id 유지 (deploy
--- race 회피). 컬럼 rename 은 V10 으로 분리 예정.
-CREATE TABLE IF NOT EXISTS evidence_chain (
-    issue_card_id       VARCHAR(30)  PRIMARY KEY REFERENCES card_news(id) ON DELETE CASCADE,
-
-    source_links        JSONB        NOT NULL DEFAULT '[]',
-    provenance          JSONB        NOT NULL DEFAULT '{}',
-    financial_refs      JSONB        NOT NULL DEFAULT '[]',
-    mbb_refs            JSONB        NOT NULL DEFAULT '[]',
-    financial_link      JSONB        NOT NULL DEFAULT '{}',
-
-    evidence_version    VARCHAR(20)  NOT NULL DEFAULT 'v3.0',
-    pass                BOOLEAN      NOT NULL DEFAULT FALSE,
-    missing             TEXT[]       NOT NULL DEFAULT '{}',
-    created_at          TIMESTAMPTZ  DEFAULT NOW()
+CREATE TABLE IF NOT EXISTS briefing_reports (
+    id VARCHAR(40) PRIMARY KEY,
+    title VARCHAR(500) NOT NULL,
+    briefing_type VARCHAR(20) NOT NULL,
+    date_from DATE NOT NULL,
+    date_to DATE NOT NULL,
+    report_date DATE,
+    period_label TEXT,
+    requested_by_user_id BIGINT,
+    status VARCHAR(20) NOT NULL DEFAULT 'queued',
+    progress NUMERIC(3,2) NOT NULL DEFAULT 0.0,
+    key_summary TEXT,
+    sk_implication TEXT,
+    related_card_ids TEXT[] NOT NULL DEFAULT '{}',
+    related_raw_article_ids BIGINT[] NOT NULL DEFAULT '{}',
+    recipients JSONB NOT NULL DEFAULT '[]'::jsonb,
+    delivery_history JSONB NOT NULL DEFAULT '[]'::jsonb,
+    payload JSONB,
+    legacy_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    error_message TEXT,
+    confidence NUMERIC(3,2),
+    provenance JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    CONSTRAINT briefing_reports_status_check
+        CHECK (status IN ('queued', 'running', 'completed', 'completed_partial', 'failed')),
+    CONSTRAINT briefing_reports_type_check
+        CHECK (briefing_type IN ('daily', 'weekly', 'custom')),
+    CONSTRAINT briefing_reports_date_order CHECK (date_from <= date_to)
 );
 
-CREATE INDEX IF NOT EXISTS idx_evidence_chain_pass
-    ON evidence_chain (pass);
-CREATE INDEX IF NOT EXISTS idx_evidence_chain_version
-    ON evidence_chain (evidence_version);
+CREATE INDEX IF NOT EXISTS idx_briefing_status ON briefing_reports(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_briefing_date_range ON briefing_reports(date_from, date_to);
+CREATE INDEX IF NOT EXISTS idx_briefing_related_cards ON briefing_reports USING GIN(related_card_ids);
 
--- ============================================================
--- 10. article_images — 카드 뉴스 이미지 메타 (v3 W4 추가, V2 migration)
--- ============================================================
--- 이미지 파일은 공유 볼륨 (IMAGE_STORAGE_PATH) 에 저장.
--- DB 는 storage_path (relative) + 메타데이터만 보관.
---   write: axis-ai (ImageFetchAgent — 별도 PR 예정)
---   read:  axis-backend (ImageController)
-CREATE TABLE IF NOT EXISTS article_images (
-    id                  BIGSERIAL    PRIMARY KEY,
-
-    article_id          BIGINT       REFERENCES raw_articles(id) ON DELETE SET NULL,
-    cluster_id          BIGINT,
-    -- V9 (2026-05-12): card_news 테이블 rename 후에도 본 FK 컬럼은 issue_card_id 유지 (V10 분리).
-    issue_card_id       VARCHAR(50)  REFERENCES card_news(id) ON DELETE SET NULL,
-
-    source_url          TEXT         NOT NULL,
-    source_url_hash     VARCHAR(64)  NOT NULL UNIQUE,    -- SHA-256(source_url)
-
-    storage_path        TEXT         NOT NULL,           -- IMAGE_STORAGE_PATH 기준 상대 경로
-    content_type        VARCHAR(50),                     -- image/jpeg | image/png | image/webp
-    width               INT,
-    height              INT,
-    file_size_bytes     INT,
-
-    alt_text            TEXT,
-    attribution         TEXT,                            -- 예: "제공: 한경"
-
-    fetched_at          TIMESTAMPTZ,
-    created_at          TIMESTAMPTZ  DEFAULT NOW()
+CREATE TABLE IF NOT EXISTS mixer_results (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    source_analysis_id VARCHAR(100),
+    title VARCHAR(300),
+    requested_by_user_id BIGINT,
+    input_card_ids TEXT[] NOT NULL DEFAULT '{}',
+    input_peer_ids TEXT[] NOT NULL DEFAULT '{}',
+    input_keywords TEXT[] NOT NULL DEFAULT '{}',
+    ratios JSONB NOT NULL DEFAULT '{}'::jsonb,
+    generated_implication JSONB NOT NULL DEFAULT '{}'::jsonb,
+    insight_brief JSONB NOT NULL DEFAULT '[]'::jsonb,
+    radar_axes JSONB NOT NULL DEFAULT '[]'::jsonb,
+    connections JSONB NOT NULL DEFAULT '[]'::jsonb,
+    sk_ax_implication TEXT,
+    final_one_liner TEXT,
+    confidence NUMERIC(3,2),
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_article_images_card
-    ON article_images (issue_card_id);
-CREATE INDEX IF NOT EXISTS idx_article_images_cluster
-    ON article_images (cluster_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_mixer_results_source_analysis_id
+    ON mixer_results(source_analysis_id) WHERE source_analysis_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_mixer_results_created_at ON mixer_results(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mixer_results_input_cards ON mixer_results USING GIN(input_card_ids);
 
--- ============================================================
--- 11. recipients — 메일 수신자 (Flyway V3, W5 추가)
--- ============================================================
--- CardSelectorAgent 가 role 별 impact_threshold 로 차등 필터링.
--- PM = impact ≥ 3 전체 / 임원 = impact ≥ 4 핵심.
-CREATE TABLE IF NOT EXISTS recipients (
-    id                  BIGSERIAL    PRIMARY KEY,
-
-    email               VARCHAR(255) NOT NULL UNIQUE,
-    name                VARCHAR(100),
-    role                VARCHAR(20)  NOT NULL,           -- pm | executive | admin
-    impact_threshold    SMALLINT     NOT NULL DEFAULT 3, -- 1~5 (수신할 카드의 최소 importance_score)
-    locale              VARCHAR(10)  DEFAULT 'ko-KR',
-
-    is_active           BOOLEAN      DEFAULT TRUE,
-    created_at          TIMESTAMPTZ  DEFAULT NOW(),
-    updated_at          TIMESTAMPTZ  DEFAULT NOW()
+CREATE TABLE IF NOT EXISTS insight_reports (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    source_analysis_id VARCHAR(100),
+    title VARCHAR(300),
+    insight_type VARCHAR(40) NOT NULL DEFAULT 'cascade',
+    status VARCHAR(30) NOT NULL DEFAULT 'completed',
+    requested_by_user_id BIGINT,
+    focus_peer_ids TEXT[] NOT NULL DEFAULT '{}',
+    focus_card_ids TEXT[] NOT NULL DEFAULT '{}',
+    focus_keywords TEXT[] NOT NULL DEFAULT '{}',
+    date_from DATE,
+    date_to DATE,
+    summary TEXT,
+    final_one_liner TEXT,
+    sk_ax_implication TEXT,
+    reasoning_steps JSONB NOT NULL DEFAULT '[]'::jsonb,
+    evidence JSONB NOT NULL DEFAULT '[]'::jsonb,
+    source_card_ids TEXT[] NOT NULL DEFAULT '{}',
+    confidence NUMERIC(3,2),
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_recipients_active
-    ON recipients (is_active, role);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_insight_reports_source_analysis_id
+    ON insight_reports(source_analysis_id) WHERE source_analysis_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_insight_reports_created_at ON insight_reports(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_insight_reports_focus_peers ON insight_reports USING GIN(focus_peer_ids);
 
-
--- ============================================================
--- 12. briefing_history — 메일 발송 이력 (Flyway V3)
--- ============================================================
--- 평일 08:30 EmailAgent 가 발송 후 INSERT.
--- status=skipped (card_count==0) / sent / failed 모두 기록 — DLQ + 운영 알림의 단일 소스.
-CREATE TABLE IF NOT EXISTS briefing_history (
-    id                  BIGSERIAL    PRIMARY KEY,
-
-    recipient_id        BIGINT       NOT NULL REFERENCES recipients(id) ON DELETE RESTRICT,
-    briefing_date       DATE         NOT NULL,                    -- 어느 영업일의 브리핑인지
-    run_id              VARCHAR(50),                              -- 한 cycle 의 식별자 (재시도 추적)
-
-    card_count          INT          NOT NULL DEFAULT 0,
-    card_ids            TEXT[]       DEFAULT '{}',                -- 포함된 card_news.id 배열
-    subject             TEXT,                                      -- 메일 제목
-    body_preview        TEXT,                                      -- 본문 첫 200자 (감사 + 디버깅)
-
-    status              VARCHAR(20)  NOT NULL,                    -- sent | failed | skipped
-    smtp_response       TEXT,                                      -- SendGrid/SMTP 응답
-    error_msg           TEXT,                                      -- status=failed 시 상세
-    retry_count         SMALLINT     DEFAULT 0,                   -- EmailAgent 의 retry ×3 횟수
-
-    sent_at             TIMESTAMPTZ  DEFAULT NOW(),
-    created_at          TIMESTAMPTZ  DEFAULT NOW()
+CREATE TABLE IF NOT EXISTS global_industry_trends (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    source_analysis_id VARCHAR(100),
+    trend_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    industry VARCHAR(100) NOT NULL,
+    region VARCHAR(50) NOT NULL DEFAULT 'global',
+    keyword VARCHAR(120) NOT NULL,
+    keyword_category VARCHAR(80),
+    title VARCHAR(300),
+    summary TEXT,
+    mention_count INT NOT NULL DEFAULT 0,
+    impact_score NUMERIC(5,2),
+    confidence NUMERIC(3,2),
+    related_peer_ids TEXT[] NOT NULL DEFAULT '{}',
+    related_card_ids TEXT[] NOT NULL DEFAULT '{}',
+    source_raw_article_ids BIGINT[] NOT NULL DEFAULT '{}',
+    sk_ax_implication TEXT,
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_global_industry_trends_daily_keyword
+        UNIQUE (trend_date, industry, region, keyword)
 );
 
-CREATE INDEX IF NOT EXISTS idx_briefing_history_recipient_date
-    ON briefing_history (recipient_id, briefing_date DESC);
-CREATE INDEX IF NOT EXISTS idx_briefing_history_run
-    ON briefing_history (run_id);
-CREATE INDEX IF NOT EXISTS idx_briefing_history_status
-    ON briefing_history (status);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_global_industry_trends_source_analysis_id
+    ON global_industry_trends(source_analysis_id) WHERE source_analysis_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_global_industry_trends_date ON global_industry_trends(trend_date DESC);
+CREATE INDEX IF NOT EXISTS idx_global_industry_trends_keyword ON global_industry_trends(keyword);
 
-
--- ============================================================
--- 13. mbb_baseline — 컨설팅 보고서 baseline (Flyway V3, W5 활성 예정)
--- ============================================================
--- McKinsey · Bain · BCG · 커니 등 글로벌 컨설팅 보고서 baseline.
--- EvidenceAgent 가 카드 sector/keywords 와 매칭하여 evidence_chain.mbb_refs 에 첨부.
-CREATE TABLE IF NOT EXISTS mbb_baseline (
-    id                  BIGSERIAL    PRIMARY KEY,
-
-    source              VARCHAR(50)  NOT NULL,                    -- 'McKinsey' | 'BCG' | 'Bain' | 'Kearney' | ...
-    report_id           VARCHAR(100),                              -- 발행처 내부 식별자
-    title               TEXT         NOT NULL,
-    published_date      DATE,
-    url                 TEXT,
-    summary             TEXT,
-
-    sectors             TEXT[]       DEFAULT '{}',                -- ['ai_tech', 'security'] 등
-    keywords            TEXT[]       DEFAULT '{}',                -- 매칭 키워드 배열
-
-    raw_payload         JSONB        DEFAULT '{}',
-
-    is_active           BOOLEAN      DEFAULT TRUE,
-    created_at          TIMESTAMPTZ  DEFAULT NOW()
+CREATE TABLE IF NOT EXISTS legacy_records (
+    id BIGSERIAL PRIMARY KEY,
+    source_table VARCHAR(100) NOT NULL,
+    source_pk TEXT,
+    owner_table VARCHAR(100),
+    owner_id TEXT,
+    payload JSONB NOT NULL,
+    archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_mbb_baseline_source_date
-    ON mbb_baseline (source, published_date DESC);
-CREATE INDEX IF NOT EXISTS idx_mbb_baseline_active
-    ON mbb_baseline (is_active);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_legacy_records_source_pk
+    ON legacy_records(source_table, source_pk)
+    WHERE source_pk IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_legacy_records_source
+    ON legacy_records(source_table, archived_at DESC);
+CREATE INDEX IF NOT EXISTS idx_legacy_records_owner
+    ON legacy_records(owner_table, owner_id)
+    WHERE owner_table IS NOT NULL;
 
+CREATE OR REPLACE VIEW raw_article_metadata_unified AS
+SELECT
+    ra.id AS raw_article_id,
+    ra.source_type,
+    ra.source_name,
+    ra.metadata AS common_metadata,
+    COALESCE(rasm.source_metadata, '{}'::jsonb) AS source_metadata,
+    ra.metadata || COALESCE(rasm.source_metadata, '{}'::jsonb) AS metadata
+FROM raw_articles ra
+LEFT JOIN raw_article_source_metadata rasm
+    ON rasm.raw_article_id = ra.id;
 
--- ============================================================
--- 초기 데이터 — Peer사 4사 + SK AX 자사 (tier 로 self/domestic/overseas 구분)
--- ============================================================
-INSERT INTO peer_companies (id, name, tier, keywords) VALUES
-    ('samsung_sds',      '삼성SDS',     'domestic', ARRAY['삼성SDS', '삼성 SDS', 'Samsung SDS']),
-    ('lg_cns',           'LG CNS',      'domestic', ARRAY['LG CNS', 'LGCNS']),
-    ('hyundai_autoever', '현대오토에버', 'domestic', ARRAY['현대오토에버', '오토에버', 'Hyundai AutoEver']),
-    ('posco_dx',         '포스코DX',    'domestic', ARRAY['포스코DX', '포스코 DX', 'POSCO DX']),
-    ('sk_ax',            'SK AX',       'self',     ARRAY['SK AX', 'SKAX', '에스케이에이엑스', 'SK 에이엑스'])
-ON CONFLICT (id) DO UPDATE SET
-    name = EXCLUDED.name,
-    tier = EXCLUDED.tier,
-    keywords = EXCLUDED.keywords;
+COMMENT ON TABLE legacy_records IS
+    'Row-level archive for V30-collapsed tables. Not part of the product ERD.';

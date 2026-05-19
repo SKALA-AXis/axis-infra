@@ -44,7 +44,7 @@
 | `/monitoring/{peerId}` (상세) | `GET /api/monitoring/{peerId}` | `GET /monitoring/{peer}/profile` (신규) | PeerComparisonAgent | 🔴 |
 | `/monitoring/{peerId}` (전략 패널) | `GET /api/monitoring/{peerId}/strategy` | `GET /monitoring/{peer}/strategy` (신규) | PeerComparisonAgent | 🔴 |
 | `/monitoring/{peerId}` (카드 타임라인) | `GET /api/monitoring/{peerId}/cards` | (BE-only — card_news SELECT WHERE company=...) | — | ⬜ |
-| `/monitoring/{peerId}` (재무 차트) | `GET /api/monitoring/{peerId}/financials` | (BE-only — peer_financials SELECT) | — | ⬜ |
+| `/monitoring/{peerId}` (재무 차트) | `GET /api/monitoring/{peerId}/financials` | (BE-only — `peer_companies.financial_history` SELECT) | — | ⬜ |
 | `/monitoring/comparison` (멀티 peer 비교) | `GET /api/monitoring/comparison` | (BE-only — 집계 쿼리) | — | ⬜ |
 | `/monitoring/cards/search` | `GET /api/monitoring/cards/search` | (BE-only — card_news facet 쿼리) | — | ⬜ |
 | `/monitoring` (overview header) | `GET /api/monitoring/overview` | `GET /metrics/monitoring-overview` (신규) | DerivedMetricsAgent | 🔴 |
@@ -106,8 +106,8 @@
 | `/alerts/{id}/read` | `POST /api/alerts/{id}/read` | (BE-only — UPDATE) | — | ⬜ |
 | `/alerts/rules` CRUD | `GET/POST/PUT/DELETE /api/alerts/rules` | (BE-only — alert_rules CRUD) | — | ⬜ |
 | `/alerts/settings` | `GET/PUT /api/alerts/settings` | (BE-only — notification_settings) | — | ⬜ |
-| (background) | (Spring @Scheduled Mon 09:00) | `POST /weak-signal/run` | **WeakSignalAgent** (V11 weak_signal_cards) | 🔴 (axis-ai stub, BE 호출 미연결) |
-| `/alerts/dispatched/weak-signals` | `GET /api/weak-signals?since=&peer=` | (BE-only — weak_signal_cards SELECT) | — | 🔴 (테이블 미존재) |
+| (background) | (Spring @Scheduled Mon 09:00) | `POST /weak-signal/run` | **WeakSignalAgent** (legacy table 제거, 새 read model 필요 시 `card_news` 기반) | 🔴 (axis-ai stub, BE 호출 미연결) |
+| `/alerts/dispatched/weak-signals` | `GET /api/weak-signals?since=&peer=` | (BE-only — active table 없음, V30 archive는 `legacy_records`) | — | 🔴 |
 
 ### 2.10 Enrichment (Keyword graph / WordCloud)
 
@@ -134,7 +134,7 @@
 
 | Frontend route | BE endpoint | axis-ai endpoint | 담당 agent | 상태 |
 |---|---|---|---|---|
-| `/admin/pipeline/status` | `GET /api/pipeline/status` | (BE-only — pipeline_logs aggregation 또는 axis-ai `GET /pipeline/status` 신규) | — | 🟡 |
+| `/admin/pipeline/status` | `GET /api/pipeline/status` | (BE-only — V30 이후 active table 없음. 필요 시 `legacy_records` archive 또는 신규 ops store) | — | 🟡 |
 | `/admin/pipeline/trigger` | `POST /api/pipeline/trigger` | `POST /pipeline/run` | (각 supervisor) | ✅ |
 | (background) | `BriefingService` (Spring @Scheduled) | `POST /pipeline/delivery` | EmailAgent 등 | ✅ |
 
@@ -246,27 +246,32 @@ public UsageStats getUsageStats(LocalDate from, LocalDate to);
 public ApiResponse updateUsageLimits(UsageLimits limits);
 ```
 
-## 5. 신규 DB 마이그레이션 — 통합 plan
+## 5. DB 마이그레이션 현황
 
-| 버전 | 파일명 | 추가 객체 | 사용 agent |
-|---|---|---|---|
-| V10 | `V10__add_chat_sessions.sql` | `chat_sessions` | ChatOrchestratorAgent |
-| V11 | `V11__add_weak_signal_cards.sql` | `weak_signal_cards` | WeakSignalAgent |
-| V12 | `V12__add_briefing_reports.sql` | `briefing_reports` | BriefingGenerationAgent |
-| V13 | `V13__add_usage_logs.sql` | `usage_logs` (slim: token + ₩ + `langfuse_trace_id` 만, prompt/response 본문 X) | TokenBudgetMiddleware |
-| V14 | `V14__add_audit_logs.sql` | `audit_logs` + insert-only trigger | AuditLogMiddleware |
-| V15 | `V15__add_user_events.sql` | `user_events` (FE 트래커 적재) | admin/user_events.md |
-| V16 | `V16__add_feedback.sql` | `feedback` + partial unique idx for upsert | admin/feedback.md |
-| V17 | `V17__add_cost_daily_billed.sql` | `cost_daily_billed` (OpenAI Usage API 동기화) | admin/cost_reconciliation.md |
-| V18 | `V18__add_infra_cost_daily.sql` | `infra_cost_daily` (AWS Cost Explorer 동기화) | admin/cost_reconciliation.md |
-| — | (별도 Helm chart, DB 마이그 X) | Langfuse self-host (`observability` namespace): 자체 PG 5Gi + ClickHouse 20Gi + Redis | observability-langfuse |
-| — | (k8s only, DB 마이그 X) | ⏸ **P10+ 보류** — 공용 Prometheus / Grafana / Loki / Tempo (이미 운영 중) 활용 spec. 자체 설치 불필요 | admin/metrics_exporter.md |
-| P9+ | (옵션) `Vxx__create_analytics_schema.sql` | admin_page §10 의 `analytics` schema 분리 + `grafana_ro` 계정 (Q1=B → v1 미적용) | — |
-| V19 | `V19__add_insight_mixer_results.sql` (optional) | `insight_results`, `mixer_results` (영구 저장 시 — 현재 design 은 매번 재생성, 본 마이그는 P9+ 검토) | InsightCascadeAgent, MixerAnalysisAgent |
+최신 기준은 V30이다. V10~V28에서 늘어난 운영/관계/로그 테이블은 V30에서 `legacy_records`로 보존 archive되고, 프론트 화면에 필요한 값만 최소 read model로 흡수된다.
 
-> 현재 master = V9. V10~V18 (9개) 가 본 design 의 모든 신규 테이블 / middleware 와 1:1 대응. V19 는 옵션 (insight / mixer 영구 저장 시).
->
-> **마이그레이션 묶음 권장 PR 단위**: 한 PR 에 V10~V14 (5 core), 다음 PR 에 V15~V18 (4 admin), V19 는 별도. Flyway baseline 충돌 방지 위해 V10 부터 순차 적용 (skip 금지).
+| 버전 | 파일명 | 역할 |
+|---|---|---|
+| V28 | `V28__consolidate_raw_article_metadata_and_stock_prices.sql` | source별 raw article metadata를 `raw_article_source_metadata`로 통합 |
+| V29 | `V29__front_product_read_models_and_analysis_tables.sql` | Peer+ 컬럼, 카드 키워드 컬럼, Mixer/Insight/Global read model 추가 |
+| V30 | `V30__collapse_legacy_tables_into_minimal_product_schema.sql` | 레거시 테이블 row archive 후 12개 앱 테이블 중심으로 축소 |
+
+V30 이후 active 앱 테이블:
+
+```text
+peer_companies
+crawl_cursors
+raw_articles
+raw_article_source_metadata
+raw_article_parse_results
+card_news
+market_price_ohlcv
+briefing_reports
+mixer_results
+insight_reports
+global_industry_trends
+legacy_records
+```
 
 ## 6. 보안 / 권한 매핑
 

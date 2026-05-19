@@ -25,7 +25,7 @@
 
 1. **counter** — `llm_calls_total{model, agent, status}`, `llm_tokens_total{model, agent, direction}`, `pipeline_run_total{supervisor, trigger, status}`, `crawler_fetch_total{source, status}`
 2. **histogram** — `llm_latency_seconds{model, agent}`, `pipeline_duration_seconds{supervisor}`, `qdrant_search_latency_seconds{collection}`
-3. **gauge** — `qdrant_collection_size{collection}`, `pipeline_logs_pending_review` (human_review_flag count)
+3. **gauge** — `qdrant_collection_size{collection}`, `card_news_pending_review` (human_review_flag count)
 4. **noop on disabled** — `METRICS_ENABLED=false` (개발 환경) 시 `/metrics` 가 빈 응답 + counter 갱신 X
 5. **scrape endpoint** — `GET /metrics` (text/plain; version=0.0.4)
 
@@ -287,7 +287,7 @@ state 와 무관. middleware 가 부수적으로 counter 증가.
 ## 11. Provenance + Confidence
 
 - Prometheus 메트릭 자체에 provenance 안 부착 (label 만 카디널리티 제약). 상세 trace 는 Langfuse 가 SoT.
-- `_build_provenance()` 의 결과는 그대로 evidence_chain.provenance jsonb 에.
+- `_build_provenance()` 의 결과는 `card_news.evidence_payload.provenance` jsonb 에 보존.
 
 ## 12. 테스트 시나리오
 

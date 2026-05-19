@@ -1,7 +1,7 @@
 # AXIS 시스템 아키텍처
 
 > Figma 작업용 단일 레퍼런스. **이 문서가 SoT** — 인프라·파이프라인 변경 시 함께 갱신.
-> 작성: 2026-04-30 · 갱신: 2026-05-12 (SES IRSA end-to-end 검증 / Spring @Scheduled 운영 활성화 / `axis-cron-delivery` 중복·broken 표기) · 적용 범위: axis-infra / axis-backend / axis-ai / axis-frontend
+> 작성: 2026-04-30 · 갱신: 2026-05-19 (V30 최소 DB 스키마 / legacy archive 보존 / 화면별 read model 반영) · 적용 범위: axis-infra / axis-backend / axis-ai / axis-frontend
 >
 > 한 캔버스에 인프라 토폴로지 + AI Pod 내부 동작 동시 표현. 저장소·SaaS 는 한 번만 등장.
 >
@@ -66,7 +66,7 @@ flowchart TB
                             I1 --> I2 --> I3 --> I4 --> I5 --> I6
                         end
 
-                        EVID["📎 Evidence Chain 4종"]
+                        EVID["📎 card_news.evidence_payload"]
                         DEL["📬 delivery_graph<br/>(현재 dead — BE 가 본문 직빌드)"]
                         SCH["🔎 search / gen-search<br/>RRF + Reranker"]
                         WSG["🔍 weak_signal · 월 09:00<br/>(W7)"]
@@ -88,7 +88,7 @@ flowchart TB
     %% ── Managed SaaS ─────────────────────────────────────
     subgraph SAAS["☁️ Managed SaaS"]
         direction LR
-        SB[("🟢 Supabase PG<br/>13 tables · V4")]
+        SB[("🟢 PostgreSQL<br/>12 app tables + Flyway · V30")]
         QC[("🔴 Qdrant Cloud<br/>Hybrid RRF")]
         OAI["🤖 OpenAI<br/>GPT-4o"]
         S3[(📦 S3)]
@@ -111,7 +111,7 @@ flowchart TB
 
     %% ── 데이터 흐름 ──────────────────────────────────────
     SOURCES ==> I1
-    BE ==>|JPA · card_news · briefing_history| SB
+    BE ==>|JPA · card_news · briefing_reports| SB
     ING ==> SB
     ING ==> QC
     I5 ==> OAI
@@ -177,8 +177,8 @@ flowchart TB
 
 | 단위 | 구현 | 트리거 | 결과물 | 시간 예산 |
 |---|---|---|---|---|
-| `ingestion_graph.py` | LangGraph 6노드 | BE `@Scheduled.triggerIngestionPipeline` → `/pipeline/run` · 매시 정각 KST (`AXIS_SCHEDULER_ENABLED=true`) | `card_news` + `evidence_chain` + `article_images` | 30초 / cycle |
-| **(BE 직빌드) BriefingService** | Java (axis-backend) — sector-grouped HTML/text 빌더 + `SesMailService` SES V2 SDK | BE `@Scheduled.sendDailyBriefing` · `cron="0 30 8 * * MON-FRI" zone="Asia/Seoul"` | `card_news` SELECT → SES 발송 (messageId) → (TBD `briefing_history` INSERT) | 5초 |
+| `ingestion_graph.py` | LangGraph 6노드 | BE `@Scheduled.triggerIngestionPipeline` → `/pipeline/run` · 매시 정각 KST (`AXIS_SCHEDULER_ENABLED=true`) | `card_news` + `card_news.evidence_payload` + `card_news.image_assets` | 30초 / cycle |
+| **(BE 직빌드) BriefingService** | Java (axis-backend) — sector-grouped HTML/text 빌더 + `SesMailService` SES V2 SDK | BE `@Scheduled.sendDailyBriefing` · `cron="0 30 8 * * MON-FRI" zone="Asia/Seoul"` | `card_news` SELECT → SES 발송 (messageId) → `briefing_reports.delivery_history` | 5초 |
 | `delivery_graph.py` (**현재 dead**) | LangGraph 1노드 (build_briefing_node) | (호출자 없음 — `AiClientService.buildBriefing` 정의됐으나 미사용) | (의도: BE 가 cards 보내면 HTML/text 본문 반환) | 5초 |
 | `rag/` (search) | RAG 모듈 — embedder + hybrid_search + reranker (graph 아님) | User `POST /api/search` → BE → `/search` · `/gen-search` | 검색 응답 / Generative Search (SC 3회) | 10초 (BE 타임아웃) |
 | `weak_signal` | **W7 구현 예정** — `weak_signal_graph.py` 신규 + `_deprecated/weak_signal_agent.py` 재구축 | BE `@Scheduled` `/weak-signal/run` · 월 09:00 | `signal_cards` *(테이블 미존재 — W7 추가 예정)* | 60초 |
@@ -216,10 +216,10 @@ ADR-0008 spec(CronJob → BE → axis-ai 본문빌더) 과 실 구현(BE @Schedu
 |---|---|---|---|
 | Frontend | React 18 + Vite + TypeScript + Radix UI | 대시보드 UI | **SKALA EKS 운영 배포 중** (ALB ingress, GitOps) |
 | Backend | Spring Boot 3.x · Java 17 · Flyway · WebClient · **AWS SES V2 SDK + STS module** (IRSA 필수) | REST API · JWT · 스케줄러 · 이메일 브리핑 (SES IRSA) · 수동 트리거 `POST /api/pipeline/briefing` | 평일 08:30 KST 자동 발송 — Spring `@Scheduled` `zone="Asia/Seoul"` → `BriefingService.generateAndSend()` → `SesMailService` → SES. **2026-05-12 end-to-end 검증 완료** (messageId 발급 + 6명 inbox 도착) |
-| AI Server | Python 3.11 · FastAPI · LangGraph 1.1.8 · uv | 4개 graph (ingestion / delivery / search / weak_signal) | SQLAlchemy 2.0 + psycopg2 로 Supabase 접근 |
+| AI Server | Python 3.11 · FastAPI · LangGraph 1.1.8 · uv | 4개 graph (ingestion / delivery / search / weak_signal) | SQLAlchemy 2.0 + psycopg2 로 PostgreSQL 접근 |
 | Pipeline 노드 | crawl · credibility · dedup · classify · card_news · evidence | 6노드 LangGraph + 결정적 노출도 산식 | `axis-ai/src/pipeline/ingestion_graph.py` |
-| Evidence Chain | source_links · provenance · financial_refs · mbb_refs | 환각 방지 검증 첨부 4종 | `evidence_chain` 테이블 |
-| RDB | PostgreSQL 16 (Supabase Managed) | **13 테이블 / 146 컬럼 (V7 기준)** — 4 영역: Peer 원천 (5) · AI 분석 (3) · 메일 전달 (2) · 운영·평가 (3). `peer_companies` 5 row (4사 + sk_ax 자사 — tier 로 self/domestic 구분) | Pooler:6543 (sslmode=require) |
+| Evidence Payload | source_links · provenance · financial_refs · mbb_refs | 환각 방지 검증 첨부 4종 | `card_news.evidence_payload` |
+| RDB | PostgreSQL 16 (EKS PostgreSQL / Flyway 관리) | **12 앱 테이블 + 1 Flyway 관리 테이블 + 2 views (V30 기준)** — Product ERD는 Core Content · Card Output · Briefing · Mixer · Insight · Global Industry 중심. `raw_articles` 원문과 `market_price_ohlcv` 주가 row는 보존하고, 제거된 레거시 테이블은 `legacy_records`에 row 단위 archive. | namespace `skala3-finalproj-class3-team13`, service `postgres:5432` |
 | Vector DB | Qdrant 1.9 (Cloud) | Hybrid RRF (Dense + Sparse) | `axis_main` 3개월 · `axis_history` 12개월 TTL |
 | LLM | OpenAI GPT-4o | 분류 · 카드 생성 · Generative Search | 일일 비용 목표 ≤ ₩5,000 |
 | 임베딩 / 재랭킹 | BGE-M3 + BGE-reranker-v2-m3 (FlagEmbedding 1.x, MIT) | AI Pod 내장 — 외부 호출 없음 | Dense+Sparse 원샷 추론 |

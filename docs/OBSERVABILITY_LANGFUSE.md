@@ -76,7 +76,7 @@ class LangfuseSpanContext(TypedDict):
 ### app DB 에 흔적
 
 - `usage_logs.langfuse_trace_id` — billing row 가 어느 trace 의 어느 span 인지 pointer
-- `evidence_chain.provenance.langfuse_trace_id` — card 1건 → trace tree (Langfuse UI 클릭) 드릴다운
+- `card_news.evidence_payload.provenance.langfuse_trace_id` — card 1건 → trace tree (Langfuse UI 클릭) 드릴다운
 
 ## 6. 알고리즘 / 통합 패턴
 
@@ -260,11 +260,11 @@ restTemplate.exchange(..., headers, ...);
 
 axis-ai 의 state 에는 영향 없음. Side-effect 만 발생.
 
-다만 `_langfuse_trace_id` (private key, "_" prefix) 를 state 에 임시 보존 → EvidenceAgent 가 `evidence_chain.provenance.langfuse_trace_id` 에 저장.
+다만 `_langfuse_trace_id` (private key, "_" prefix) 를 state 에 임시 보존 → EvidenceAgent 가 `card_news.evidence_payload.provenance.langfuse_trace_id` 에 저장.
 
 ## 11. Provenance + Confidence
 
-- **Provenance 연동** — ProvenanceTracker (`@with_provenance`) 가 trace_id 를 `evidence_chain.provenance.langfuse_trace_id` 로 기록. 그러면 card → trace tree 클릭 한 번으로 드릴다운.
+- **Provenance 연동** — ProvenanceTracker (`@with_provenance`) 가 trace_id 를 `card_news.evidence_payload.provenance.langfuse_trace_id` 로 기록. 그러면 card → trace tree 클릭 한 번으로 드릴다운.
 - **Confidence 연동** — Langfuse score API 로 사용자 feedback (좋아요/싫어요) 를 trace 에 부착 가능. 이후 prompt eval 의 GT 로 활용.
 
 ## 12. 테스트 시나리오

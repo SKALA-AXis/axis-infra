@@ -47,4 +47,4 @@ AXIS의 AI 처리 흐름을 처음 설계할 때 단일 LangGraph 그래프로 �
 - `axis-ai/src/pipeline/ingestion_graph.py`와 `delivery_graph.py`를 별도 파일로 관리
 - SpringBoot Scheduler가 각각 `/pipeline/run`과 `/pipeline/delivery`를 독립 호출
 - 두 파이프라인 간 직접 함수 호출 금지 — 항상 PostgreSQL 경유
-- `pipeline_logs` 테이블에 `pipeline_step`으로 각 단계별 실행 이력 추적
+- V30 이후 실행 이력은 active product table에서 분리한다. 필요한 최소 이벤트는 `legacy_records` 또는 외부 observability로 보존

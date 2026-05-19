@@ -27,7 +27,7 @@ PostgreSQL을 Supabase Managed로 옮긴 직후, 스키마 변경을 어떻게 �
 - `axis-backend/build.gradle` — `flyway-core` + `flyway-database-postgresql` 추가 (Spring Boot 3.3 + Flyway 10 호환).
 - `axis-backend/src/main/resources/application.yml` — `spring.flyway.enabled: true`, `baseline-on-migrate: true`, `out-of-order: false`.
 - 마이그레이션 파일 위치: `axis-backend/src/main/resources/db/migration/`
-- 명명 규칙: `V{N}__{snake_case_설명}.sql` (예: `V1__init_schema.sql`, `V2__add_evidence_chain_index.sql`)
+- 명명 규칙: `V{N}__{snake_case_설명}.sql` (예: `V1__init_schema.sql`, `V30__collapse_legacy_tables_into_minimal_product_schema.sql`)
 
 ### 단일 출처 정책
 
@@ -64,5 +64,5 @@ PostgreSQL을 Supabase Managed로 옮긴 직후, 스키마 변경을 어떻게 �
 
 ## 후속 작업
 
-- `V2__` 부터 시작될 다음 변경 후보: evidence_chain 컬럼 분리, peer_financials 인덱스 추가.
+- V30 이후 변경은 최소 Product ERD와 `legacy_records` 보존 원칙을 유지하며 추가한다.
 - 마이그레이션 파일 작성 가이드를 `axis-infra/docs/conventions/CONVENTION.md` 에 추가.
