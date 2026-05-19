@@ -234,3 +234,29 @@ skala-status:  ## SKALA namespace 의 모든 axis 리소스 상태
 
 skala-logs:  ## 모든 axis Pod 로그 (skala namespace)
 	kubectl -n $(SKALA_NS) logs -l app.kubernetes.io/part-of=axis --all-containers --max-log-requests 10 -f --tail=100
+
+# ── Cluster DB 모드 — docker compose 로 backend·ai·frontend 띄우되 DB 는 cluster 사용
+# port-forward 자동 (background) + cluster-db override file 적용.
+
+up-cluster:  ## docker compose + cluster DB (port-forward 자동)
+	@echo "▸ kubectl port-forward 시작 (background)"
+	@-pkill -f "kubectl port-forward.*svc/postgres 5432" 2>/dev/null || true
+	@-pkill -f "kubectl port-forward.*svc/qdrant 6333"   2>/dev/null || true
+	@kubectl port-forward -n $(SKALA_NS) svc/postgres 5432:5432 >/tmp/axis-pf-postgres.log 2>&1 &
+	@kubectl port-forward -n $(SKALA_NS) svc/qdrant   6333:6333 >/tmp/axis-pf-qdrant.log 2>&1 &
+	@sleep 2
+	@echo "▸ docker compose up (backend + ai + frontend, postgres·qdrant 컨테이너 스킵)"
+	docker compose -f docker-compose.yml -f docker-compose.cluster-db.yml up -d backend ai frontend
+	@echo ""
+	@echo "✓ Cluster DB 모드 활성:"
+	@echo "  - backend: http://localhost:8080 → cluster Postgres (port-forward 경유)"
+	@echo "  - ai:      http://localhost:8001 → cluster Postgres + Qdrant"
+	@echo "  - frontend: http://localhost:3000"
+	@echo "  - SPRING_FLYWAY_ENABLED=false (silent migrate 차단)"
+	@echo "  - port-forward log: /tmp/axis-pf-{postgres,qdrant}.log"
+
+down-cluster:  ## docker compose 종료 + port-forward 정리
+	docker compose -f docker-compose.yml -f docker-compose.cluster-db.yml down
+	@-pkill -f "kubectl port-forward.*svc/postgres 5432" 2>/dev/null || true
+	@-pkill -f "kubectl port-forward.*svc/qdrant 6333"   2>/dev/null || true
+	@echo "✓ port-forward 종료"

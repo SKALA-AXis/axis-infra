@@ -40,76 +40,116 @@ axis-infra/                     ← 이 레포 (Single Source of Truth)
 
 ---
 
-## 🚀 실행 방법 (두 가지 모드)
+## 🚀 로컬 개발 방법 (3가지 모드)
 
-axis-infra 의 docker-compose 는 **Cloud / Local 두 가지 DB 모드**를 한 파일로 지원합니다. `.env` 파일 + `--profile` 플래그 조합으로 전환합니다.
+| 모드 | DB / Qdrant | 명령 | 용도 |
+|---|---|---|---|
+| **A. Cluster DB** ⭐ 권장 | SKALA EKS (port-forward 자동) | `make up-cluster` | 일상 dev — 팀 공용 DB 보면서 코드 작업 |
+| **B. Local docker** | 로컬 docker postgres + qdrant | `docker compose --profile local --env-file .env.local up -d` | 오프라인 작업, **새 migration 스키마 실험** |
+| **C. Host 실행** | (A 또는 B 선택) | `kubectl port-forward …` + `./gradlew bootRun` / `uv run python` | 빠른 iterate (HMR), debugger 부착 |
 
-| 모드 | PostgreSQL | Qdrant | 사용 환경 변수 파일 | 컨테이너 기동 범위 |
-|---|---|---|---|---|
-| **Cloud** (기본) | Supabase | Qdrant Cloud | `.env` | backend / ai / frontend (postgres·qdrant 컨테이너 X) |
-| **Local** | docker postgres | docker qdrant | `.env.local` | postgres / qdrant / backend / ai / frontend |
+> 옛 Supabase / Qdrant Cloud 모드는 폐기됨 (cluster in-cluster Postgres + Qdrant 전환 완료).
 
-> Cloud 모드에서는 `postgres` · `qdrant` 서비스가 `profiles: ["local"]` 로 묶여 있어 자동으로 제외됩니다.
+### Mode A — Cluster DB + docker compose ⭐ 권장
 
-### Mode 1 — Cloud 모드 (기본)
-
-Supabase Postgres + Qdrant Cloud 에 backend / ai 가 직접 붙는 구성. 팀 공용 DB라 데모·PR 검증 용이.
+cluster 의 Postgres + Qdrant 에 docker compose 가 띄운 backend·ai·frontend 가 연결. 팀원과 같은 DB 보면서 개발 — 데이터 일관성·격리 둘 다.
 
 ```bash
-# 1. 레포 클론
-git clone https://github.com/SKALA-AXis/axis-infra.git
-cd axis-infra
+# 1. SKALA EKS 접근 권한 (kubeconfig) 가 있는지 확인
+kubectl config current-context
+# arn:aws:eks:ap-northeast-2:...:cluster/skala-2025
 
-# 2. .env 작성 (template 참고; Supabase DSN, Qdrant Cloud URL/API key 입력)
-cp .env.example .env
-#   필수: DATABASE_URL, SPRING_DATASOURCE_URL/USERNAME/PASSWORD,
-#         QDRANT_HOST(https://...cloud.qdrant.io), QDRANT_API_KEY,
-#         OPENAI_API_KEY, NAVER_*, DART_API_KEY, KIPRIS_API_KEY
+# 2. 한 명령으로 띄움 (port-forward 자동 + docker compose)
+make up-cluster
 
-# 3. 전체 서비스 기동 (postgres·qdrant 컨테이너는 안 뜸)
-docker compose up -d
+# 3. 접근:
+#    - frontend: http://localhost:3000
+#    - backend:  http://localhost:8080
+#    - ai:       http://localhost:8001
+#    - cluster postgres: localhost:5432 (port-forward 경유)
+#    - cluster qdrant:   localhost:6333
 
-# 4. 로그
-docker compose logs -f ai backend
+# 4. 종료
+make down-cluster
 ```
 
-### Mode 2 — Local 모드 (오프라인 / 비용 절감)
+**자동 보호장치** ([docker-compose.cluster-db.yml](docker-compose.cluster-db.yml)):
 
-postgres + qdrant 컨테이너를 같이 띄우고 backend/ai 가 같은 네트워크의 컨테이너에 붙는 구성.
+- `SPRING_FLYWAY_ENABLED=false` — backend container 가 cluster DB 에 silent 자동 migrate 못 함 (PR #20 의 application-local.yml 와 별개의 환경변수 차원 이중 안전)
+- `host.docker.internal` 통해 host port-forward 로 cluster DB 접근
+- postgres / qdrant 컨테이너는 안 뜸 (Mode B 와 격리)
+
+**Mode A 에서 절대 하지 말 것**:
+
+- 새 V28+ migration 파일 작업 트리에 두고 실행 — Flyway 비활성이지만 명시 override (`--spring.flyway.enabled=true`) 시 cluster DB 에 silent 적용 위험
+- DB schema 변경은 **반드시 Mode B 에서 검증** 후 PR
+
+### Mode B — Local docker (스키마 실험 / 오프라인)
+
+로컬 docker 의 postgres + qdrant 컨테이너로 격리 환경.
 
 ```bash
 # 1. .env.local 작성
 cp .env.local.example .env.local
 #   DATABASE_URL=postgresql://axuser:axpass@postgres:5432/axis
 #   SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/axis
-#   QDRANT_HOST=qdrant   QDRANT_API_KEY=  (비워둠)
+#   QDRANT_HOST=http://qdrant  QDRANT_API_KEY=  (비워둠)
 
-# 2. profile=local + --env-file 플래그로 기동 (둘 다 필수)
+# 2. 전체 스택 (postgres + qdrant + backend + ai + frontend)
 docker compose --profile local --env-file .env.local up -d
 
-# 3. DB·Qdrant 만 띄우고 backend·ai 는 호스트에서 개발 모드로 돌리기
+# 3. DB·Qdrant 만 띄우고 코드는 host 에서 실행 (Mode C 와 결합)
 docker compose --profile local --env-file .env.local up -d postgres qdrant
-#   이후 axis-ai: uv run python run_pipeline_once.py --env local
-#        axis-backend: ./gradlew bootRun --args='--spring.profiles.active=local'
+```
+
+**새 migration 검증 워크플로**:
+
+```bash
+# 1. Mode B 로 격리 docker DB 띄움
+docker compose --profile local --env-file .env.local up -d postgres qdrant
+
+# 2. backend 를 명시 Flyway enable 로 실행 (Mode A·application-local.yml 의 차단 우회)
+cd ../axis-backend
+./gradlew bootRun --args='--spring.profiles.active=local --spring.flyway.enabled=true'
+
+# 3. 검증 후 PR → 머지 → ArgoCD sync → cluster pod 가 prod profile 로 적용
+```
+
+### Mode C — Host 실행 (개별 서비스 빠른 iterate)
+
+DB / Qdrant 는 Mode A 또는 B 로 띄우고, backend / ai / frontend 는 host 에서 직접 실행. HMR / debugger / 빠른 빌드 사이클.
+
+```bash
+# DB·Qdrant 준비 (둘 중 하나)
+make up-cluster                            # cluster DB
+# 또는
+docker compose --profile local --env-file .env.local up -d postgres qdrant
+
+# 각 서비스 host 실행
+cd ../axis-backend && ./gradlew bootRun --args='--spring.profiles.active=local'
+cd ../axis-ai      && uv run python -m src.main
+cd ../axis-frontend && npm run dev
 ```
 
 ### 환경 설정 체크리스트 (신규 팀원)
 
-- [ ] `.env` (Cloud) 받기 — 노션·1Password 등에서 공유, **절대 커밋 금지**
-- [ ] (옵션) Local 모드 쓸 거면 `.env.local` 작성
-- [ ] `db/schema.sql` 마이그레이션은 SpringBoot Flyway 가 자동 적용 — 직접 `psql -f` 할 필요 없음
-- [ ] CI 검증 항목: SQL 스키마 + OpenAPI 유효성 + API 스펙 변경 PR 코멘트 ([.github/workflows/validate.yml](.github/workflows/validate.yml))
+- [ ] kubeconfig 로 SKALA EKS 접근 가능한지 확인 (Mode A 필수)
+- [ ] `.env` 받기 — 노션·1Password 에서 공유, **절대 커밋 금지**
+- [ ] Mode B 쓸 거면 `.env.local` 작성
+- [ ] DB schema 변경 시 Mode B 검증 → PR — 절대 Mode A 에서 schema 변경 X
+- [ ] CI 검증 항목: SQL 스키마 + OpenAPI 유효성 ([.github/workflows/validate.yml](.github/workflows/validate.yml))
 
 ### 모드별 빠른 비교
 
-| 작업 | Cloud | Local |
-|---|---|---|
-| 시작 명령 | `docker compose up -d` | `docker compose --profile local --env-file .env.local up -d` |
-| Postgres | Supabase pooler:6543 (sslmode=require) | docker postgres:5432 |
-| Qdrant | https Cloud | http localhost (api_key 비움) |
-| LLM 비용 | 동일 | 동일 (OPENAI_API_KEY) |
-| 데이터 영속성 | Supabase 영구 | 컨테이너 volume |
-| 협업 | ✅ 팀 공유 | ❌ 로컬 격리 |
+| 작업 | Mode A (cluster) | Mode B (local docker) | Mode C (host) |
+| --- | --- | --- | --- |
+| 시작 | `make up-cluster` | `docker compose --profile local --env-file .env.local up -d` | `./gradlew bootRun` / `uv run` |
+| Postgres | cluster (port-forward) | docker postgres:5432 | (A 또는 B 선택) |
+| Qdrant | cluster (port-forward) | docker qdrant:6333 | (A 또는 B 선택) |
+| 협업 | ✅ 팀 공유 DB | ❌ 로컬 격리 | (선택에 따라) |
+| Flyway 자동 migrate | ❌ 차단 (이중 안전) | ✅ 활성 (격리 docker DB) | local profile 비활성 / 명시 enable 가능 |
+| Schema 변경 | ❌ 금지 (PR 경유) | ✅ 권장 | ✅ 명시 enable 시 가능 |
+| 코드 변경 iterate | docker rebuild 필요 | docker rebuild 필요 | ⭐ HMR / 빠름 |
 
 ---
 
