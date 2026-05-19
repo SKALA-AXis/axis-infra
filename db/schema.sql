@@ -111,7 +111,7 @@ CREATE INDEX IF NOT EXISTS idx_raw_articles_qdrant_vector_id
 -- url 컬럼은 UNIQUE 제약으로 PG 가 자동 인덱스 생성 — 별도 인덱스 불필요.
 
 -- ============================================================
--- 2-1. raw_article_metadata_* — source-specific metadata payloads
+-- 2-1. raw_article_source_metadata — source-specific metadata payloads
 -- ============================================================
 CREATE OR REPLACE FUNCTION axis_raw_article_common_metadata(input_metadata JSONB)
 RETURNS JSONB
@@ -179,213 +179,59 @@ AS $$
     );
 $$;
 
-CREATE TABLE IF NOT EXISTS raw_article_metadata_news (
-    raw_article_id BIGINT PRIMARY KEY,
-    source_metadata JSONB NOT NULL DEFAULT '{}',
-    search_query TEXT GENERATED ALWAYS AS (source_metadata ->> 'search_query') STORED,
-    body_fetch_status TEXT GENERATED ALWAYS AS (source_metadata ->> 'body_fetch_status') STORED,
-    subtitle TEXT GENERATED ALWAYS AS (source_metadata ->> 'subtitle') STORED,
-    sector TEXT GENERATED ALWAYS AS (source_metadata ->> 'sector') STORED,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_raw_article_metadata_news_article
-        FOREIGN KEY (raw_article_id) REFERENCES raw_articles(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS raw_article_metadata_official (
-    raw_article_id BIGINT PRIMARY KEY,
-    source_metadata JSONB NOT NULL DEFAULT '{}',
-    company_name TEXT GENERATED ALWAYS AS (source_metadata ->> 'company_name') STORED,
-    list_url TEXT GENERATED ALWAYS AS (source_metadata ->> 'list_url') STORED,
-    body_fetch_status TEXT GENERATED ALWAYS AS (source_metadata ->> 'body_fetch_status') STORED,
-    source_key TEXT GENERATED ALWAYS AS (source_metadata ->> 'source_key') STORED,
-    source_url TEXT GENERATED ALWAYS AS (source_metadata ->> 'source_url') STORED,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_raw_article_metadata_official_article
-        FOREIGN KEY (raw_article_id) REFERENCES raw_articles(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS raw_article_metadata_company_site (
-    raw_article_id BIGINT PRIMARY KEY,
-    source_metadata JSONB NOT NULL DEFAULT '{}',
-    page_kind TEXT GENERATED ALWAYS AS (source_metadata ->> 'page_kind') STORED,
-    source_family TEXT GENERATED ALWAYS AS (source_metadata ->> 'source_family') STORED,
-    content_hash TEXT GENERATED ALWAYS AS (source_metadata ->> 'content_hash') STORED,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_raw_article_metadata_company_site_article
-        FOREIGN KEY (raw_article_id) REFERENCES raw_articles(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS raw_article_metadata_dart (
-    raw_article_id BIGINT PRIMARY KEY,
-    source_metadata JSONB NOT NULL DEFAULT '{}',
-    corp_code TEXT GENERATED ALWAYS AS (source_metadata ->> 'corp_code') STORED,
-    receipt_no TEXT GENERATED ALWAYS AS (source_metadata ->> 'receipt_no') STORED,
-    rcept_no TEXT GENERATED ALWAYS AS (source_metadata ->> 'rcept_no') STORED,
-    corp_name TEXT GENERATED ALWAYS AS (source_metadata ->> 'corp_name') STORED,
-    stock_code TEXT GENERATED ALWAYS AS (source_metadata ->> 'stock_code') STORED,
-    report_name TEXT GENERATED ALWAYS AS (source_metadata ->> 'report_name') STORED,
-    rcept_dt TEXT GENERATED ALWAYS AS (source_metadata ->> 'rcept_dt') STORED,
-    disclosure_type TEXT GENERATED ALWAYS AS (source_metadata ->> 'disclosure_type') STORED,
+CREATE TABLE IF NOT EXISTS raw_article_source_metadata (
+    raw_article_id BIGINT PRIMARY KEY REFERENCES raw_articles(id) ON DELETE CASCADE,
+    source_type VARCHAR(50) NOT NULL,
+    source_name VARCHAR(100),
+    source_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    external_id TEXT GENERATED ALWAYS AS (
+        COALESCE(
+            source_metadata ->> 'rcept_no',
+            source_metadata ->> 'receipt_no',
+            source_metadata ->> 'emp_seqno',
+            source_metadata ->> 'content_hash',
+            source_metadata ->> 'item_code'
+        )
+    ) STORED,
     period TEXT GENERATED ALWAYS AS (source_metadata ->> 'period') STORED,
-    parser_quality_label TEXT GENERATED ALWAYS AS (source_metadata ->> 'parser_quality_label') STORED,
+    document_url TEXT GENERATED ALWAYS AS (
+        COALESCE(
+            source_metadata ->> 'pdf_url',
+            source_metadata ->> 'detail_url',
+            source_metadata ->> 'source_url',
+            source_metadata ->> 'list_url'
+        )
+    ) STORED,
+    company_name TEXT GENERATED ALWAYS AS (
+        COALESCE(
+            source_metadata ->> 'company_name',
+            source_metadata ->> 'corp_name',
+            source_metadata ->> 'company'
+        )
+    ) STORED,
+    parser_quality_label TEXT GENERATED ALWAYS AS (
+        source_metadata ->> 'parser_quality_label'
+    ) STORED,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_raw_article_metadata_dart_article
-        FOREIGN KEY (raw_article_id) REFERENCES raw_articles(id) ON DELETE CASCADE
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS raw_article_metadata_ir (
-    raw_article_id BIGINT PRIMARY KEY,
-    source_metadata JSONB NOT NULL DEFAULT '{}',
-    source_page TEXT GENERATED ALWAYS AS (source_metadata ->> 'source_page') STORED,
-    detail_url TEXT GENERATED ALWAYS AS (source_metadata ->> 'detail_url') STORED,
-    pdf_url TEXT GENERATED ALWAYS AS (source_metadata ->> 'pdf_url') STORED,
-    period TEXT GENERATED ALWAYS AS (source_metadata ->> 'period') STORED,
-    parser_quality_label TEXT GENERATED ALWAYS AS (source_metadata ->> 'parser_quality_label') STORED,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_raw_article_metadata_ir_article
-        FOREIGN KEY (raw_article_id) REFERENCES raw_articles(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS raw_article_metadata_securities_report (
-    raw_article_id BIGINT PRIMARY KEY,
-    source_metadata JSONB NOT NULL DEFAULT '{}',
-    report_type TEXT GENERATED ALWAYS AS (source_metadata ->> 'report_type') STORED,
-    firm TEXT GENERATED ALWAYS AS (source_metadata ->> 'firm') STORED,
-    item_code TEXT GENERATED ALWAYS AS (source_metadata ->> 'item_code') STORED,
-    pdf_url TEXT GENERATED ALWAYS AS (source_metadata ->> 'pdf_url') STORED,
-    parser_quality_label TEXT GENERATED ALWAYS AS (source_metadata ->> 'parser_quality_label') STORED,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_raw_article_metadata_securities_report_article
-        FOREIGN KEY (raw_article_id) REFERENCES raw_articles(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS raw_article_metadata_trend_report (
-    raw_article_id BIGINT PRIMARY KEY,
-    source_metadata JSONB NOT NULL DEFAULT '{}',
-    collection TEXT GENERATED ALWAYS AS (source_metadata ->> 'collection') STORED,
-    month TEXT GENERATED ALWAYS AS (source_metadata ->> 'month') STORED,
-    issue_title TEXT GENERATED ALWAYS AS (source_metadata ->> 'issue_title') STORED,
-    pdf_title TEXT GENERATED ALWAYS AS (source_metadata ->> 'pdf_title') STORED,
-    pdf_url TEXT GENERATED ALWAYS AS (source_metadata ->> 'pdf_url') STORED,
-    sector_filter_status TEXT GENERATED ALWAYS AS (source_metadata ->> 'sector_filter_status') STORED,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_raw_article_metadata_trend_report_article
-        FOREIGN KEY (raw_article_id) REFERENCES raw_articles(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS raw_article_metadata_search_trend (
-    raw_article_id BIGINT PRIMARY KEY,
-    source_metadata JSONB NOT NULL DEFAULT '{}',
-    group_name TEXT GENERATED ALWAYS AS (source_metadata ->> 'group_name') STORED,
-    period TEXT GENERATED ALWAYS AS (source_metadata ->> 'period') STORED,
-    time_unit TEXT GENERATED ALWAYS AS (source_metadata ->> 'time_unit') STORED,
-    crawl_type TEXT GENERATED ALWAYS AS (source_metadata ->> 'crawl_type') STORED,
-    source_name TEXT GENERATED ALWAYS AS (source_metadata ->> 'source') STORED,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_raw_article_metadata_search_trend_article
-        FOREIGN KEY (raw_article_id) REFERENCES raw_articles(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS raw_article_metadata_job (
-    raw_article_id BIGINT PRIMARY KEY,
-    source_metadata JSONB NOT NULL DEFAULT '{}',
-    emp_seqno TEXT GENERATED ALWAYS AS (source_metadata ->> 'emp_seqno') STORED,
-    peer_company TEXT GENERATED ALWAYS AS (source_metadata ->> 'peer_company') STORED,
-    company_name TEXT GENERATED ALWAYS AS (source_metadata ->> 'company') STORED,
-    job_title TEXT GENERATED ALWAYS AS (source_metadata ->> 'job_title') STORED,
-    start_date TEXT GENERATED ALWAYS AS (source_metadata ->> 'start_date') STORED,
-    end_date TEXT GENERATED ALWAYS AS (source_metadata ->> 'end_date') STORED,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_raw_article_metadata_job_article
-        FOREIGN KEY (raw_article_id) REFERENCES raw_articles(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS raw_article_metadata_market_data (
-    raw_article_id BIGINT PRIMARY KEY,
-    source_metadata JSONB NOT NULL DEFAULT '{}',
-    peer_id TEXT GENERATED ALWAYS AS (source_metadata ->> 'peer_id') STORED,
-    missing_policy TEXT GENERATED ALWAYS AS (source_metadata ->> 'missing_policy') STORED,
-    source_type_detail TEXT GENERATED ALWAYS AS (source_metadata ->> 'source_type') STORED,
-    content_type_detail TEXT GENERATED ALWAYS AS (source_metadata ->> 'content_type') STORED,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_raw_article_metadata_market_data_article
-        FOREIGN KEY (raw_article_id) REFERENCES raw_articles(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS raw_article_metadata_social (
-    raw_article_id BIGINT PRIMARY KEY,
-    source_metadata JSONB NOT NULL DEFAULT '{}',
-    platform TEXT GENERATED ALWAYS AS (source_metadata ->> 'platform') STORED,
-    author TEXT GENERATED ALWAYS AS (source_metadata ->> 'author') STORED,
-    engagement_count TEXT GENERATED ALWAYS AS (source_metadata ->> 'engagement_count') STORED,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_raw_article_metadata_social_article
-        FOREIGN KEY (raw_article_id) REFERENCES raw_articles(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_ram_news_source_metadata
-    ON raw_article_metadata_news USING GIN(source_metadata);
-CREATE INDEX IF NOT EXISTS idx_ram_news_search_query
-    ON raw_article_metadata_news (search_query);
-CREATE INDEX IF NOT EXISTS idx_ram_official_source_metadata
-    ON raw_article_metadata_official USING GIN(source_metadata);
-CREATE INDEX IF NOT EXISTS idx_ram_official_company_name
-    ON raw_article_metadata_official (company_name);
-CREATE INDEX IF NOT EXISTS idx_ram_company_site_source_metadata
-    ON raw_article_metadata_company_site USING GIN(source_metadata);
-CREATE INDEX IF NOT EXISTS idx_ram_company_site_page_kind
-    ON raw_article_metadata_company_site (page_kind);
-CREATE INDEX IF NOT EXISTS idx_ram_company_site_source_family
-    ON raw_article_metadata_company_site (source_family);
-CREATE INDEX IF NOT EXISTS idx_ram_dart_source_metadata
-    ON raw_article_metadata_dart USING GIN(source_metadata);
-CREATE INDEX IF NOT EXISTS idx_ram_dart_rcept_no
-    ON raw_article_metadata_dart (rcept_no);
-CREATE INDEX IF NOT EXISTS idx_ram_dart_period
-    ON raw_article_metadata_dart (period);
-CREATE INDEX IF NOT EXISTS idx_ram_ir_source_metadata
-    ON raw_article_metadata_ir USING GIN(source_metadata);
-CREATE INDEX IF NOT EXISTS idx_ram_ir_pdf_url
-    ON raw_article_metadata_ir (pdf_url);
-CREATE INDEX IF NOT EXISTS idx_ram_ir_period
-    ON raw_article_metadata_ir (period);
-CREATE INDEX IF NOT EXISTS idx_ram_securities_source_metadata
-    ON raw_article_metadata_securities_report USING GIN(source_metadata);
-CREATE INDEX IF NOT EXISTS idx_ram_securities_item_code
-    ON raw_article_metadata_securities_report (item_code);
-CREATE INDEX IF NOT EXISTS idx_ram_securities_firm
-    ON raw_article_metadata_securities_report (firm);
-CREATE INDEX IF NOT EXISTS idx_ram_trend_source_metadata
-    ON raw_article_metadata_trend_report USING GIN(source_metadata);
-CREATE INDEX IF NOT EXISTS idx_ram_trend_collection
-    ON raw_article_metadata_trend_report (collection);
-CREATE INDEX IF NOT EXISTS idx_ram_search_trend_source_metadata
-    ON raw_article_metadata_search_trend USING GIN(source_metadata);
-CREATE INDEX IF NOT EXISTS idx_ram_search_trend_group_period
-    ON raw_article_metadata_search_trend (group_name, period);
-CREATE INDEX IF NOT EXISTS idx_ram_job_source_metadata
-    ON raw_article_metadata_job USING GIN(source_metadata);
-CREATE INDEX IF NOT EXISTS idx_ram_job_emp_seqno
-    ON raw_article_metadata_job (emp_seqno);
-CREATE INDEX IF NOT EXISTS idx_ram_market_data_source_metadata
-    ON raw_article_metadata_market_data USING GIN(source_metadata);
-CREATE INDEX IF NOT EXISTS idx_ram_market_data_peer_id
-    ON raw_article_metadata_market_data (peer_id);
-CREATE INDEX IF NOT EXISTS idx_ram_social_source_metadata
-    ON raw_article_metadata_social USING GIN(source_metadata);
-CREATE INDEX IF NOT EXISTS idx_ram_social_platform
-    ON raw_article_metadata_social (platform);
+CREATE INDEX IF NOT EXISTS idx_raw_article_source_metadata_type_name
+    ON raw_article_source_metadata (source_type, source_name);
+CREATE INDEX IF NOT EXISTS idx_raw_article_source_metadata_payload_gin
+    ON raw_article_source_metadata USING GIN(source_metadata);
+CREATE INDEX IF NOT EXISTS idx_raw_article_source_metadata_external_id
+    ON raw_article_source_metadata (external_id)
+    WHERE external_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_raw_article_source_metadata_period
+    ON raw_article_source_metadata (period)
+    WHERE period IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_raw_article_source_metadata_document_url
+    ON raw_article_source_metadata (document_url)
+    WHERE document_url IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_raw_article_source_metadata_company_name
+    ON raw_article_source_metadata (company_name)
+    WHERE company_name IS NOT NULL;
 
 CREATE OR REPLACE VIEW raw_article_metadata_unified AS
 SELECT
@@ -393,68 +239,50 @@ SELECT
     ra.source_type,
     ra.source_name,
     ra.metadata AS common_metadata,
-    COALESCE(
-        CASE ra.source_type
-            WHEN 'news' THEN news.source_metadata
-            WHEN 'official' THEN official.source_metadata
-            WHEN 'company_site' THEN company_site.source_metadata
-            WHEN 'dart' THEN dart.source_metadata
-            WHEN 'ir' THEN ir.source_metadata
-            WHEN 'securities_report' THEN securities_report.source_metadata
-            WHEN 'trend_report' THEN trend_report.source_metadata
-            WHEN 'search_trend' THEN search_trend.source_metadata
-            WHEN 'job' THEN job.source_metadata
-            WHEN 'market_data' THEN market_data.source_metadata
-            WHEN 'social' THEN social.source_metadata
-            ELSE '{}'::jsonb
-        END,
-        '{}'::jsonb
-    ) AS source_metadata,
-    ra.metadata || COALESCE(
-        CASE ra.source_type
-            WHEN 'news' THEN news.source_metadata
-            WHEN 'official' THEN official.source_metadata
-            WHEN 'company_site' THEN company_site.source_metadata
-            WHEN 'dart' THEN dart.source_metadata
-            WHEN 'ir' THEN ir.source_metadata
-            WHEN 'securities_report' THEN securities_report.source_metadata
-            WHEN 'trend_report' THEN trend_report.source_metadata
-            WHEN 'search_trend' THEN search_trend.source_metadata
-            WHEN 'job' THEN job.source_metadata
-            WHEN 'market_data' THEN market_data.source_metadata
-            WHEN 'social' THEN social.source_metadata
-            ELSE '{}'::jsonb
-        END,
-        '{}'::jsonb
-    ) AS metadata
+    COALESCE(sm.source_metadata, '{}'::jsonb) AS source_metadata,
+    ra.metadata || COALESCE(sm.source_metadata, '{}'::jsonb) AS metadata
 FROM raw_articles ra
-LEFT JOIN raw_article_metadata_news news
-    ON news.raw_article_id = ra.id
-LEFT JOIN raw_article_metadata_official official
-    ON official.raw_article_id = ra.id
-LEFT JOIN raw_article_metadata_company_site company_site
-    ON company_site.raw_article_id = ra.id
-LEFT JOIN raw_article_metadata_dart dart
-    ON dart.raw_article_id = ra.id
-LEFT JOIN raw_article_metadata_ir ir
-    ON ir.raw_article_id = ra.id
-LEFT JOIN raw_article_metadata_securities_report securities_report
-    ON securities_report.raw_article_id = ra.id
-LEFT JOIN raw_article_metadata_trend_report trend_report
-    ON trend_report.raw_article_id = ra.id
-LEFT JOIN raw_article_metadata_search_trend search_trend
-    ON search_trend.raw_article_id = ra.id
-LEFT JOIN raw_article_metadata_job job
-    ON job.raw_article_id = ra.id
-LEFT JOIN raw_article_metadata_market_data market_data
-    ON market_data.raw_article_id = ra.id
-LEFT JOIN raw_article_metadata_social social
-    ON social.raw_article_id = ra.id;
+LEFT JOIN raw_article_source_metadata sm
+    ON sm.raw_article_id = ra.id;
+
+CREATE OR REPLACE FUNCTION axis_source_credibility_score(input_source_type TEXT)
+RETURNS DOUBLE PRECISION
+LANGUAGE sql
+IMMUTABLE
+AS $$
+    SELECT CASE LOWER(COALESCE(input_source_type, ''))
+        WHEN 'dart' THEN 1.00
+        WHEN 'ir' THEN 1.00
+        WHEN 'official' THEN 0.90
+        WHEN 'company_site' THEN 0.90
+        WHEN 'securities_report' THEN 0.80
+        WHEN 'trend_report' THEN 0.70
+        WHEN 'news' THEN 0.70
+        WHEN 'market_data' THEN 0.70
+        WHEN 'job' THEN 0.60
+        WHEN 'search_trend' THEN 0.55
+        WHEN 'social' THEN 0.40
+        ELSE 0.50
+    END;
+$$;
+
+CREATE OR REPLACE FUNCTION axis_source_credibility_grade(input_score DOUBLE PRECISION)
+RETURNS TEXT
+LANGUAGE sql
+IMMUTABLE
+AS $$
+    SELECT CASE
+        WHEN COALESCE(input_score, 0) >= 0.85 THEN 'High'
+        WHEN COALESCE(input_score, 0) >= 0.60 THEN 'Medium'
+        WHEN COALESCE(input_score, 0) >= 0.40 THEN 'Low'
+        ELSE 'Unverified'
+    END;
+$$;
 
 -- ============================================================
 -- 2-2. raw_article parser summary
 -- ============================================================
--- Source-specific payloads stay in raw_article_metadata_*.
+-- Source-specific payloads stay in raw_article_source_metadata.
 -- Only the lightweight parser summary is projected for indexed reads.
 CREATE TABLE IF NOT EXISTS raw_article_parse_results (
     raw_article_id BIGINT PRIMARY KEY REFERENCES raw_articles(id) ON DELETE CASCADE,
@@ -680,6 +508,61 @@ CREATE TABLE IF NOT EXISTS peer_financials (
 
 CREATE INDEX IF NOT EXISTS idx_peer_financials_peer_period
     ON peer_financials (peer_id, period);
+
+-- ============================================================
+-- 8-1. market_instruments / market_price_ohlcv — stock OHLCV
+-- ============================================================
+CREATE TABLE IF NOT EXISTS market_instruments (
+    id BIGSERIAL PRIMARY KEY,
+    peer_company_id VARCHAR(50) REFERENCES peer_companies(id) ON DELETE RESTRICT,
+    ticker VARCHAR(20) NOT NULL,
+    exchange VARCHAR(20) NOT NULL DEFAULT 'KRX',
+    currency VARCHAR(10) NOT NULL DEFAULT 'KRW',
+    instrument_name VARCHAR(100),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_market_instruments_exchange_ticker
+        UNIQUE (exchange, ticker)
+);
+
+CREATE INDEX IF NOT EXISTS idx_market_instruments_peer_company
+    ON market_instruments (peer_company_id)
+    WHERE peer_company_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS market_price_ohlcv (
+    id BIGSERIAL PRIMARY KEY,
+    raw_article_id BIGINT REFERENCES raw_articles(id) ON DELETE SET NULL,
+    instrument_id BIGINT REFERENCES market_instruments(id) ON DELETE RESTRICT,
+    peer_id TEXT,
+    ticker TEXT NOT NULL,
+    trade_date DATE NOT NULL,
+    open NUMERIC,
+    high NUMERIC,
+    low NUMERIC,
+    close NUMERIC,
+    volume BIGINT,
+    change_pct NUMERIC,
+    currency TEXT DEFAULT 'KRW',
+    source_type TEXT NOT NULL DEFAULT 'market_data',
+    source_name TEXT,
+    publisher TEXT,
+    collected_at TIMESTAMPTZ,
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT market_price_ohlcv_ticker_trade_date_source_name_key
+        UNIQUE (ticker, trade_date, source_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_market_price_ohlcv_peer_date
+    ON market_price_ohlcv (peer_id, trade_date DESC);
+CREATE INDEX IF NOT EXISTS idx_market_price_ohlcv_instrument_date
+    ON market_price_ohlcv (instrument_id, trade_date DESC)
+    WHERE instrument_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_market_price_ohlcv_raw_article
+    ON market_price_ohlcv (raw_article_id)
+    WHERE raw_article_id IS NOT NULL;
 
 
 -- ============================================================
