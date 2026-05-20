@@ -2,26 +2,28 @@
 
 > 프론트 화면이 실제로 읽는 데이터에서 출발해 DB를 설명한다.
 > DDL 기준: [`axis-infra/db/schema.sql`](../db/schema.sql) / ERD 기준: [`axis-infra/db/schema.dbml`](../db/schema.dbml)
-> Flyway 기준: `axis-backend/src/main/resources/db/migration` V1..V30
-> 업데이트: 2026-05-19 KST, V30 최소 스키마 기준
+> Flyway 기준: `axis-backend/src/main/resources/db/migration` V1..V32
+> 업데이트: 2026-05-20 KST, V32 카드뉴스 anchor FK 기준
 
 ---
 
 ## 0. 현재 스냅샷
 
-V30 목표 public schema 기준:
+V32 목표 public schema 기준:
 
 | 항목 | 값 | 비고 |
 |---|---:|---|
-| 앱 테이블 | 12 | `flyway_schema_history` 제외 |
+| 앱/운영 테이블 | 15 | `flyway_schema_history` 제외 |
 | DB 관리 테이블 | 1 | `flyway_schema_history` |
 | View | 2 | `issue_cards`, `raw_article_metadata_unified` |
-| 최신 Flyway | V30 | `collapse legacy tables into minimal product schema` |
+| 최신 Flyway | V32 | `add card news anchor foreign keys` |
 | 보존 archive | `legacy_records` | V30에서 제거되는 레거시 테이블 모든 row를 원본 payload로 보존 |
 
-V30은 단순 drop migration이 아니다. 제거 대상 테이블을 먼저 `legacy_records`에 row 단위로 복사하고, 화면에서 계속 필요한 값은 소유 테이블의 배열/JSONB 컬럼으로 흡수한 뒤 원본 테이블을 제거한다.
+V30은 단순 drop migration이 아니다. 제거 대상 테이블을 먼저 `legacy_records`에 row 단위로 복사하고, 화면에서 계속 필요한 값은 소유 테이블의 배열/JSONB 컬럼으로 흡수한 뒤 원본 테이블을 제거했다.
 
-리허설 결과는 다음과 같았다. 실제 운영 DB에는 `ROLLBACK`으로 되돌렸고, migration 파일만 준비했다.
+V31은 crawler/parser 운영 테이블을 복원했고, V32는 새 테이블 없이 카드뉴스 기반 산출물에 대표 FK anchor를 추가했다. 다건 관계는 기존 배열 컬럼으로 유지하고, `primary_*` 컬럼으로 FK 탐색과 ERD 연결성을 확보한다.
+
+V30 리허설 결과는 다음과 같았다. 실제 운영 DB에는 `ROLLBACK`으로 되돌렸고, migration 파일만 준비했다.
 
 | 검증 항목 | 결과 |
 |---|---:|
@@ -36,7 +38,7 @@ V30은 단순 drop migration이 아니다. 제거 대상 테이블을 먼저 `le
 
 데이터 보존 원칙:
 
-| 데이터 | V30 이후 위치 |
+| 데이터 | V32 기준 위치 |
 |---|---|
 | 기사 원문 | `raw_articles` |
 | 출처별 metadata | `raw_article_source_metadata` |
@@ -45,13 +47,13 @@ V30은 단순 drop migration이 아니다. 제거 대상 테이블을 먼저 `le
 | 기사 재무 metric | `raw_articles.financial_metrics` |
 | 기사 사업 signal | `raw_articles.business_signals` |
 | crawl run/event | `raw_articles.crawl_run_id`, `raw_articles.crawl_events`, `raw_articles.legacy_payload` |
-| 카드 근거 기사 | `card_news.source_raw_article_ids`, `card_news.source_articles` |
+| 카드 근거 기사 | `card_news.source_raw_article_ids`, `card_news.primary_raw_article_id`, `card_news.source_articles` |
 | 검증 근거 | `card_news.evidence_payload` |
 | 카드/기사 이미지 metadata | `card_news.image_assets` |
 | Peer+ 재무 시계열 | `peer_companies.financial_history` |
 | 채용 기반 signal | `peer_companies.job_posting_history` |
-| 브리핑 카드/기사/수신/발송 이력 | `briefing_reports.related_*`, `recipients`, `delivery_history`, `legacy_payload` |
-| Mixer/Insight/Global 분석 결과 | `mixer_results`, `insight_reports`, `global_industry_trends` |
+| 브리핑 카드/기사/수신/발송 이력 | `briefing_reports.related_*`, `primary_card_news_id`, `primary_peer_company_id`, `recipients`, `delivery_history`, `legacy_payload` |
+| Mixer/Insight/Global 분석 결과 | `mixer_results`, `insight_reports`, `global_industry_trends`; Global은 V32에서 카드뉴스 FK 미연결 |
 | 운영/감사/비용/로그/평가 데이터 | `legacy_records` |
 
 주의: V28 이후 최신 기사 일부는 `raw_articles.metadata = {}`처럼 보일 수 있다. source-specific payload는 `raw_article_source_metadata.source_metadata`로 분리되었고, 화면/API 호환 조회는 `raw_article_metadata_unified`를 사용한다.
@@ -60,14 +62,14 @@ V30은 단순 drop migration이 아니다. 제거 대상 테이블을 먼저 `le
 
 ## 1. 프론트 페이지 기준 데이터 요구사항
 
-| 프론트 화면 | 필요한 DB 중심축 | V30 설계 |
+| 프론트 화면 | 필요한 DB 중심축 | V32 설계 |
 |---|---|---|
 | 홈 대시보드 | 카드, 키워드, 주가, Peer+ 요약 | `card_news`, `market_price_ohlcv`, `peer_companies` |
 | 카드뉴스 | 동향 카드, 근거 원문, 검증 근거, 이미지 | `card_news` 단일 master에 `source_*`, `evidence_payload`, `image_assets` 포함 |
 | Peer+ | 회사별 DART 매출/영업이익/증감률/AX 비중/수주/키워드 | `peer_companies` read model |
-| 브리핑 | 일/주간 문서, 포함 카드/원문, 수신자와 발송 상태 | `briefing_reports` 단일 read model |
-| 믹서 | 여러 카드를 묶은 공통 신호와 시사점 | `mixer_results` |
-| 인사이트 | 선택 카드/피어 기반 전략 인사이트 | `insight_reports` |
+| 브리핑 | 일/주간 문서, 포함 카드/원문, 수신자와 발송 상태 | `briefing_reports` 단일 read model + `primary_card_news_id` FK |
+| 믹서 | 여러 카드를 묶은 공통 신호와 시사점 | `mixer_results` + `primary_card_news_id` FK |
+| 인사이트 | 선택 카드/피어 기반 전략 인사이트 | `insight_reports` + `primary_card_news_id` FK |
 | 글로벌 산업 | 글로벌 키워드, 산업 트렌드, SK AX 시사점 | `global_industry_trends` |
 | 키워드 그래프 | 키워드 빈도, 카테고리, 카드 연결 | `card_news.keywords`, `keyword_categories`, `keyword_frequency` |
 | Raw Articles | 원문 기사, 파싱 결과, 출처 metadata | `raw_articles`, `raw_article_source_metadata`, `raw_article_parse_results` |
@@ -90,9 +92,9 @@ raw_articles
   └─ raw_article_parse_results
 
 card_news
+  ├─ raw_articles
   ├─ mixer_results
   ├─ insight_reports
-  ├─ global_industry_trends
   └─ briefing_reports
 ```
 
@@ -100,6 +102,8 @@ card_news
 
 ```text
 crawl_cursors
+crawl_runs
+crawl_run_articles
 legacy_records
 flyway_schema_history
 ```
@@ -175,6 +179,7 @@ keyword_categories
 keywords
 keyword_frequency
 source_raw_article_ids
+primary_raw_article_id
 source_articles
 evidence_payload
 image_assets
@@ -182,6 +187,8 @@ legacy_payload
 ```
 
 `card_news_articles`, `evidence_chain`, `article_images`는 제거된다. 원본 row는 `legacy_records`에 있고, 화면에 필요한 값은 위 컬럼으로 옮긴다.
+
+V32에서 `primary_raw_article_id -> raw_articles.id` FK가 추가되었다. `source_raw_article_ids`는 전체 근거 목록이고, `primary_raw_article_id`는 ERD 탐색과 대표 원문 연결을 위한 anchor다.
 
 ### 3.6 `market_price_ohlcv`
 
@@ -197,6 +204,8 @@ legacy_payload
 key_summary
 sk_implication
 related_card_ids
+primary_card_news_id
+primary_peer_company_id
 related_raw_article_ids
 recipients
 delivery_history
@@ -205,17 +214,25 @@ legacy_payload
 
 `briefing_report_cards`, `briefing_report_articles`, `briefing_recipients`, `briefing_history`, `briefing_history_cards`, `recipients`의 화면 필요 데이터는 이 테이블로 접는다. 수신자 master row는 archive에 보존된다.
 
+V32에서 `primary_card_news_id -> card_news.id`, `primary_peer_company_id -> peer_companies.id` FK가 추가되었다. 특정 기간 카드뉴스 전체 목록은 `related_card_ids`에 유지한다.
+
 ### 3.8 `mixer_results`
 
 믹서 화면 read model이다. 선택 카드/피어/키워드와 생성 시사점을 저장한다.
+
+V32에서 `primary_card_news_id -> card_news.id`, `primary_peer_company_id -> peer_companies.id` FK가 추가되었다. 여러 입력 카드는 `input_card_ids` 배열에 유지한다.
 
 ### 3.9 `insight_reports`
 
 인사이트 화면 read model이다. `@with_ledger_writeback` 결과가 이 테이블에 저장된다.
 
+V32에서 `primary_card_news_id -> card_news.id`, `primary_peer_company_id -> peer_companies.id` FK가 추가되었다. 전체 근거 카드는 `source_card_ids`/`focus_card_ids`에 유지한다.
+
 ### 3.10 `global_industry_trends`
 
 글로벌 산업 키워드와 SK AX 시사점을 저장한다. 키워드 그래프와 글로벌 산업 페이지의 기반이다.
+
+V32에서는 의도적으로 카드뉴스 FK anchor를 추가하지 않았다.
 
 ### 3.11 `crawl_cursors`
 
@@ -319,7 +336,7 @@ LIMIT 50;
 카드 근거/검증/이미지 확인:
 
 ```sql
-SELECT id, title, source_raw_article_ids, evidence_payload, image_assets
+SELECT id, title, source_raw_article_ids, primary_raw_article_id, evidence_payload, image_assets
 FROM card_news
 ORDER BY created_at DESC
 LIMIT 20;

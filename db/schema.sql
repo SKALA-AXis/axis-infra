@@ -1,7 +1,7 @@
--- AXIS crawler/parser-aware product schema, V31 target
--- Snapshot date: 2026-05-19 KST
+-- AXIS crawler/parser-aware product schema, V32 target
+-- Snapshot date: 2026-05-20 KST
 --
--- Physical app tables after V30:
+-- Physical app tables after V32:
 --   peer_companies, raw_articles, raw_article_parse_results,
 --   raw_article_financial_metrics, raw_article_business_signals,
 --   card_news, market_price_ohlcv, briefing_reports, mixer_results,
@@ -253,13 +253,20 @@ CREATE TABLE IF NOT EXISTS card_news (
     keywords TEXT[] NOT NULL DEFAULT '{}',
     keyword_frequency JSONB NOT NULL DEFAULT '{}'::jsonb,
     source_raw_article_ids BIGINT[] NOT NULL DEFAULT '{}',
+    primary_raw_article_id BIGINT REFERENCES raw_articles(id) ON DELETE SET NULL,
     source_articles JSONB NOT NULL DEFAULT '[]'::jsonb,
     evidence_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
     image_assets JSONB NOT NULL DEFAULT '[]'::jsonb,
     legacy_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
     validation_pass BOOLEAN DEFAULT FALSE,
     validation_sc_score FLOAT DEFAULT 0.0,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT chk_card_news_primary_raw_article_in_sources
+        CHECK (
+            primary_raw_article_id IS NULL
+            OR cardinality(COALESCE(source_raw_article_ids, '{}'::bigint[])) = 0
+            OR primary_raw_article_id = ANY(source_raw_article_ids)
+        )
 );
 
 CREATE INDEX IF NOT EXISTS idx_card_news_peer_company_id ON card_news(peer_company_id);
@@ -267,6 +274,9 @@ CREATE INDEX IF NOT EXISTS idx_card_news_importance ON card_news(importance, imp
 CREATE INDEX IF NOT EXISTS idx_card_news_keywords ON card_news USING GIN(keywords);
 CREATE INDEX IF NOT EXISTS idx_card_news_keyword_categories ON card_news USING GIN(keyword_categories);
 CREATE INDEX IF NOT EXISTS idx_card_news_source_raw_article_ids ON card_news USING GIN(source_raw_article_ids);
+CREATE INDEX IF NOT EXISTS idx_card_news_primary_raw_article
+    ON card_news(primary_raw_article_id)
+    WHERE primary_raw_article_id IS NOT NULL;
 
 CREATE OR REPLACE VIEW issue_cards AS SELECT * FROM card_news;
 
@@ -320,6 +330,8 @@ CREATE TABLE IF NOT EXISTS briefing_reports (
     key_summary TEXT,
     sk_implication TEXT,
     related_card_ids TEXT[] NOT NULL DEFAULT '{}',
+    primary_card_news_id VARCHAR(50) REFERENCES card_news(id) ON DELETE SET NULL,
+    primary_peer_company_id VARCHAR(50) REFERENCES peer_companies(id) ON DELETE SET NULL,
     related_raw_article_ids BIGINT[] NOT NULL DEFAULT '{}',
     recipients JSONB NOT NULL DEFAULT '[]'::jsonb,
     delivery_history JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -334,12 +346,24 @@ CREATE TABLE IF NOT EXISTS briefing_reports (
         CHECK (status IN ('queued', 'running', 'completed', 'completed_partial', 'failed')),
     CONSTRAINT briefing_reports_type_check
         CHECK (briefing_type IN ('daily', 'weekly', 'custom')),
-    CONSTRAINT briefing_reports_date_order CHECK (date_from <= date_to)
+    CONSTRAINT briefing_reports_date_order CHECK (date_from <= date_to),
+    CONSTRAINT chk_briefing_reports_primary_card_in_related
+        CHECK (
+            primary_card_news_id IS NULL
+            OR cardinality(COALESCE(related_card_ids, '{}'::text[])) = 0
+            OR primary_card_news_id = ANY(related_card_ids)
+        )
 );
 
 CREATE INDEX IF NOT EXISTS idx_briefing_status ON briefing_reports(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_briefing_date_range ON briefing_reports(date_from, date_to);
 CREATE INDEX IF NOT EXISTS idx_briefing_related_cards ON briefing_reports USING GIN(related_card_ids);
+CREATE INDEX IF NOT EXISTS idx_briefing_reports_primary_card_news
+    ON briefing_reports(primary_card_news_id)
+    WHERE primary_card_news_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_briefing_reports_primary_peer_company
+    ON briefing_reports(primary_peer_company_id)
+    WHERE primary_peer_company_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS mixer_results (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -347,7 +371,9 @@ CREATE TABLE IF NOT EXISTS mixer_results (
     title VARCHAR(300),
     requested_by_user_id BIGINT,
     input_card_ids TEXT[] NOT NULL DEFAULT '{}',
+    primary_card_news_id VARCHAR(50) REFERENCES card_news(id) ON DELETE SET NULL,
     input_peer_ids TEXT[] NOT NULL DEFAULT '{}',
+    primary_peer_company_id VARCHAR(50) REFERENCES peer_companies(id) ON DELETE SET NULL,
     input_keywords TEXT[] NOT NULL DEFAULT '{}',
     ratios JSONB NOT NULL DEFAULT '{}'::jsonb,
     generated_implication JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -359,13 +385,25 @@ CREATE TABLE IF NOT EXISTS mixer_results (
     confidence NUMERIC(3,2),
     payload JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_mixer_results_primary_card_in_inputs
+        CHECK (
+            primary_card_news_id IS NULL
+            OR cardinality(COALESCE(input_card_ids, '{}'::text[])) = 0
+            OR primary_card_news_id = ANY(input_card_ids)
+        )
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_mixer_results_source_analysis_id
     ON mixer_results(source_analysis_id) WHERE source_analysis_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_mixer_results_created_at ON mixer_results(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_mixer_results_input_cards ON mixer_results USING GIN(input_card_ids);
+CREATE INDEX IF NOT EXISTS idx_mixer_results_primary_card_news
+    ON mixer_results(primary_card_news_id)
+    WHERE primary_card_news_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_mixer_results_primary_peer_company
+    ON mixer_results(primary_peer_company_id)
+    WHERE primary_peer_company_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS insight_reports (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -375,6 +413,7 @@ CREATE TABLE IF NOT EXISTS insight_reports (
     status VARCHAR(30) NOT NULL DEFAULT 'completed',
     requested_by_user_id BIGINT,
     focus_peer_ids TEXT[] NOT NULL DEFAULT '{}',
+    primary_peer_company_id VARCHAR(50) REFERENCES peer_companies(id) ON DELETE SET NULL,
     focus_card_ids TEXT[] NOT NULL DEFAULT '{}',
     focus_keywords TEXT[] NOT NULL DEFAULT '{}',
     date_from DATE,
@@ -385,16 +424,33 @@ CREATE TABLE IF NOT EXISTS insight_reports (
     reasoning_steps JSONB NOT NULL DEFAULT '[]'::jsonb,
     evidence JSONB NOT NULL DEFAULT '[]'::jsonb,
     source_card_ids TEXT[] NOT NULL DEFAULT '{}',
+    primary_card_news_id VARCHAR(50) REFERENCES card_news(id) ON DELETE SET NULL,
     confidence NUMERIC(3,2),
     payload JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_insight_reports_primary_card_in_sources
+        CHECK (
+            primary_card_news_id IS NULL
+            OR (
+                cardinality(COALESCE(source_card_ids, '{}'::text[]))
+                + cardinality(COALESCE(focus_card_ids, '{}'::text[]))
+            ) = 0
+            OR primary_card_news_id = ANY(source_card_ids)
+            OR primary_card_news_id = ANY(focus_card_ids)
+        )
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_insight_reports_source_analysis_id
     ON insight_reports(source_analysis_id) WHERE source_analysis_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_insight_reports_created_at ON insight_reports(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_insight_reports_focus_peers ON insight_reports USING GIN(focus_peer_ids);
+CREATE INDEX IF NOT EXISTS idx_insight_reports_primary_card_news
+    ON insight_reports(primary_card_news_id)
+    WHERE primary_card_news_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_insight_reports_primary_peer_company
+    ON insight_reports(primary_peer_company_id)
+    WHERE primary_peer_company_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS global_industry_trends (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -453,6 +509,185 @@ SELECT
     '{}'::jsonb AS source_metadata,
     ra.metadata AS metadata
 FROM raw_articles ra;
+
+CREATE OR REPLACE FUNCTION axis_first_existing_raw_article_id(candidate_ids BIGINT[])
+RETURNS BIGINT
+LANGUAGE sql
+STABLE
+AS $$
+    SELECT ra.id
+    FROM unnest(COALESCE(candidate_ids, '{}'::bigint[]))
+        WITH ORDINALITY AS candidate(raw_article_id, sort_order)
+    JOIN raw_articles ra
+        ON ra.id = candidate.raw_article_id
+    ORDER BY candidate.sort_order
+    LIMIT 1;
+$$;
+
+CREATE OR REPLACE FUNCTION axis_first_existing_card_news_id(candidate_ids TEXT[])
+RETURNS VARCHAR(50)
+LANGUAGE sql
+STABLE
+AS $$
+    SELECT cn.id
+    FROM unnest(COALESCE(candidate_ids, '{}'::text[]))
+        WITH ORDINALITY AS candidate(card_news_id, sort_order)
+    JOIN card_news cn
+        ON cn.id = candidate.card_news_id
+    ORDER BY candidate.sort_order
+    LIMIT 1;
+$$;
+
+CREATE OR REPLACE FUNCTION axis_first_existing_peer_company_id(
+    candidate_peer_ids TEXT[],
+    candidate_card_news_ids TEXT[]
+)
+RETURNS VARCHAR(50)
+LANGUAGE sql
+STABLE
+AS $$
+    WITH candidates AS (
+        SELECT
+            candidate.peer_company_id,
+            0 AS source_order,
+            candidate.sort_order
+        FROM unnest(COALESCE(candidate_peer_ids, '{}'::text[]))
+            WITH ORDINALITY AS candidate(peer_company_id, sort_order)
+        WHERE candidate.peer_company_id IS NOT NULL
+          AND candidate.peer_company_id <> ''
+
+        UNION ALL
+
+        SELECT
+            COALESCE(cn.peer_company_id, cn.company) AS peer_company_id,
+            1 AS source_order,
+            candidate.sort_order
+        FROM unnest(COALESCE(candidate_card_news_ids, '{}'::text[]))
+            WITH ORDINALITY AS candidate(card_news_id, sort_order)
+        JOIN card_news cn
+            ON cn.id = candidate.card_news_id
+        WHERE COALESCE(cn.peer_company_id, cn.company) IS NOT NULL
+          AND COALESCE(cn.peer_company_id, cn.company) <> ''
+    )
+    SELECT pc.id
+    FROM candidates
+    JOIN peer_companies pc
+        ON pc.id = candidates.peer_company_id
+    ORDER BY candidates.source_order, candidates.sort_order
+    LIMIT 1;
+$$;
+
+CREATE OR REPLACE FUNCTION axis_set_card_news_primary_refs()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.primary_raw_article_id IS NULL
+       OR (
+            cardinality(COALESCE(NEW.source_raw_article_ids, '{}'::bigint[])) > 0
+            AND NOT NEW.primary_raw_article_id = ANY(NEW.source_raw_article_ids)
+       ) THEN
+        NEW.primary_raw_article_id := axis_first_existing_raw_article_id(NEW.source_raw_article_ids);
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION axis_set_briefing_report_primary_refs()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.primary_card_news_id IS NULL
+       OR (
+            cardinality(COALESCE(NEW.related_card_ids, '{}'::text[])) > 0
+            AND NOT NEW.primary_card_news_id = ANY(NEW.related_card_ids)
+       ) THEN
+        NEW.primary_card_news_id := axis_first_existing_card_news_id(NEW.related_card_ids);
+    END IF;
+
+    IF NEW.primary_peer_company_id IS NULL THEN
+        NEW.primary_peer_company_id :=
+            axis_first_existing_peer_company_id('{}'::text[], NEW.related_card_ids);
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION axis_set_mixer_result_primary_refs()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.primary_card_news_id IS NULL
+       OR (
+            cardinality(COALESCE(NEW.input_card_ids, '{}'::text[])) > 0
+            AND NOT NEW.primary_card_news_id = ANY(NEW.input_card_ids)
+       ) THEN
+        NEW.primary_card_news_id := axis_first_existing_card_news_id(NEW.input_card_ids);
+    END IF;
+
+    IF NEW.primary_peer_company_id IS NULL
+       OR (
+            cardinality(COALESCE(NEW.input_peer_ids, '{}'::text[])) > 0
+            AND NOT NEW.primary_peer_company_id = ANY(NEW.input_peer_ids)
+       ) THEN
+        NEW.primary_peer_company_id :=
+            axis_first_existing_peer_company_id(NEW.input_peer_ids, NEW.input_card_ids);
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION axis_set_insight_report_primary_refs()
+RETURNS TRIGGER AS $$
+DECLARE
+    candidate_card_ids TEXT[];
+BEGIN
+    candidate_card_ids :=
+        COALESCE(NEW.source_card_ids, '{}'::text[])
+        || COALESCE(NEW.focus_card_ids, '{}'::text[]);
+
+    IF NEW.primary_card_news_id IS NULL
+       OR (
+            cardinality(candidate_card_ids) > 0
+            AND NOT NEW.primary_card_news_id = ANY(candidate_card_ids)
+       ) THEN
+        NEW.primary_card_news_id := axis_first_existing_card_news_id(candidate_card_ids);
+    END IF;
+
+    IF NEW.primary_peer_company_id IS NULL
+       OR (
+            cardinality(COALESCE(NEW.focus_peer_ids, '{}'::text[])) > 0
+            AND NOT NEW.primary_peer_company_id = ANY(NEW.focus_peer_ids)
+       ) THEN
+        NEW.primary_peer_company_id :=
+            axis_first_existing_peer_company_id(NEW.focus_peer_ids, candidate_card_ids);
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_card_news_primary_refs
+BEFORE INSERT OR UPDATE OF source_raw_article_ids, primary_raw_article_id ON card_news
+FOR EACH ROW
+EXECUTE FUNCTION axis_set_card_news_primary_refs();
+
+CREATE TRIGGER trg_briefing_reports_primary_refs
+BEFORE INSERT OR UPDATE OF related_card_ids, primary_card_news_id, primary_peer_company_id
+ON briefing_reports
+FOR EACH ROW
+EXECUTE FUNCTION axis_set_briefing_report_primary_refs();
+
+CREATE TRIGGER trg_mixer_results_primary_refs
+BEFORE INSERT OR UPDATE OF input_card_ids, input_peer_ids, primary_card_news_id, primary_peer_company_id
+ON mixer_results
+FOR EACH ROW
+EXECUTE FUNCTION axis_set_mixer_result_primary_refs();
+
+CREATE TRIGGER trg_insight_reports_primary_refs
+BEFORE INSERT OR UPDATE OF source_card_ids, focus_card_ids, focus_peer_ids, primary_card_news_id, primary_peer_company_id
+ON insight_reports
+FOR EACH ROW
+EXECUTE FUNCTION axis_set_insight_report_primary_refs();
 
 COMMENT ON TABLE legacy_records IS
     'Row-level archive for V30-collapsed tables. Not part of the product ERD.';

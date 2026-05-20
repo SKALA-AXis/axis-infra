@@ -1,13 +1,14 @@
 // ============================================================
-// AXIS - DBML after V31 crawler/parser fact restoration
-// Snapshot date: 2026-05-19
-// Scope: 14 app tables + flyway_schema_history. Views noted below.
+// AXIS - DBML after V32 card-news anchor FK restoration
+// Snapshot date: 2026-05-20
+// Scope: 15 app/operational tables + flyway_schema_history. Views noted below.
 // ============================================================
 
 Project axis {
   database_type: 'PostgreSQL'
   Note: '''
-    V31 crawler/parser-aware product schema.
+    V32 crawler/parser-aware product schema with card_news anchor FKs
+    for briefing, mixer, and insight outputs.
     V30 legacy archive remains in legacy_records, while crawler runs and
     parser fact tables are restored as first-class operational data.
 
@@ -254,6 +255,7 @@ Table card_news {
   keywords "text[]" [not null, default: `'{}'`]
   keyword_frequency jsonb [not null, default: `'{}'::jsonb`]
   source_raw_article_ids "bigint[]" [not null, default: `'{}'`]
+  primary_raw_article_id bigint [ref: > raw_articles.id, note: 'ON DELETE SET NULL']
   source_articles jsonb [not null, default: `'[]'::jsonb`]
   evidence_payload jsonb [not null, default: `'{}'::jsonb`]
   image_assets jsonb [not null, default: `'[]'::jsonb`]
@@ -267,6 +269,7 @@ Table card_news {
     keywords [name: 'idx_card_news_keywords', type: gin]
     keyword_categories [name: 'idx_card_news_keyword_categories', type: gin]
     source_raw_article_ids [name: 'idx_card_news_source_raw_article_ids', type: gin]
+    primary_raw_article_id [name: 'idx_card_news_primary_raw_article']
   }
 }
 
@@ -317,6 +320,8 @@ Table briefing_reports {
   key_summary text
   sk_implication text
   related_card_ids "text[]" [not null, default: `'{}'`]
+  primary_card_news_id varchar(50) [ref: > card_news.id, note: 'ON DELETE SET NULL']
+  primary_peer_company_id varchar(50) [ref: > peer_companies.id, note: 'ON DELETE SET NULL']
   related_raw_article_ids "bigint[]" [not null, default: `'{}'`]
   recipients jsonb [not null, default: `'[]'::jsonb`]
   delivery_history jsonb [not null, default: `'[]'::jsonb`]
@@ -327,6 +332,11 @@ Table briefing_reports {
   provenance jsonb
   created_at timestamptz [not null, default: `now()`]
   completed_at timestamptz
+
+  indexes {
+    primary_card_news_id [name: 'idx_briefing_reports_primary_card_news']
+    primary_peer_company_id [name: 'idx_briefing_reports_primary_peer_company']
+  }
 }
 
 Table mixer_results {
@@ -335,7 +345,9 @@ Table mixer_results {
   title varchar(300)
   requested_by_user_id bigint
   input_card_ids "text[]" [not null, default: `'{}'`]
+  primary_card_news_id varchar(50) [ref: > card_news.id, note: 'ON DELETE SET NULL']
   input_peer_ids "text[]" [not null, default: `'{}'`]
+  primary_peer_company_id varchar(50) [ref: > peer_companies.id, note: 'ON DELETE SET NULL']
   input_keywords "text[]" [not null, default: `'{}'`]
   ratios jsonb [not null, default: `'{}'::jsonb`]
   generated_implication jsonb [not null, default: `'{}'::jsonb`]
@@ -348,6 +360,11 @@ Table mixer_results {
   payload jsonb [not null, default: `'{}'::jsonb`]
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    primary_card_news_id [name: 'idx_mixer_results_primary_card_news']
+    primary_peer_company_id [name: 'idx_mixer_results_primary_peer_company']
+  }
 }
 
 Table insight_reports {
@@ -358,6 +375,7 @@ Table insight_reports {
   status varchar(30) [not null, default: 'completed']
   requested_by_user_id bigint
   focus_peer_ids "text[]" [not null, default: `'{}'`]
+  primary_peer_company_id varchar(50) [ref: > peer_companies.id, note: 'ON DELETE SET NULL']
   focus_card_ids "text[]" [not null, default: `'{}'`]
   focus_keywords "text[]" [not null, default: `'{}'`]
   date_from date
@@ -368,10 +386,16 @@ Table insight_reports {
   reasoning_steps jsonb [not null, default: `'[]'::jsonb`]
   evidence jsonb [not null, default: `'[]'::jsonb`]
   source_card_ids "text[]" [not null, default: `'{}'`]
+  primary_card_news_id varchar(50) [ref: > card_news.id, note: 'ON DELETE SET NULL']
   confidence numeric(3,2)
   payload jsonb [not null, default: `'{}'::jsonb`]
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    primary_card_news_id [name: 'idx_insight_reports_primary_card_news']
+    primary_peer_company_id [name: 'idx_insight_reports_primary_peer_company']
+  }
 }
 
 Table global_industry_trends {
