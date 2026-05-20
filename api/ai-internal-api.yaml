@@ -74,6 +74,16 @@ paths:
                   type: string
                   enum: [scheduled, manual]
                   example: scheduled
+                window_start:
+                  type: string
+                  format: date-time
+                  nullable: true
+                  example: "2026-05-19T00:00:00+09:00"
+                window_end:
+                  type: string
+                  format: date-time
+                  nullable: true
+                  example: "2026-05-20T00:00:00+09:00"
       responses:
         '202':
           description: 파이프라인 비동기 실행 시작
