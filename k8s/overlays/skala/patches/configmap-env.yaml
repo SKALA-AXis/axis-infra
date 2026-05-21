@@ -9,6 +9,11 @@ data:
   SPRING_PROFILES_ACTIVE: "prod"
   AI_SERVER_URL: "http://axis-ai:8001"
   AXIS_AUTH_ENFORCE: "true"
+  # SKALA class/dev namespace 에서는 외부 이메일 가입 테스트를 허용한다.
+  # * 는 새 backend wildcard 처리용이고, 뒤 도메인 목록은 기존 배포 이미지 호환용이다.
+  # 실제 운영 오버레이는 sk.com 등 허용 도메인을 좁혀야 한다.
+  AXIS_AUTH_ALLOWED_EMAIL_DOMAINS: "*,sk.com,gmail.com,naver.com,kakao.com,daum.net,hanmail.net,nate.com,outlook.com,hotmail.com,icloud.com"
+  AXIS_AUTH_EMAIL_VERIFICATION_DELIVERY: "ses"
   AXIS_APP_BASE_URL: "https://axis.skala.ai"
 
   # 임시 — Hibernate schema validation 스킵 (raw_articles.company jsonb vs entity varchar mismatch).

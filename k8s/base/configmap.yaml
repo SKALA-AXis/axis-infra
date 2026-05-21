@@ -10,6 +10,7 @@ data:
   SPRING_PROFILES_ACTIVE: "prod"
   AI_SERVER_URL: "http://axis-ai:8001"
   AXIS_AUTH_ENFORCE: "true"
+  AXIS_AUTH_EMAIL_VERIFICATION_DELIVERY: "ses"
   AXIS_APP_BASE_URL: "https://axis.skax.internal"
 
   # ── ai (FastAPI / LangGraph) — Qdrant Cloud

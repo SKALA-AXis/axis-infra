@@ -159,7 +159,8 @@ SKALA_BACKEND    := $(HARBOR_HOST)/$(HARBOR_PROJECT)/axis-backend:$(SKALA_TAG)
 SKALA_AI         := $(HARBOR_HOST)/$(HARBOR_PROJECT)/axis-ai:$(SKALA_TAG)
 
 .PHONY: skala-build skala-push skala-apply skala-delete skala-status skala-logs \
-        skala-pull-secret skala-validate skala-tag skala-secret
+        skala-pull-secret skala-validate skala-tag skala-secret \
+        pf-backend pf-backend-fg pf-backend-stop
 
 skala-secret:  ## .env 에서 secret.skala.yaml 생성 (axis-postgres-bootstrap + axis-secrets 두 Secret)
 	@if [ ! -f .env ]; then \
@@ -234,6 +235,33 @@ skala-status:  ## SKALA namespace 의 모든 axis 리소스 상태
 
 skala-logs:  ## 모든 axis Pod 로그 (skala namespace)
 	kubectl -n $(SKALA_NS) logs -l app.kubernetes.io/part-of=axis --all-containers --max-log-requests 10 -f --tail=100
+
+pf-backend:  ## cluster backend 를 localhost:8080 으로 port-forward (로컬 frontend 인증 API 테스트용)
+	@echo "▸ axis-backend port-forward 시작: http://localhost:8080"
+	@-pkill -f "kubectl port-forward.*svc/axis-backend 8080:8080" 2>/dev/null || true
+	@nohup kubectl port-forward --address 127.0.0.1 -n $(SKALA_NS) svc/axis-backend 8080:8080 >/tmp/axis-pf-backend.log 2>&1 & echo $$! > /tmp/axis-pf-backend.pid
+	@for i in 1 2 3 4 5 6 7 8 9 10; do \
+		if curl -fsS http://127.0.0.1:8080/health >/dev/null 2>&1; then \
+			echo "✓ backend: http://localhost:8080"; \
+			echo "  - log: /tmp/axis-pf-backend.log"; \
+			exit 0; \
+		fi; \
+		sleep 1; \
+	done; \
+	echo "❌ backend port-forward 연결 실패"; \
+	cat /tmp/axis-pf-backend.log; \
+	exit 1
+
+pf-backend-fg:  ## cluster backend port-forward foreground 실행 (가장 안정적, 터미널 하나 점유)
+	kubectl port-forward --address 127.0.0.1 -n $(SKALA_NS) svc/axis-backend 8080:8080
+
+pf-backend-stop:  ## cluster backend port-forward 종료
+	@if [ -f /tmp/axis-pf-backend.pid ]; then \
+		kill "$$(cat /tmp/axis-pf-backend.pid)" 2>/dev/null || true; \
+		rm -f /tmp/axis-pf-backend.pid; \
+	fi
+	@-pkill -f "kubectl port-forward.*svc/axis-backend 8080:8080" 2>/dev/null || true
+	@echo "✓ backend port-forward 종료"
 
 # ── Cluster DB 모드 — docker compose 로 backend·ai·frontend 띄우되 DB 는 cluster 사용
 # port-forward 자동 (background) + cluster-db override file 적용.

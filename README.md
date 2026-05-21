@@ -73,6 +73,27 @@ make up-cluster
 make down-cluster
 ```
 
+### 로컬 프론트에서 클러스터 백엔드 직접 사용
+
+frontend 를 `npm run dev`로 직접 띄우고, 이미 배포된 SKALA backend API에 붙여 인증 흐름을 확인할 때 사용합니다.
+
+```bash
+# axis-infra
+make pf-backend
+# Codex/IDE 터미널에서 background process가 정리되면 foreground 모드 사용:
+make pf-backend-fg
+
+# axis-frontend
+npm run dev
+# http://localhost:3100 → /api/* 는 Vite proxy 로 http://localhost:8080 에 전달
+```
+
+종료:
+
+```bash
+make pf-backend-stop
+```
+
 **자동 보호장치** ([docker-compose.cluster-db.yml](docker-compose.cluster-db.yml)):
 
 - `SPRING_FLYWAY_ENABLED=false` — backend container 가 cluster DB 에 silent 자동 migrate 못 함 (PR #20 의 application-local.yml 와 별개의 환경변수 차원 이중 안전)
