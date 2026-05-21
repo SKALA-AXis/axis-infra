@@ -1,0 +1,59 @@
+# W4-4 · 주 1회 (월 02:00 KST) sector_pulse MATERIALIZED VIEW REFRESH.
+#   · LLM 호출 0건.
+#   · psql 컨테이너에서 단일 REFRESH 쿼리 실행.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: axis-cron-sector-pulse
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app.kubernetes.io/component: cron
+    app.kubernetes.io/part-of: axis
+spec:
+  schedule: "0 2 * * 1"
+  timeZone: "Asia/Seoul"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 600
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: cron
+            cron: sector-pulse
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: axis-cron-sa
+          containers:
+            - name: refresh
+              image: postgres:16-alpine
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  psql "${POSTGRES_URL}" -c "REFRESH MATERIALIZED VIEW CONCURRENTLY sector_pulse;"
+              env:
+                - name: POSTGRES_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: axis-secrets
+                      key: POSTGRES_URL
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 64Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 65534
