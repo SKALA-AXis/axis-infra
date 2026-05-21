@@ -9,6 +9,9 @@ data:
   # ── backend (Spring Boot)
   SPRING_PROFILES_ACTIVE: "prod"
   AI_SERVER_URL: "http://axis-ai:8001"
+  AXIS_AUTH_ENFORCE: "true"
+  AXIS_AUTH_EMAIL_VERIFICATION_MAIL_ENABLED: "true"
+  AXIS_APP_BASE_URL: "https://axis.skax.internal"
 
   # ── ai (FastAPI / LangGraph) — Qdrant Cloud
   # 실제 URL 은 환경별 overlay 또는 secret 으로 옮길지 결정 필요.
