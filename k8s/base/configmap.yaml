@@ -27,7 +27,9 @@ data:
   # 발송 SMTP 폐기 (Resend / SendGrid 시점 잔재 제거). backend Pod 의 ses-mailer-sa 가
   # IAM role 통한 SES API 직접 호출. SMTP_HOST/PORT/USER/PASSWORD 환경변수 모두 불필요.
   # 환경별 overlay 에서 AWS_REGION + MAIL_FROM 박음 (overlays/skala/patches/configmap-env.yaml).
-  BRIEFING_RECIPIENTS: "pm@example.co.kr,executive@example.co.kr"
+  #
+  # BRIEFING_RECIPIENTS 는 개인 이메일 (PII) — public repo 전환 시 노출 방지 위해
+  # ConfigMap 이 아닌 axis-secrets 로만 주입 (scripts/env-to-skala-secret.sh 의 OTHER_KEYS).
   BRIEFING_TIME: "08:30"
 
   # ── frontend (Vite — 빌드타임 baked-in)

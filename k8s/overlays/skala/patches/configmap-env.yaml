@@ -33,9 +33,12 @@ data:
   # 이메일 발송 — AWS SES V2 SDK + IRSA (ses-mailer-sa 의 IAM role).
   # axis-backend 의 SesMailService 가 SES API 직접 호출 (SMTP 폐기).
   # sender: noreply@skala-ai.com (매니저 SES verified domain).
+  #
+  # BRIEFING_RECIPIENTS 는 개인 이메일 (PII) 이라 ConfigMap (git tracked) 에 두지 않고
+  # axis-secrets (env-to-skala-secret.sh 가 .env.skala 의 BRIEFING_RECIPIENTS 에서 생성) 로 주입.
+  # backend Pod 의 envFrom 순서상 secretRef 가 configMapRef 보다 뒤라 동키 override 도 안전.
   AWS_REGION: "ap-northeast-2"
   MAIL_FROM: "noreply@skala-ai.com"
-  BRIEFING_RECIPIENTS: "meniscus220@gmail.com,jins006945@gmail.com,a45047385@gmail.com,kgaeun0118@gmail.com,tladbwjd04899@gmail.com,gaeundks@gmail.com"
   BRIEFING_TIME: "08:30"
 
   # Spring @Scheduled 비활성화 — GitOps standard 인 CronJob (axis-cron-{delivery,ingestion-a/b/c/d})
