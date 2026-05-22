@@ -6,6 +6,10 @@
 !.env.example
 !.env.local.example
 !.env.cloud.example
+# macOS Finder duplicates ('.env 2', '.env 3', secret.skala 2.yaml …) — 실값 누출 방지.
+# .gitignore 의 기본 패턴이 공백 들어간 사본을 매치하지 못해 별도 등록.
+.env\ [0-9]*
+.env.*\ [0-9]*
 
 # Python
 __pycache__/
@@ -70,6 +74,9 @@ qdrant_storage/
 *.key
 *.p12
 secrets/
+# macOS Finder 가 만든 secret 사본 (예: 'secret.skala 2.yaml')
+secret*\ [0-9]*.yaml
+secret*\ [0-9]*.yml
 
 # K8s — secret 실값 (.example 파일만 git 에 커밋)
 # secret.local.yaml 은 scripts/env-to-secret.sh 가 .env 에서 자동 생성.
@@ -81,6 +88,23 @@ k8s/overlays/local/secret.local.yaml.real
 k8s/overlays/local/secret.real.yaml
 k8s/overlays/skala/secret.skala.yaml
 k8s/overlays/skala/secret.skala.real.yaml
+
+# Langfuse 자동생성 Secret (env-to-langfuse-secret.sh) — 실 DB 비밀번호 포함, 절대 커밋 금지.
+k8s/base/langfuse-secret.yaml
+k8s/base/langfuse-secret.real.yaml
+
+# 일반화 — env-to-*-secret.sh / kubectl create secret -o yaml 산출물 (.test/.real/.bak 변종).
+# `.example` 만 명시적 등록되어 commit 됨 (위 K8s 블록의 secret*.example.yaml 패턴 참조).
+k8s/**/secret*.yaml.test
+k8s/**/secret*.yaml.real
+k8s/**/secret*.yaml.bak
+k8s/**/secret*.yaml.tmp
+
+# .env 백업/임시 변종 (.tmp.bak / .bak / .tmp / .old) — Finder copy 또는 수동 백업 시 실 secret 포함 가능.
+.env*.bak
+.env*.tmp
+.env*.old
+.env*.tmp.bak
 
 # ArgoCD repository credential — GitHub PAT 포함, 클러스터에 직접 apply (절대 커밋 금지).
 # 생성/적용: docs/ci-cd-plan.md §6.4 참조.

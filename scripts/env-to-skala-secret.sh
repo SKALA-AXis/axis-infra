@@ -107,7 +107,9 @@ stringData:
   SPRING_DATASOURCE_PASSWORD: "$(yaml_escape "$PG_PW")"
 HEADER
 
-# 외부 API / SMTP / 인증 키 (있으면 채움, 없으면 빈값)
+# 외부 API / SMTP / 인증 키 / 발송 수신자 PII (있으면 채움, 없으면 빈값).
+# BRIEFING_RECIPIENTS 는 개인 이메일 (PII) 이므로 ConfigMap 이 아닌 Secret 경로로 주입한다
+# (public repo 전환 시 git tracked ConfigMap 노출 방지).
 OTHER_KEYS="
     QDRANT_API_KEY
     OPENAI_API_KEY
@@ -125,6 +127,7 @@ OTHER_KEYS="
     CRON_INTERNAL_TOKEN
     LANGFUSE_PUBLIC_KEY
     LANGFUSE_SECRET_KEY
+    BRIEFING_RECIPIENTS
 "
 
 for key in $OTHER_KEYS; do
