@@ -15,9 +15,9 @@ data:
   AXIS_AUTH_ALLOWED_EMAIL_DOMAINS: "*,sk.com,gmail.com,naver.com,kakao.com,daum.net,hanmail.net,nate.com,outlook.com,hotmail.com,icloud.com"
   AXIS_AUTH_EMAIL_VERIFICATION_DELIVERY: "ses"
   # 이메일 인증 링크가 도착할 프론트 URL.
-  # 현재 개발 플로우는 로컬 Vite frontend + cluster backend port-forward 이므로 localhost 를 사용한다.
-  # 공인 도메인/TLS 확정 후에는 실제 HTTPS 프론트 URL 로 변경해야 한다.
-  AXIS_APP_BASE_URL: "http://localhost:3100"
+  # localhost 는 메일을 받은 다른 기기에서 열 수 없으므로 SKALA ALB 공개 주소를 사용한다.
+  # axis.skala.ai DNS/TLS 가 확정되면 http://...elb.amazonaws.com 대신 공식 HTTPS URL 로 교체한다.
+  AXIS_APP_BASE_URL: "http://skala3-team13-axis-alb-1349892737.ap-northeast-2.elb.amazonaws.com"
 
   # 임시 — Hibernate schema validation 스킵 (raw_articles.company jsonb vs entity varchar mismatch).
   # backend 팀이 RawArticle entity 를 jsonb 매핑으로 정정하면 'validate' 로 복원 권장.
@@ -49,5 +49,6 @@ data:
   # bean 등록 자체 skip. CronJob 만 남아 1번 발송.
   AXIS_SCHEDULER_ENABLED: "false"
 
-  # 프론트 — 빌드타임 baked-in.  Ingress / LB 결정 후 갱신.
-  VITE_API_BASE_URL: "https://axis.skala.ai"
+  # 프론트 — 빌드타임 baked-in. 현재 Dockerfile 은 런타임 env 를 재주입하지 않지만,
+  # 문서/향후 런타임 config 전환 시에도 실제 접근 가능한 ALB URL 을 기준값으로 둔다.
+  VITE_API_BASE_URL: "http://skala3-team13-axis-alb-1349892737.ap-northeast-2.elb.amazonaws.com"
