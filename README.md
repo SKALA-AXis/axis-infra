@@ -88,6 +88,8 @@ npm run dev
 # http://localhost:3100 → /api/* 는 Vite proxy 로 http://localhost:8080 에 전달
 ```
 
+이 모드에서 회원가입 인증 메일 링크는 `AXIS_APP_BASE_URL=http://localhost:3100`이어야 합니다. 링크가 `https://axis.skala.ai/...`로 오면 아직 미확정 도메인을 가리키는 것이므로, ConfigMap 반영 후 인증 메일을 재발송해야 합니다.
+
 종료:
 
 ```bash
