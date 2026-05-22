@@ -98,6 +98,18 @@ flyway -url=jdbc:postgresql://localhost:5432/axis -user=axuser -password="$DB_PW
 unset DB_PW
 ```
 
+로컬 frontend 에서 배포된 backend 인증 API를 바로 붙여 테스트하려면 backend service 도 port-forward 한다:
+
+```bash
+kubectl port-forward -n skala3-finalproj-class3-team13 svc/axis-backend 8080:8080 &
+# 또는 axis-infra repo root:
+make pf-backend
+# background port-forward 가 IDE/Codex 세션에서 정리되면:
+make pf-backend-fg
+```
+
+이 상태에서 `axis-frontend`의 Vite dev server를 띄우면 `/api/*` 요청이 `localhost:8080`의 cluster backend로 전달된다.
+
 ---
 
 ## 5. 일반 배포 흐름
