@@ -14,7 +14,10 @@ data:
   # 실제 운영 오버레이는 sk.com 등 허용 도메인을 좁혀야 한다.
   AXIS_AUTH_ALLOWED_EMAIL_DOMAINS: "*,sk.com,gmail.com,naver.com,kakao.com,daum.net,hanmail.net,nate.com,outlook.com,hotmail.com,icloud.com"
   AXIS_AUTH_EMAIL_VERIFICATION_DELIVERY: "ses"
-  AXIS_APP_BASE_URL: "https://axis.skala.ai"
+  # 이메일 인증 링크가 도착할 프론트 URL.
+  # 현재 개발 플로우는 로컬 Vite frontend + cluster backend port-forward 이므로 localhost 를 사용한다.
+  # 공인 도메인/TLS 확정 후에는 실제 HTTPS 프론트 URL 로 변경해야 한다.
+  AXIS_APP_BASE_URL: "http://localhost:3100"
 
   # 임시 — Hibernate schema validation 스킵 (raw_articles.company jsonb vs entity varchar mismatch).
   # backend 팀이 RawArticle entity 를 jsonb 매핑으로 정정하면 'validate' 로 복원 권장.
