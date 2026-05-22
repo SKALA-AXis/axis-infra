@@ -110,7 +110,7 @@ make pf-backend-fg
 
 이 상태에서 `axis-frontend`의 Vite dev server를 띄우면 `/api/*` 요청이 `localhost:8080`의 cluster backend로 전달된다.
 
-회원가입 이메일 인증 링크는 frontend route 를 열어야 하므로, 이 로컬 프론트 테스트 모드에서는 `AXIS_APP_BASE_URL=http://localhost:3100`으로 둔다. 공인 도메인/TLS가 준비되면 실제 프론트 URL로 바꾼다.
+회원가입 이메일 인증 링크는 frontend route 를 열어야 한다. 같은 개발 PC에서만 링크를 열면 `AXIS_APP_BASE_URL=http://localhost:3100`도 가능하지만, 휴대폰/다른 PC에서 인증하려면 `localhost`를 쓰면 안 된다. 이 경우 `http://<개발PC-LAN-IP>:3100` 또는 SKALA ALB 공개 주소처럼 인증할 기기에서 접근 가능한 프론트 URL로 둔다.
 
 ---
 
