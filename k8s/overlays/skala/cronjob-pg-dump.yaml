@@ -39,16 +39,28 @@ spec:
                 - /bin/sh
                 - -c
                 - |
+                  # pipefail: pg_dump 가 중간 실패해도 gzip 의 exit 0 에 묻히지 않게.
+                  # busybox ash (postgres:16-alpine) 는 pipefail 지원.
                   set -eu
+                  set -o pipefail
                   STAMP=$(date -u +%Y%m%d_%H%M)
                   OUT="/data/backups/axis_team13_${STAMP}.sql.gz"
+                  TMP="${OUT}.tmp"
                   mkdir -p /data/backups
+                  rm -f "${TMP}"
+                  # 실패 시 잔여 tmp 자동 정리
+                  trap 'rm -f "${TMP}"' EXIT
                   echo "[pg-dump] dumping → ${OUT}"
-                  pg_dump --no-owner --no-acl "${DATABASE_URL}" | gzip > "${OUT}"
+                  # ① tmp 로 먼저 dump, ② gzip 무결성 검증, ③ 통과 시에만 최종 파일로 mv (atomic).
+                  pg_dump --no-owner --no-acl "${DATABASE_URL}" | gzip > "${TMP}"
+                  gzip -t "${TMP}"
+                  mv "${TMP}" "${OUT}"
                   echo "[pg-dump] size: $(du -h "${OUT}" | cut -f1)"
-                  # 14일 이전 파일 삭제 — PVC 용량 보호
+                  # 14일 이전 dump 삭제 — PVC 용량 보호
                   find /data/backups -type f -name '*.sql.gz' -mtime +14 -delete
-                  echo "[pg-dump] retention applied (>14d removed)"
+                  # 잔여 tmp (>1d) 청소 — 이전 실패 run 의 흔적까지 회수
+                  find /data/backups -type f -name '*.tmp' -mtime +1 -delete
+                  echo "[pg-dump] retention applied (>14d sql.gz, >1d tmp removed)"
               resources:
                 requests:
                   memory: "128Mi"
