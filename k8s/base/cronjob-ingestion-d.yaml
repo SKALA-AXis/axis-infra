@@ -1,5 +1,5 @@
 # Track D · 문서/리포트/자사 사이트 저빈도 인제스션.
-#   · DART / IR / SK AX 사이트 / Naver DataLab / SPRi / BCG.
+#   · DART / IR / Naver DataLab / SPRi / BCG.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
