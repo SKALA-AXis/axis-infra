@@ -11,6 +11,7 @@ metadata:
     app.kubernetes.io/component: cron
     app.kubernetes.io/part-of: axis
 spec:
+  suspend: true  # LLM cron 임시 비활성화: Track A relevance 외 LLM 호출 차단
   schedule: "0 3 * * 1"
   timeZone: "Asia/Seoul"
   concurrencyPolicy: Forbid
