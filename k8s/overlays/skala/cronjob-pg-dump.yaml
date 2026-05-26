@@ -1,6 +1,12 @@
-# 매일 02:00 KST(UTC 17:00) Postgres 전체 dump → axis-images PVC 의 /data/backups
+# 매일 03:00 KST(UTC 18:00) Postgres 전체 dump → axis-images PVC 의 /data/backups
 # SKALA 클러스터가 wipe 되어도 PVC 살아있는 동안 복구 가능.
 # 별도 S3 export 는 추후 추가 (sealed-secret 으로 AWS creds 주입 후).
+#
+# 시간대 선정:
+#   · 02:00 KST 에서는 axis-cron-ingestion-a (매시 정각) 과 겹쳐 pg_dump 가
+#     consistent snapshot 잡고 hanging 하다가 5h 후 fail 하는 현상이 있었음.
+#   · 03:00 KST 로 옮겨 ingestion-a 의 hourly trigger 와 1시간 거리 확보.
+#   · activeDeadlineSeconds 30분으로 hang 시 빠르게 fail → 다음 cycle 재시도.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -10,14 +16,17 @@ metadata:
     app.kubernetes.io/part-of: axis
     app.kubernetes.io/component: backup
 spec:
-  # KST 02:00 = UTC 17:00 (전날). 클러스터 timezone 이 UTC.
-  schedule: "0 17 * * *"
+  # KST 03:00 = UTC 18:00 (전날). 클러스터 timezone 이 UTC.
+  schedule: "0 18 * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 7
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
       backoffLimit: 1
+      # 1.1GB DB 가 정상 환경에서 ~3분에 dump 완료 (검증됨, 2026-05-26).
+      # hang 시 30분 hard timeout 으로 자르고 cron 다음 cycle 에 재시도.
+      activeDeadlineSeconds: 1800
       template:
         metadata:
           labels:
@@ -39,16 +48,28 @@ spec:
                 - /bin/sh
                 - -c
                 - |
+                  # pipefail: pg_dump 가 중간 실패해도 gzip 의 exit 0 에 묻히지 않게.
+                  # busybox ash (postgres:16-alpine) 는 pipefail 지원.
                   set -eu
+                  set -o pipefail
                   STAMP=$(date -u +%Y%m%d_%H%M)
                   OUT="/data/backups/axis_team13_${STAMP}.sql.gz"
+                  TMP="${OUT}.tmp"
                   mkdir -p /data/backups
+                  rm -f "${TMP}"
+                  # 실패 시 잔여 tmp 자동 정리
+                  trap 'rm -f "${TMP}"' EXIT
                   echo "[pg-dump] dumping → ${OUT}"
-                  pg_dump --no-owner --no-acl "${DATABASE_URL}" | gzip > "${OUT}"
+                  # ① tmp 로 먼저 dump, ② gzip 무결성 검증, ③ 통과 시에만 최종 파일로 mv (atomic).
+                  pg_dump --no-owner --no-acl "${DATABASE_URL}" | gzip > "${TMP}"
+                  gzip -t "${TMP}"
+                  mv "${TMP}" "${OUT}"
                   echo "[pg-dump] size: $(du -h "${OUT}" | cut -f1)"
-                  # 14일 이전 파일 삭제 — PVC 용량 보호
+                  # 14일 이전 dump 삭제 — PVC 용량 보호
                   find /data/backups -type f -name '*.sql.gz' -mtime +14 -delete
-                  echo "[pg-dump] retention applied (>14d removed)"
+                  # 잔여 tmp (>1d) 청소 — 이전 실패 run 의 흔적까지 회수
+                  find /data/backups -type f -name '*.tmp' -mtime +1 -delete
+                  echo "[pg-dump] retention applied (>14d sql.gz, >1d tmp removed)"
               resources:
                 requests:
                   memory: "128Mi"
