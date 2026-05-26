@@ -58,3 +58,5 @@ resources:
   - cronjob-capability-evolution.yaml
   - cronjob-sector-pulse.yaml
   - cronjob-card-evaluator.yaml
+  # 글로벌 IT 트렌드 + peer alignment (design: axis-ai/design/30-analysis/global-trends.md).
+  - cronjob-global-trend.yaml

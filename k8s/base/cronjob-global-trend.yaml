@@ -1,0 +1,63 @@
+# Global Trend · 매일 02:30 KST 글로벌 IT 트렌드 + peer alignment 분석.
+#   · axis-ai 의 POST /global/trends/run 호출 → ITTrendAgent 5-phase 실행.
+#   · 결과는 global_industry_trends 테이블에 keyword 별 row 로 upsert (V29 unique
+#     constraint idempotent — 같은 trend_date 재실행 안전).
+#   · LLM 호출 3 회 (P3 strategic_notes / P4 impact / P5 synthesis).
+#   · design: axis-ai/design/30-analysis/global-trends.md §11 / §12 S7.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: axis-cron-global-trend
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app.kubernetes.io/component: cron
+    app.kubernetes.io/part-of: axis
+spec:
+  schedule: "30 2 * * *"
+  timeZone: "Asia/Seoul"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      # 5-phase + LLM 3 회 + DB upsert. 보통 2~3 분 — 안전마진 10 분.
+      activeDeadlineSeconds: 600
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: cron
+            cron: global-trend
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: axis-cron-sa
+          containers:
+            - name: trigger
+              image: curlimages/curl:8.5.0
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  # window_days=30, peer alignment 포함, 8 keyword cap.
+                  # design §4 metadata 옵션 기본값과 동일.
+                  curl -fsSL --max-time 540 \
+                    -X POST \
+                    -H "Content-Type: application/json" \
+                    -d '{"window_days": 30, "include_peer_alignment": true, "max_trend_count": 8, "min_mention_count": 3}' \
+                    "http://axis-ai:8000/global/trends/run"
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  cpu: 100m
+                  memory: 64Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 65534
