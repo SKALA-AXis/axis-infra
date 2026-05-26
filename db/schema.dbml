@@ -1,20 +1,31 @@
 // ============================================================
-// AXIS - DBML after V32 card-news anchor FK restoration
-// Snapshot date: 2026-05-20
-// Scope: 15 app/operational tables + flyway_schema_history. Views noted below.
+// AXIS - DBML after V37 password-reset/auth personalization updates
+// Snapshot date: 2026-05-26
+// Scope: 21 app/operational tables + flyway_schema_history. Views noted below.
 // ============================================================
 
 Project axis {
   database_type: 'PostgreSQL'
   Note: '''
-    V32 crawler/parser-aware product schema with card_news anchor FKs
-    for briefing, mixer, and insight outputs.
+    V37 crawler/parser-aware product schema with card_news anchor FKs,
+    context-engineering columns/views, auth users, personalization,
+    notifications, password reset tokens, and global search support.
     V30 legacy archive remains in legacy_records, while crawler runs and
     parser fact tables are restored as first-class operational data.
+
+    Required extensions:
+      - uuid-ossp
+      - pg_trgm
 
     Views not rendered:
       - issue_cards: SELECT * FROM card_news
       - raw_article_metadata_unified: raw_articles metadata compatibility view
+      - peer_event_timeline: 180-day peer card timeline
+      - general_event_timeline: 180-day sector-only card fallback timeline
+      - peer_financial_trend: canonicalized peer financial metrics
+
+    Materialized views not rendered:
+      - sector_pulse: weekly sector/card aggregate for context engineering
   '''
 }
 
@@ -51,12 +62,19 @@ Table peer_companies {
   financial_history jsonb [not null, default: `'[]'::jsonb`]
   job_posting_history jsonb [not null, default: `'[]'::jsonb`]
   legacy_payload jsonb [not null, default: `'{}'::jsonb`]
+  profile_snapshot jsonb [not null, default: `'{}'::jsonb`, note: 'Tier A static profile snapshot generated weekly by axis-cron-profile-refresh.']
+  profile_snapshot_version varchar(50)
+  profile_snapshot_generated_at timestamptz
   financial_updated_at timestamptz
   is_active boolean [default: true]
+  global_search_text text [not null, default: `''`]
   created_at timestamptz [default: `now()`]
 
   indexes {
     core_keywords [name: 'idx_peer_companies_core_keywords', type: gin]
+    profile_snapshot_version [name: 'idx_peer_companies_snapshot_version']
+    global_search_text [name: 'idx_peer_companies_global_search_trgm', type: gin, note: 'GIN trigram index using gin_trgm_ops.']
+    (`COALESCE(financial_updated_at, created_at)`) [name: 'idx_peer_companies_updated_desc']
   }
 }
 
@@ -201,6 +219,7 @@ Table raw_article_financial_metrics {
     (peer_id, period) [name: 'idx_raw_article_financial_metrics_peer_period']
     (metric_name, period) [name: 'idx_raw_article_financial_metrics_metric']
     (source_type, source_name) [name: 'idx_raw_article_financial_metrics_source']
+    (peer_id, metric_name, period_year, period_quarter) [name: 'idx_financial_metrics_peer_metric_period']
     payload [name: 'idx_raw_article_financial_metrics_payload_gin', type: gin]
   }
 }
@@ -234,6 +253,7 @@ Table raw_article_business_signals {
     (peer_id, period) [name: 'idx_raw_article_business_signals_peer_period']
     (business_area, signal_type) [name: 'idx_raw_article_business_signals_area_type']
     (source_type, source_name) [name: 'idx_raw_article_business_signals_source']
+    (peer_id, business_area, period_year, period_quarter) [name: 'idx_business_signals_peer_area_period']
     payload [name: 'idx_raw_article_business_signals_payload_gin', type: gin]
   }
 }
@@ -260,8 +280,11 @@ Table card_news {
   evidence_payload jsonb [not null, default: `'{}'::jsonb`]
   image_assets jsonb [not null, default: `'[]'::jsonb`]
   legacy_payload jsonb [not null, default: `'{}'::jsonb`]
+  card_schema_version varchar(10) [not null, default: 'v1', note: 'Card schema generation: v1=legacy heuristic, v2=LLM summary/implication/action card.']
+  evaluation_payload jsonb [not null, default: `'{}'::jsonb`, note: 'Context engineering evaluation results.']
   validation_pass boolean [default: false]
   validation_sc_score float [default: 0.0]
+  global_search_text text [not null, default: `''`]
   created_at timestamptz [default: `now()`]
 
   indexes {
@@ -270,6 +293,11 @@ Table card_news {
     keyword_categories [name: 'idx_card_news_keyword_categories', type: gin]
     source_raw_article_ids [name: 'idx_card_news_source_raw_article_ids', type: gin]
     primary_raw_article_id [name: 'idx_card_news_primary_raw_article']
+    (card_schema_version, created_at) [name: 'idx_card_news_schema_version']
+    created_at [name: 'idx_card_news_unjudged_v2', note: 'Partial: card_schema_version = v2 AND evaluation_payload lacks llm_judge.']
+    (peer_company_id, created_at) [name: 'idx_card_news_peer_created', note: 'Partial: peer_company_id IS NOT NULL.']
+    global_search_text [name: 'idx_card_news_global_search_trgm', type: gin, note: 'GIN trigram index using gin_trgm_ops.']
+    created_at [name: 'idx_card_news_created_desc']
   }
 }
 
@@ -330,12 +358,15 @@ Table briefing_reports {
   error_message text
   confidence numeric(3,2)
   provenance jsonb
+  global_search_text text [not null, default: `''`]
   created_at timestamptz [not null, default: `now()`]
   completed_at timestamptz
 
   indexes {
     primary_card_news_id [name: 'idx_briefing_reports_primary_card_news']
     primary_peer_company_id [name: 'idx_briefing_reports_primary_peer_company']
+    global_search_text [name: 'idx_briefing_reports_global_search_trgm', type: gin, note: 'GIN trigram index using gin_trgm_ops.']
+    (`COALESCE(report_date, date_to, date_from)`, created_at) [name: 'idx_briefing_reports_report_date_desc']
   }
 }
 
@@ -344,6 +375,7 @@ Table mixer_results {
   source_analysis_id varchar(100) [unique]
   title varchar(300)
   requested_by_user_id bigint
+  user_id uuid [ref: > users.id, note: 'ON DELETE SET NULL']
   input_card_ids "text[]" [not null, default: `'{}'`]
   primary_card_news_id varchar(50) [ref: > card_news.id, note: 'ON DELETE SET NULL']
   input_peer_ids "text[]" [not null, default: `'{}'`]
@@ -364,6 +396,7 @@ Table mixer_results {
   indexes {
     primary_card_news_id [name: 'idx_mixer_results_primary_card_news']
     primary_peer_company_id [name: 'idx_mixer_results_primary_peer_company']
+    (user_id, created_at) [name: 'idx_mixer_results_user_created', note: 'Partial: user_id IS NOT NULL.']
   }
 }
 
@@ -424,6 +457,144 @@ Table global_industry_trends {
   }
 }
 
+Table users {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  email varchar(320) [not null]
+  email_domain varchar(120) [not null]
+  password_hash varchar(255) [not null]
+  status varchar(20) [not null, default: 'PENDING']
+  role varchar(20) [not null, default: 'USER']
+  email_verified boolean [not null, default: false]
+  failed_login_count int [not null, default: 0]
+  locked_until timestamptz
+  last_login_at timestamptz
+  notification_preferences jsonb [not null, default: `'{ "enabled": true, "importantEnabled": true, "keywords": [] }'::jsonb`, note: 'User notification preferences: enabled, importantEnabled, keywords.']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz
+
+  indexes {
+    email [unique, name: 'uk_users_email']
+    status [name: 'idx_users_status']
+    role [name: 'idx_users_role']
+  }
+
+  Note: 'AXIS user accounts. status: PENDING/ACTIVE/SUSPENDED/WITHDRAWN. role: USER/ADMIN.'
+}
+
+Table auth_tokens {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  user_id uuid [not null, ref: > users.id, note: 'ON DELETE CASCADE']
+  type varchar(30) [not null, note: 'EMAIL_VERIFICATION, REFRESH, PASSWORD_RESET.']
+  token_hash varchar(128) [not null]
+  token_family_id uuid
+  previous_token_id uuid [ref: > auth_tokens.id, note: 'ON DELETE SET NULL']
+  user_agent text
+  ip_address varchar(64)
+  expires_at timestamptz [not null]
+  used_at timestamptz
+  revoked_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    token_hash [unique, name: 'uk_auth_tokens_hash']
+    (user_id, type) [name: 'idx_auth_tokens_user_type']
+    token_family_id [name: 'idx_auth_tokens_family', note: 'Partial: token_family_id IS NOT NULL.']
+    expires_at [name: 'idx_auth_tokens_expires_at']
+    (user_id, expires_at) [name: 'idx_auth_tokens_password_reset_active', note: 'Partial: type = PASSWORD_RESET AND used_at IS NULL AND revoked_at IS NULL.']
+  }
+
+  Note: 'Email verification, refresh, and password reset token store. Raw tokens are never persisted; only token_hash is stored.'
+}
+
+Table user_settings {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  user_id uuid [not null, unique, ref: > users.id, note: 'ON DELETE CASCADE']
+  display_name varchar(120)
+  department varchar(120)
+  alert_rules jsonb [not null, default: `'{}'::jsonb`]
+  notification_settings jsonb [not null, default: `jsonb_build_object('channels', jsonb_build_object('email', true, 'inApp', true, 'teams', false), 'briefingTime', '08:30', 'eventImmediate', true)`]
+  view_preferences jsonb [not null, default: `'{}'::jsonb`]
+  security_settings jsonb [not null, default: `jsonb_build_object('refreshCookie', true, 'autoLoginPolicy', 'refresh_token_only')`]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    user_id [name: 'idx_user_settings_user']
+  }
+
+  Note: 'User-scoped profile adjuncts, alert rules, notification settings, view preferences, and security settings.'
+}
+
+Table user_card_news_bookmarks {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  user_id uuid [not null, ref: > users.id, note: 'ON DELETE CASCADE']
+  card_news_id varchar(50) [not null, ref: > card_news.id, note: 'ON DELETE CASCADE']
+  note text
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (user_id, card_news_id) [unique, name: 'uq_user_card_news_bookmark']
+    (user_id, created_at) [name: 'idx_user_card_news_bookmarks_user']
+    card_news_id [name: 'idx_user_card_news_bookmarks_card']
+  }
+
+  Note: 'Per-user card-news bookmarks used by personalized card lists and mixer inputs.'
+}
+
+Table user_notifications {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  user_id uuid [not null, ref: > users.id, note: 'ON DELETE CASCADE']
+  notification_type varchar(50) [not null, default: 'CARD_NEWS']
+  severity varchar(20) [not null, default: 'NORMAL', note: 'NORMAL or IMPORTANT.']
+  source_type varchar(50) [not null, default: 'IN_APP']
+  source_id varchar(100)
+  source_url varchar(500)
+  company_name varchar(100)
+  title varchar(300) [not null]
+  message text
+  target_view varchar(50)
+  target_resource_id varchar(100)
+  matched_keywords jsonb [not null, default: `'[]'::jsonb`]
+  payload jsonb [not null, default: `'{}'::jsonb`]
+  metadata jsonb [not null, default: `'{}'::jsonb`]
+  dedupe_key varchar(200) [not null, note: 'Prevents duplicate notification creation per user/source/version/keyword.']
+  read_at timestamptz
+  deleted_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (user_id, created_at) [name: 'idx_user_notifications_user_created']
+    (user_id, created_at) [name: 'idx_user_notifications_user_unread', note: 'Partial: read_at IS NULL.']
+    (user_id, dedupe_key) [unique, name: 'uk_user_notifications_user_dedupe']
+    (user_id, created_at) [name: 'idx_user_notifications_user_created_active', note: 'Partial: deleted_at IS NULL.']
+    (user_id, read_at) [name: 'idx_user_notifications_user_unread_active', note: 'Partial: deleted_at IS NULL.']
+    (source_type, source_id) [name: 'idx_user_notifications_source']
+  }
+
+  Note: 'Per-user in-app notification state. unread count and lists exclude deleted_at rows.'
+}
+
+Table user_access_logs {
+  id bigserial [pk]
+  user_id uuid [ref: > users.id, note: 'ON DELETE SET NULL']
+  action_type varchar(60) [not null, note: 'SIGNUP, EMAIL_VERIFIED, EMAIL_VERIFICATION_RESENT, LOGIN_SUCCESS, LOGIN_FAILURE, LOGOUT, REFRESH_ROTATED, REFRESH_REUSE_DETECTED, PASSWORD_CHANGED, PASSWORD_RESET_REQUESTED, PASSWORD_RESET_COMPLETED, PASSWORD_RESET_FAILED, PROFILE_UPDATED, SETTINGS_UPDATED.']
+  success boolean [not null, default: true]
+  ip_address varchar(64)
+  user_agent text
+  session_id uuid
+  metadata jsonb [not null, default: `'{}'::jsonb`]
+  occurred_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (user_id, occurred_at) [name: 'idx_user_access_logs_user_time', note: 'Partial: user_id IS NOT NULL.']
+    (action_type, occurred_at) [name: 'idx_user_access_logs_action_time']
+  }
+
+  Note: 'Security access history for signup/login/logout/refresh/password events. Auto-login is based on refresh tokens, not browsing history.'
+}
+
 Table legacy_records {
   id bigserial [pk]
   source_table varchar(100) [not null]
@@ -454,6 +625,15 @@ TableGroup "Minimal Product ERD" {
   mixer_results
   insight_reports
   global_industry_trends
+}
+
+TableGroup "Auth / Personalization" {
+  users
+  auth_tokens
+  user_settings
+  user_card_news_bookmarks
+  user_notifications
+  user_access_logs
 }
 
 TableGroup "Operational State / Retention" {
