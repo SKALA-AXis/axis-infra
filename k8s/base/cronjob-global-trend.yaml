@@ -13,7 +13,8 @@ metadata:
     app.kubernetes.io/component: cron
     app.kubernetes.io/part-of: axis
 spec:
-  suspend: true  # LLM cron 임시 비활성화: Track A relevance 외 LLM 호출 차단
+  # 매일 02:30 KST 정시 trigger. LLM 3 회 호출 (₩600~1,000/회).
+  suspend: false
   schedule: "30 2 * * *"
   timeZone: "Asia/Seoul"
   concurrencyPolicy: Forbid
@@ -47,7 +48,7 @@ spec:
                     -X POST \
                     -H "Content-Type: application/json" \
                     -d '{"window_days": 30, "include_peer_alignment": true, "max_trend_count": 8, "min_mention_count": 3}' \
-                    "http://axis-ai:8000/global/trends/run"
+                    "http://axis-ai:8001/global/trends/run"
               resources:
                 requests:
                   cpu: 10m
