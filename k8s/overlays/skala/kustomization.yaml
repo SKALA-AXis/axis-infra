@@ -39,7 +39,7 @@ resources:
 images:
 - name: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-ai
   newName: amdp-registry.skala-ai.com/skala26a-ai3/axis-ai
-  newTag: a9d7419
+  newTag: e7f8b39
 - name: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-backend
   newName: amdp-registry.skala-ai.com/skala26a-ai3/axis-backend
   newTag: 748dcbf
