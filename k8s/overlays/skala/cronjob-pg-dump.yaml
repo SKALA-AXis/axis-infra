@@ -1,12 +1,18 @@
-# 매일 03:00 KST(UTC 18:00) Postgres 전체 dump → axis-images PVC 의 /data/backups
+# 매일 03:15 KST(UTC 18:15) Postgres 전체 dump → axis-images PVC 의 /data/backups
 # SKALA 클러스터가 wipe 되어도 PVC 살아있는 동안 복구 가능.
 # 별도 S3 export 는 추후 추가 (sealed-secret 으로 AWS creds 주입 후).
 #
 # 시간대 선정:
 #   · 02:00 KST 에서는 axis-cron-ingestion-a (매시 정각) 과 겹쳐 pg_dump 가
 #     consistent snapshot 잡고 hanging 하다가 5h 후 fail 하는 현상이 있었음.
-#   · 03:00 KST 로 옮겨 ingestion-a 의 hourly trigger 와 1시간 거리 확보.
-#   · activeDeadlineSeconds 30분으로 hang 시 빠르게 fail → 다음 cycle 재시도.
+#   · 03:00 KST 로 옮겼지만 ingestion-a 의 hourly trigger (매시 0분) 와 같은
+#     분에 시작 → lock race 로 30분 timeout fail 재발 (2026-05-27 03:00 KST,
+#     job axis-pg-dump-29663640).
+#   · 03:15 KST 로 한 번 더 옮겨 ingestion-a 의 정시 trigger 와 15분 간격 확보.
+#     정상 환경에서 dump 자체는 ~3분 이라 03:18 KST 경 완료, 다음 04:00 정시
+#     ingestion 과도 충분한 여유.
+#   · activeDeadlineSeconds 30분은 그대로 유지 — hang 시 빠르게 fail →
+#     다음 cycle 재시도 라는 fail-fast 의도 유지.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -16,8 +22,8 @@ metadata:
     app.kubernetes.io/part-of: axis
     app.kubernetes.io/component: backup
 spec:
-  # KST 03:00 = UTC 18:00 (전날). 클러스터 timezone 이 UTC.
-  schedule: "0 18 * * *"
+  # KST 03:15 = UTC 18:15 (전날). 클러스터 timezone 이 UTC.
+  schedule: "15 18 * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 7
   failedJobsHistoryLimit: 3
