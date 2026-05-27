@@ -46,10 +46,14 @@ spec:
           resources:
             requests:
               cpu: 1500m
-              memory: 4Gi
+              # BGE-M3 fp16 (~1.2Gi) + Python heap + DB/Qdrant pool 의 baseline.
+              memory: 5Gi
             limits:
               cpu: 2000m
-              memory: 6Gi
+              # ingestion cycle 중 BGE-M3 encode (max_length=2048, batch=8) 의
+              # attention matrix spike 대비 safety margin. node capacity 16Gi 중
+              # 다른 pod 합산 ~5Gi 이므로 8Gi 여유 있음.
+              memory: 8Gi
           startupProbe:
             httpGet:
               path: /health
