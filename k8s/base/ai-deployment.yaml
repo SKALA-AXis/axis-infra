@@ -54,28 +54,32 @@ spec:
               # attention matrix spike 대비 safety margin. node capacity 16Gi 중
               # 다른 pod 합산 ~5Gi 이므로 8Gi 여유 있음.
               memory: 8Gi
+          # Probe 는 경량 /healthz (DB/Qdrant query 없음) 사용. /health 는 상세 진단용.
+          # ingestion 등 CPU-bound 작업이 잠시 event loop 를 막아도 SIGKILL 안 되도록
+          # timeoutSeconds 10, failureThreshold 완화. axis-ai PR #72/#73 의 to_thread
+          # 적용으로 평상시 응답은 즉시 (~1ms).
           startupProbe:
             httpGet:
-              path: /health
+              path: /healthz
               port: http
             initialDelaySeconds: 30
             periodSeconds: 5
-            timeoutSeconds: 3
+            timeoutSeconds: 5
             failureThreshold: 60  # 약 5분 — BGE-M3 + Reranker 다운로드/로드 시간 확보
           livenessProbe:
             httpGet:
-              path: /health
+              path: /healthz
               port: http
             periodSeconds: 30
-            timeoutSeconds: 3
-            failureThreshold: 5
+            timeoutSeconds: 10
+            failureThreshold: 10
           readinessProbe:
             httpGet:
-              path: /health
+              path: /healthz
               port: http
             periodSeconds: 10
-            timeoutSeconds: 3
-            failureThreshold: 3
+            timeoutSeconds: 5
+            failureThreshold: 6
           volumeMounts:
             - name: axis-images
               mountPath: /data/images
