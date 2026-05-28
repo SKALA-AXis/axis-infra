@@ -27,6 +27,12 @@ data:
   QDRANT_HOST: "http://qdrant"
   QDRANT_PORT: "6333"
 
+  # AI 전처리 LLM — 명시적으로 켠 경우에만 relevance LLM 사용.
+  # 일반 분석/카드 생성 LLM 은 ENABLE_OPENAI_CALLS 를 별도로 켤 때만 사용한다.
+  ENABLE_RELEVANCE_LLM: "true"
+  RELEVANCE_LLM_BATCH_SIZE: "20"
+  RELEVANCE_LLM_MAX_BATCHES_PER_RUN: "3"
+
   # 카드뉴스 이미지 PVC
   IMAGE_STORAGE_PATH: "/data/images"
 
