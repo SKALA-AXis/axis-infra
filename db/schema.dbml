@@ -63,7 +63,7 @@ Table peer_companies {
   financial_history jsonb [not null, default: `'[]'::jsonb`]
   job_posting_history jsonb [not null, default: `'[]'::jsonb`]
   legacy_payload jsonb [not null, default: `'{}'::jsonb`]
-  profile_snapshot jsonb [not null, default: `'{}'::jsonb`, note: 'Tier A static profile snapshot generated weekly by axis-cron-profile-refresh.']
+  profile_snapshot jsonb [not null, default: `'{}'::jsonb`, note: 'Tier A static profile snapshot generated quarterly by axis-cron-profile-refresh.']
   profile_snapshot_version varchar(50)
   profile_snapshot_generated_at timestamptz
   financial_updated_at timestamptz

@@ -1,7 +1,7 @@
-# W2-2 · 주 1회 (월 03:00 KST) peer profile_snapshot 갱신.
+# W2-2 · 분기 1회 (분기 첫날 03:00 KST) peer profile_snapshot 갱신.
 #   · axis-ai 컨테이너에서 scripts/refresh_peer_profile_snapshots.py 실행.
 #   · ProfileAgent.build_profile 합성 → peer_companies.profile_snapshot JSONB 저장.
-#   · 비용: 5 peer × ~$0.15 ≈ $0.75/주.
+#   · 비용: 5 peer × ~$0.15 ≈ $0.75/분기.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -11,9 +11,9 @@ metadata:
     app.kubernetes.io/component: cron
     app.kubernetes.io/part-of: axis
 spec:
-  # 주 1회 (월 03:00 KST). peer 5 사 × ProfileAgent ≈ $0.75/주.
+  # 분기 1회 (1/4/7/10월 1일 03:00 KST). peer 5 사 × ProfileAgent ≈ $0.75/분기.
   suspend: false
-  schedule: "0 3 * * 1"
+  schedule: "0 3 1 1,4,7,10 *"
   timeZone: "Asia/Seoul"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
