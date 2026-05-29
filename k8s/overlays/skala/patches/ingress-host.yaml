@@ -1,5 +1,7 @@
-# Ingress host — team12 패턴 따라 wildcard 처리.
-# host 필드 제거 → ALB Controller 가 자동 DNS 발급, 모든 host header 수용.
-# 매니저로부터 DNS (axis.skala.ai) 매핑 받으면 그때 다시 박을 수 있음.
-- op: remove
+# Ingress host — SKALA 공용 플랫폼 도메인으로 고정.
+# *.skala25a.project.skala-ai.com 은 공용 nginx ALB 로 DNS 가 이미 잡혀 있고
+# cert-manager(letsencrypt-prod)로 무료 TLS 인증서를 발급받는다. (도메인 구매 불필요)
+# base 의 host(axis.skax.internal)를 실제 접근 가능한 공용 서브도메인으로 교체.
+- op: replace
   path: /spec/rules/0/host
+  value: axis-team13.skala25a.project.skala-ai.com

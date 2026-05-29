@@ -1,31 +1,26 @@
-# Ingress SKALA 환경 patch — team12 패턴 따라 정정.
+# Ingress SKALA 환경 patch — 공용 nginx + cert-manager HTTPS 로 전환 (team5/team6 패턴).
 #
-# 변경 (vs base):
-#   · scheme: internal → internet-facing  (외부 접근 가능)
-#   · listen-ports: HTTPS 443 → HTTP 80   (TLS 인증서 미발급, HTTPS 보류)
-#   · ssl-redirect / ssl-policy / certificate-arn 어노테이션 제거 (HTTPS 미사용)
-#   · healthcheck-path: /health → /       (frontend / backend 둘 다 / 응답함)
-#   · success-codes: 200,301,302,400,401,403,404 (관대한 health check)
-#   · spec.ingressClassName: alb 추가     (deprecated annotation 보강)
-#   · alb.ingress.kubernetes.io/load-balancer-name: skala3-team13-axis-alb
+# 변경 (vs base, 그리고 이전 ALB-HTTP overlay 대비):
+#   · ingressClass: alb → public-nginx        (공용 nginx Ingress Controller / 공용 ALB 뒤단)
+#   · 전체 annotations 교체 → cert-manager.io/cluster-issuer: letsencrypt-prod 만
+#       - ALB 전용 어노테이션(scheme/target-type/listen-ports/healthcheck/...) 전부 불필요
+#       - cert-manager 가 HTTP-01 challenge 로 Let's Encrypt 인증서 자동 발급/갱신
+#   · spec.tls 추가 → secretName: axis-tls-cert (cert-manager 가 생성/주입)
+#   · host: axis-team13.skala25a.project.skala-ai.com (ingress-host.yaml 패치)
 #
-# 추후 axis.skala.ai 도메인 + ACM 인증서 받으면 HTTPS 로 다시 박을 수 있음.
+# 결과: https://axis-team13.skala25a.project.skala-ai.com 로 외부 접근(HTTPS).
+#   path 라우팅(/api,/actuator,/swagger-ui,/api-docs → backend, / → frontend)은 base 그대로 유지.
+#   HTTPS 라 refresh 쿠키 Secure=true(SameSite=Lax)가 정상 동작 → 로그인 세션 유지됨.
 - op: replace
   path: /metadata/annotations
   value:
-    kubernetes.io/ingress.class: alb
-    alb.ingress.kubernetes.io/scheme: internet-facing
-    alb.ingress.kubernetes.io/target-type: ip
-    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
-    alb.ingress.kubernetes.io/healthcheck-path: /
-    alb.ingress.kubernetes.io/healthcheck-port: traffic-port
-    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "15"
-    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: "5"
-    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
-    alb.ingress.kubernetes.io/unhealthy-threshold-count: "3"
-    alb.ingress.kubernetes.io/success-codes: "200,301,302,400,401,403,404"
-    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=60
-    alb.ingress.kubernetes.io/load-balancer-name: skala3-team13-axis-alb
+    cert-manager.io/cluster-issuer: letsencrypt-prod
 - op: add
   path: /spec/ingressClassName
-  value: alb
+  value: public-nginx
+- op: add
+  path: /spec/tls
+  value:
+    - hosts:
+        - axis-team13.skala25a.project.skala-ai.com
+      secretName: axis-tls-cert
