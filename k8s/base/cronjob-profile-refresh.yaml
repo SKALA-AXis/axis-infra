@@ -35,6 +35,12 @@ spec:
             - name: refresh
               image: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-ai:REPLACE_TAG
               command: ["python", "scripts/refresh_peer_profile_snapshots.py"]
+              # `python scripts/x.py` 는 sys.path[0] 에 /app/scripts 만 올려서
+              # 프로젝트 루트(/app)의 `src` 패키지를 못 찾는다(ModuleNotFoundError).
+              # 서비스 컨테이너엔 PYTHONPATH 가 비어있으므로 크론에서 /app 을 명시한다.
+              env:
+                - name: PYTHONPATH
+                  value: /app
               envFrom:
                 - configMapRef:
                     name: axis-config

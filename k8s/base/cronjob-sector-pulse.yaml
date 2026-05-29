@@ -38,11 +38,15 @@ spec:
                   set -eu
                   psql "${POSTGRES_URL}" -c "REFRESH MATERIALIZED VIEW CONCURRENTLY sector_pulse;"
               env:
+                # axis-secrets 에는 POSTGRES_URL 키가 없고 DATABASE_URL(libpq 포맷
+                # postgresql://user:pass@host:5432/db)이 존재한다. 누락 키(required)면
+                # 파드가 기동조차 못 해(CreateContainerConfigError) 크론이 실패하므로
+                # 실재하는 DATABASE_URL 키를 psql 접속 문자열로 사용한다.
                 - name: POSTGRES_URL
                   valueFrom:
                     secretKeyRef:
                       name: axis-secrets
-                      key: POSTGRES_URL
+                      key: DATABASE_URL
               resources:
                 requests:
                   cpu: 100m
