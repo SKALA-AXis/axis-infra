@@ -1,15 +1,16 @@
 // ============================================================
-// AXIS - DBML after V37 password-reset/auth personalization updates
-// Snapshot date: 2026-05-26
+// AXIS - DBML after V38 card-news soft-delete/admin audit updates
+// Snapshot date: 2026-05-29
 // Scope: 21 app/operational tables + flyway_schema_history. Views noted below.
 // ============================================================
 
 Project axis {
   database_type: 'PostgreSQL'
   Note: '''
-    V37 crawler/parser-aware product schema with card_news anchor FKs,
-    context-engineering columns/views, auth users, personalization,
-    notifications, password reset tokens, and global search support.
+    V38 crawler/parser-aware product schema with card_news anchor FKs,
+    card_news status soft-delete, admin audit logs, context-engineering
+    columns/views, auth users, personalization, notifications,
+    password reset tokens, and global search support.
     V30 legacy archive remains in legacy_records, while crawler runs and
     parser fact tables are restored as first-class operational data.
 
@@ -280,6 +281,7 @@ Table card_news {
   evidence_payload jsonb [not null, default: `'{}'::jsonb`]
   image_assets jsonb [not null, default: `'[]'::jsonb`]
   legacy_payload jsonb [not null, default: `'{}'::jsonb`]
+  status varchar(20) [not null, default: 'ACTIVE', note: 'Card lifecycle status. ACTIVE=visible, PENDING=hidden, DELETED=soft-deleted/restorable.']
   card_schema_version varchar(10) [not null, default: 'v1', note: 'Card schema generation: v1=legacy heuristic, v2=LLM summary/implication/action card.']
   evaluation_payload jsonb [not null, default: `'{}'::jsonb`, note: 'Context engineering evaluation results.']
   validation_pass boolean [default: false]
@@ -289,6 +291,7 @@ Table card_news {
 
   indexes {
     peer_company_id [name: 'idx_card_news_peer_company_id']
+    (status, created_at) [name: 'idx_card_news_status_created_at']
     keywords [name: 'idx_card_news_keywords', type: gin]
     keyword_categories [name: 'idx_card_news_keyword_categories', type: gin]
     source_raw_article_ids [name: 'idx_card_news_source_raw_article_ids', type: gin]
@@ -299,6 +302,25 @@ Table card_news {
     global_search_text [name: 'idx_card_news_global_search_trgm', type: gin, note: 'GIN trigram index using gin_trgm_ops.']
     created_at [name: 'idx_card_news_created_desc']
   }
+}
+
+Table admin_audit_logs {
+  id bigserial [pk]
+  actor_user_id uuid
+  actor_email varchar(320) [not null]
+  action_type varchar(80) [not null]
+  resource_type varchar(40) [not null]
+  resource_id varchar(80) [not null]
+  reason text
+  payload jsonb [not null, default: `'{}'::jsonb`]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    created_at [name: 'idx_admin_audit_logs_created_at']
+    (resource_type, resource_id, created_at) [name: 'idx_admin_audit_logs_resource']
+  }
+
+  Note: 'Append-only admin activity log for card_news delete/restore and future admin actions.'
 }
 
 Table market_price_ohlcv {
@@ -634,6 +656,7 @@ TableGroup "Auth / Personalization" {
   user_card_news_bookmarks
   user_notifications
   user_access_logs
+  admin_audit_logs
 }
 
 TableGroup "Operational State / Retention" {

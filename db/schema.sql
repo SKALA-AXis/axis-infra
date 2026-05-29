@@ -1,5 +1,5 @@
--- AXIS crawler/parser-aware product schema, V32 target
--- Snapshot date: 2026-05-20 KST
+-- AXIS crawler/parser-aware product schema, V38 target
+-- Snapshot date: 2026-05-29 KST
 --
 -- Physical app tables after V32:
 --   peer_companies, raw_articles, raw_article_parse_results,
@@ -7,6 +7,9 @@
 --   card_news, market_price_ohlcv, briefing_reports, mixer_results,
 --   insight_reports, global_industry_trends, crawl_cursors, crawl_runs,
 --   crawl_run_articles, legacy_records.
+-- Additional auth/admin tables:
+--   users, auth_tokens, user_settings, user_card_news_bookmarks,
+--   user_notifications, user_access_logs, admin_audit_logs.
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
@@ -258,9 +261,12 @@ CREATE TABLE IF NOT EXISTS card_news (
     evidence_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
     image_assets JSONB NOT NULL DEFAULT '[]'::jsonb,
     legacy_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
     validation_pass BOOLEAN DEFAULT FALSE,
     validation_sc_score FLOAT DEFAULT 0.0,
     created_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT chk_card_news_status
+        CHECK (status IN ('ACTIVE', 'PENDING', 'DELETED')),
     CONSTRAINT chk_card_news_primary_raw_article_in_sources
         CHECK (
             primary_raw_article_id IS NULL
@@ -270,6 +276,7 @@ CREATE TABLE IF NOT EXISTS card_news (
 );
 
 CREATE INDEX IF NOT EXISTS idx_card_news_peer_company_id ON card_news(peer_company_id);
+CREATE INDEX IF NOT EXISTS idx_card_news_status_created_at ON card_news(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_card_news_importance ON card_news(importance, importance_score DESC);
 CREATE INDEX IF NOT EXISTS idx_card_news_keywords ON card_news USING GIN(keywords);
 CREATE INDEX IF NOT EXISTS idx_card_news_keyword_categories ON card_news USING GIN(keyword_categories);
@@ -279,6 +286,23 @@ CREATE INDEX IF NOT EXISTS idx_card_news_primary_raw_article
     WHERE primary_raw_article_id IS NOT NULL;
 
 CREATE OR REPLACE VIEW issue_cards AS SELECT * FROM card_news;
+
+CREATE TABLE IF NOT EXISTS admin_audit_logs (
+    id BIGSERIAL PRIMARY KEY,
+    actor_user_id UUID,
+    actor_email VARCHAR(320) NOT NULL,
+    action_type VARCHAR(80) NOT NULL,
+    resource_type VARCHAR(40) NOT NULL,
+    resource_id VARCHAR(80) NOT NULL,
+    reason TEXT,
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_created_at
+    ON admin_audit_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_resource
+    ON admin_audit_logs(resource_type, resource_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS market_price_ohlcv (
     id BIGSERIAL PRIMARY KEY,
