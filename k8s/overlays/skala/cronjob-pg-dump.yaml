@@ -1,18 +1,20 @@
-# 매일 03:15 KST(UTC 18:15) Postgres 전체 dump → axis-images PVC 의 /data/backups
+# 매일 05:00 KST(UTC 20:00) Postgres 전체 dump → axis-images PVC 의 /data/backups
 # SKALA 클러스터가 wipe 되어도 PVC 살아있는 동안 복구 가능.
 # 별도 S3 export 는 추후 추가 (sealed-secret 으로 AWS creds 주입 후).
 #
 # 시간대 선정:
-#   · 02:00 KST 에서는 axis-cron-ingestion-a (매시 정각) 과 겹쳐 pg_dump 가
-#     consistent snapshot 잡고 hanging 하다가 5h 후 fail 하는 현상이 있었음.
-#   · 03:00 KST 로 옮겼지만 ingestion-a 의 hourly trigger (매시 0분) 와 같은
-#     분에 시작 → lock race 로 30분 timeout fail 재발 (2026-05-27 03:00 KST,
-#     job axis-pg-dump-29663640).
-#   · 03:15 KST 로 한 번 더 옮겨 ingestion-a 의 정시 trigger 와 15분 간격 확보.
-#     정상 환경에서 dump 자체는 ~3분 이라 03:18 KST 경 완료, 다음 04:00 정시
-#     ingestion 과도 충분한 여유.
-#   · activeDeadlineSeconds 30분은 그대로 유지 — hang 시 빠르게 fail →
-#     다음 cycle 재시도 라는 fail-fast 의도 유지.
+#   · 02:00 KST: axis-cron-ingestion-a (매시 정각) 과 겹쳐 pg_dump 가 consistent
+#     snapshot 잡고 5h hang 후 fail.
+#   · 03:00 KST: ingestion-a 정시 trigger 와 같은 분 시작 → lock race 30분 fail.
+#   · 03:15 KST(UTC 18:15): ingestion-a 와는 분리됐지만 axis-cron-ingestion-b-close
+#     (UTC 18:00, 평일) 의 track B async tail (axis-ai 가 crawl+LLM+카드생성으로
+#     수십 분간 DB + 공유 PVC axis-images 무겁게 write) 과 겹쳐 dump 의 gzip write
+#     가 throttle → 30분 deadline 초과 fail 재발 (2026-05-27, 05-28 평일 연속).
+#   · 05:00 KST(UTC 20:00): hourly ingestion-a (12초) 외에 도는 batch 가 없는
+#     조용한 창. ingestion-b-close async tail 과 완전히 분리. 수동 off-peak run
+#     이 2.5분에 안정 완료됨을 확인 (2026-05-29).
+#   · activeDeadlineSeconds 는 30분 → 60분 으로 상향. 만일의 경합에도 fail 대신
+#     완주할 여유를 주되, 과거 5h hang 같은 무한 대기는 차단하는 fail-fast 유지.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -22,17 +24,18 @@ metadata:
     app.kubernetes.io/part-of: axis
     app.kubernetes.io/component: backup
 spec:
-  # KST 03:15 = UTC 18:15 (전날). 클러스터 timezone 이 UTC.
-  schedule: "15 18 * * *"
+  # KST 05:00 = UTC 20:00 (전날). 클러스터 timezone 이 UTC.
+  schedule: "0 20 * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 7
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
       backoffLimit: 1
-      # 1.1GB DB 가 정상 환경에서 ~3분에 dump 완료 (검증됨, 2026-05-26).
-      # hang 시 30분 hard timeout 으로 자르고 cron 다음 cycle 에 재시도.
-      activeDeadlineSeconds: 1800
+      # 1.1GB DB 가 정상 환경에서 ~2.5분에 dump 완료 (검증됨, 2026-05-29).
+      # 경합 시에도 완주하도록 60분 여유. 그 이상 hang 시 hard timeout 으로
+      # 자르고 cron 다음 cycle 에 재시도.
+      activeDeadlineSeconds: 3600
       template:
         metadata:
           labels:
