@@ -1,4 +1,4 @@
-# Global Trend · 매일 02:30 KST 글로벌 IT 트렌드 + peer alignment 분석.
+# Global Trend · 매주 월요일 02:30 KST 글로벌 IT 트렌드 + peer alignment 분석.
 #   · axis-ai 의 POST /global/trends/run 호출 → ITTrendAgent 5-phase 실행.
 #   · 결과는 global_industry_trends 테이블에 keyword 별 row 로 upsert (V29 unique
 #     constraint idempotent — 같은 trend_date 재실행 안전).
@@ -13,9 +13,9 @@ metadata:
     app.kubernetes.io/component: cron
     app.kubernetes.io/part-of: axis
 spec:
-  # 매일 02:30 KST 정시 trigger. LLM 3 회 호출 (₩600~1,000/회).
+  # 매주 월요일 02:30 KST 정시 trigger. LLM 3 회 호출 (₩600~1,000/회).
   suspend: false
-  schedule: "30 2 * * *"
+  schedule: "30 2 * * 1"
   timeZone: "Asia/Seoul"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
