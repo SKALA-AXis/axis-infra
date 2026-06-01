@@ -15,6 +15,17 @@
 #     이 2.5분에 안정 완료됨을 확인 (2026-05-29).
 #   · activeDeadlineSeconds 는 30분 → 60분 으로 상향. 만일의 경합에도 fail 대신
 #     완주할 여유를 주되, 과거 5h hang 같은 무한 대기는 차단하는 fail-fast 유지.
+#
+# 2026-06-01 재발 진단 — DeadlineExceeded 의 진짜 원인:
+#   gzip 출력을 공유 EFS(NFS) PVC 로 곧장 stream write 하면, EFS writeback 이
+#   느려질 때 dirty page 가 cgroup 메모리 한도(512Mi)까지 쌓이고, 프로세스가
+#   NFS writeback 대기(D-state, uninterruptible)에 걸려 SIGKILL 도 안 먹고 멈춤
+#   → 60분 deadline 까지 hang. EFS writeback 이 빠른 날엔 통과(05-26/27), 경합이
+#   조금만 생겨도 한도 초과로 hang(05-29~31). pg_dump→/dev/null 은 2분, 동일 덤프
+#   를 512Mi 로 EFS write 시 OOM(exit137), 2Gi 로는 1m15s 완주됨을 측정 확인.
+# 해결: ① 덤프를 로컬 emptyDir(노드 디스크, 빠른 writeback)로 먼저 쓰고 검증 후
+#       EFS 로 한 번에 복사 → NFS writeback hang 원천 차단.
+#       ② 메모리 512Mi→1Gi, CPU 500m→1 상향(gzip CPU-bound, 완주시간 단축).
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -64,15 +75,20 @@ spec:
                   STAMP=$(date -u +%Y%m%d_%H%M)
                   OUT="/data/backups/axis_team13_${STAMP}.sql.gz"
                   TMP="${OUT}.tmp"
+                  STAGE="/stage/axis_team13_${STAMP}.sql.gz"
                   mkdir -p /data/backups
-                  rm -f "${TMP}"
-                  # 실패 시 잔여 tmp 자동 정리
-                  trap 'rm -f "${TMP}"' EXIT
-                  echo "[pg-dump] dumping → ${OUT}"
-                  # ① tmp 로 먼저 dump, ② gzip 무결성 검증, ③ 통과 시에만 최종 파일로 mv (atomic).
-                  pg_dump --no-owner --no-acl "${DATABASE_URL}" | gzip > "${TMP}"
-                  gzip -t "${TMP}"
+                  rm -f "${TMP}" "${STAGE}"
+                  # 실패/중단 시 로컬 stage + EFS tmp 잔여 자동 정리
+                  trap 'rm -f "${STAGE}" "${TMP}"' EXIT
+                  echo "[pg-dump] dumping → ${STAGE} (local stage)"
+                  # ① 로컬 emptyDir 로 먼저 dump (EFS NFS writeback 경합 / dirty-page
+                  #    메모리 hang 을 원천 차단 — DB read 가 노드 디스크 속도로 진행),
+                  # ② gzip 무결성 검증, ③ 통과 시 EFS 로 원자적 복사(.tmp → mv).
+                  pg_dump --no-owner --no-acl "${DATABASE_URL}" | gzip > "${STAGE}"
+                  gzip -t "${STAGE}"
+                  cp "${STAGE}" "${TMP}"
                   mv "${TMP}" "${OUT}"
+                  rm -f "${STAGE}"
                   echo "[pg-dump] size: $(du -h "${OUT}" | cut -f1)"
                   # 14일 이전 dump 삭제 — PVC 용량 보호
                   find /data/backups -type f -name '*.sql.gz' -mtime +14 -delete
@@ -81,15 +97,23 @@ spec:
                   echo "[pg-dump] retention applied (>14d sql.gz, >1d tmp removed)"
               resources:
                 requests:
-                  memory: "128Mi"
-                  cpu: "100m"
+                  memory: "256Mi"
+                  cpu: "200m"
                 limits:
-                  memory: "512Mi"
-                  cpu: "500m"
+                  # 512Mi 는 gzip→EFS dirty-page 누적 시 OOM/NFS hang → DeadlineExceeded.
+                  # 1Gi 로 충분한 여유 확보(덤프 출력 ~280MB). gzip 은 CPU-bound 라
+                  # CPU 1 로 올려 완주시간 단축(500m→1 시 2.5분→~1.3분).
+                  memory: "1Gi"
+                  cpu: "1"
               volumeMounts:
                 - name: backup-volume
                   mountPath: /data
+                - name: stage          # 로컬 노드 디스크 — gzip 임시 출력(EFS NFS hang 회피)
+                  mountPath: /stage
           volumes:
             - name: backup-volume
               persistentVolumeClaim:
                 claimName: axis-images   # 기존 PVC 재사용 (/data/images 와 형제 디렉토리)
+            - name: stage
+              emptyDir:
+                sizeLimit: 2Gi           # 압축 덤프(~280MB) 스테이징용. 노드 ephemeral storage.
