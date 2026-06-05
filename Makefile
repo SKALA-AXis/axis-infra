@@ -263,28 +263,43 @@ pf-backend-stop:  ## cluster backend port-forward 종료
 	@-pkill -f "kubectl port-forward.*svc/axis-backend 8080:8080" 2>/dev/null || true
 	@echo "✓ backend port-forward 종료"
 
-# ── Cluster DB 모드 — docker compose 로 backend·ai·frontend 띄우되 DB 는 cluster 사용
-# port-forward 자동 (background) + cluster-db override file 적용.
+# ── Cluster DB 모드 — docker compose 로 ai·frontend 띄우되, backend·DB 는 cluster 사용
+# port-forward 자동 (background): postgres / qdrant + cluster backend(8080).
+# backend 는 로컬 컨테이너 대신 *클러스터 backend* 를 8080 으로 port-forward 한다
+# (로그인은 실제 cluster backend 로 처리). 로컬 backend 컨테이너는 띄우지 않음
+#   → docker compose 의 --no-deps 로 frontend 의 depends_on(backend) 자동 기동도 차단.
 
-up-cluster:  ## docker compose + cluster DB (port-forward 자동)
-	@echo "▸ kubectl port-forward 시작 (background)"
-	@-pkill -f "kubectl port-forward.*svc/postgres 5432" 2>/dev/null || true
-	@-pkill -f "kubectl port-forward.*svc/qdrant 6333"   2>/dev/null || true
+up-cluster:  ## docker compose(ai+frontend) + cluster backend/DB port-forward (자동)
+	@echo "▸ kubectl port-forward 시작 (background): postgres / qdrant / backend"
+	@-pkill -f "kubectl port-forward.*svc/postgres 5432"     2>/dev/null || true
+	@-pkill -f "kubectl port-forward.*svc/qdrant 6333"       2>/dev/null || true
+	@-pkill -f "kubectl port-forward.*svc/axis-backend 8080" 2>/dev/null || true
 	@kubectl port-forward -n $(SKALA_NS) svc/postgres 5432:5432 >/tmp/axis-pf-postgres.log 2>&1 &
 	@kubectl port-forward -n $(SKALA_NS) svc/qdrant   6333:6333 >/tmp/axis-pf-qdrant.log 2>&1 &
-	@sleep 2
-	@echo "▸ docker compose up (backend + ai + frontend, postgres·qdrant 컨테이너 스킵)"
-	docker compose -f docker-compose.yml -f docker-compose.cluster-db.yml up -d backend ai frontend
+	@kubectl port-forward --address 127.0.0.1 -n $(SKALA_NS) svc/axis-backend 8080:8080 >/tmp/axis-pf-backend.log 2>&1 &
+	@echo "▸ cluster backend(8080) 준비 대기..."
+	@for i in 1 2 3 4 5 6 7 8 9 10; do \
+		if curl -fsS http://127.0.0.1:8080/health >/dev/null 2>&1; then \
+			echo "✓ cluster backend 연결: http://localhost:8080"; break; \
+		fi; \
+		if [ $$i -eq 10 ]; then \
+			echo "❌ cluster backend port-forward 연결 실패 (/tmp/axis-pf-backend.log 확인)"; \
+			cat /tmp/axis-pf-backend.log; exit 1; \
+		fi; \
+		sleep 1; \
+	done
+	@echo "▸ docker compose up (ai + frontend; backend·postgres·qdrant 컨테이너 스킵)"
+	docker compose -f docker-compose.yml -f docker-compose.cluster-db.yml up -d --no-deps ai frontend
 	@echo ""
-	@echo "✓ Cluster DB 모드 활성:"
-	@echo "  - backend: http://localhost:8080 → cluster Postgres (port-forward 경유)"
-	@echo "  - ai:      http://localhost:8001 → cluster Postgres + Qdrant"
-	@echo "  - frontend: http://localhost:3000"
-	@echo "  - SPRING_FLYWAY_ENABLED=false (silent migrate 차단)"
-	@echo "  - port-forward log: /tmp/axis-pf-{postgres,qdrant}.log"
+	@echo "✓ Cluster 모드 활성:"
+	@echo "  - backend:  http://localhost:8080 → *cluster* axis-backend (port-forward, 실 로그인)"
+	@echo "  - ai:       http://localhost:8001 → cluster Postgres + Qdrant (로컬 컨테이너)"
+	@echo "  - frontend: http://localhost:3000 → localhost:8080(cluster backend)"
+	@echo "  - port-forward log: /tmp/axis-pf-{postgres,qdrant,backend}.log"
 
 down-cluster:  ## docker compose 종료 + port-forward 정리
 	docker compose -f docker-compose.yml -f docker-compose.cluster-db.yml down
-	@-pkill -f "kubectl port-forward.*svc/postgres 5432" 2>/dev/null || true
-	@-pkill -f "kubectl port-forward.*svc/qdrant 6333"   2>/dev/null || true
+	@-pkill -f "kubectl port-forward.*svc/postgres 5432"     2>/dev/null || true
+	@-pkill -f "kubectl port-forward.*svc/qdrant 6333"       2>/dev/null || true
+	@-pkill -f "kubectl port-forward.*svc/axis-backend 8080" 2>/dev/null || true
 	@echo "✓ port-forward 종료"
