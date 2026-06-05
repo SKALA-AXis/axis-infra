@@ -158,8 +158,14 @@ SKALA_FRONTEND   := $(HARBOR_HOST)/$(HARBOR_PROJECT)/axis-frontend:$(SKALA_TAG)
 SKALA_BACKEND    := $(HARBOR_HOST)/$(HARBOR_PROJECT)/axis-backend:$(SKALA_TAG)
 SKALA_AI         := $(HARBOR_HOST)/$(HARBOR_PROJECT)/axis-ai:$(SKALA_TAG)
 
+# 복구(restore) 파라미터 — make skala-restore 가 job-pg-restore.yaml 에 주입.
+#   BACKUP_FILE        : 복구할 백업 파일명/절대경로 (비우면 /data/backups 최신 자동 선택)
+#   DROP_PUBLIC_SCHEMA : true(기본)=public DROP 후 복구(덮어쓰기) / false=빈 DB 그대로 적재
+BACKUP_FILE        ?=
+DROP_PUBLIC_SCHEMA ?= true
+
 .PHONY: skala-build skala-push skala-apply skala-delete skala-status skala-logs \
-        skala-pull-secret skala-validate skala-tag skala-secret \
+        skala-pull-secret skala-validate skala-tag skala-secret skala-restore \
         pf-backend pf-backend-fg pf-backend-stop
 
 skala-secret:  ## .env 에서 secret.skala.yaml 생성 (axis-postgres-bootstrap + axis-secrets 두 Secret)
@@ -235,6 +241,26 @@ skala-status:  ## SKALA namespace 의 모든 axis 리소스 상태
 
 skala-logs:  ## 모든 axis Pod 로그 (skala namespace)
 	kubectl -n $(SKALA_NS) logs -l app.kubernetes.io/part-of=axis --all-containers --max-log-requests 10 -f --tail=100
+
+skala-restore:  ## ⚠️ Postgres 복구 (파괴적). 안전스냅샷 후 백업 복구. 예: make skala-restore BACKUP_FILE=axis_team13_20260605_2040.sql.gz
+	@echo "⚠️  파괴적 복구를 시작합니다 (BACKUP_FILE='$(BACKUP_FILE)' DROP_PUBLIC_SCHEMA='$(DROP_PUBLIC_SCHEMA)')."
+	@echo "    현재 DB 는 복구 직전 pre-restore_*.sql.gz 로 자동 백업됩니다. 5초 후 진행 (Ctrl-C 로 취소)..."
+	@sleep 5
+	@echo "▸ (1/5) 앱 스케일 다운 — 복구 중 쓰기 경합 방지"
+	kubectl -n $(SKALA_NS) scale deploy/axis-backend deploy/axis-ai --replicas=0
+	@echo "▸ (2/5) 이전 복구 Job 정리 (Job spec 은 immutable — 재실행 위해 삭제)"
+	-kubectl -n $(SKALA_NS) delete job axis-pg-restore --ignore-not-found --wait=true
+	@echo "▸ (3/5) 복구 Job 생성 (manifest 에 파라미터 주입 후 apply)"
+	@sed -e 's|value: ""|value: "$(BACKUP_FILE)"|' \
+	     -e 's|value: "true"|value: "$(DROP_PUBLIC_SCHEMA)"|' \
+	     k8s/overlays/skala/job-pg-restore.yaml | kubectl apply -f -
+	@echo "▸ (4/5) 복구 로그 (완료까지 follow)"
+	@kubectl -n $(SKALA_NS) wait --for=condition=ready pod -l job-name=axis-pg-restore --timeout=90s 2>/dev/null || true
+	-kubectl -n $(SKALA_NS) logs -f job/axis-pg-restore
+	@kubectl -n $(SKALA_NS) get job axis-pg-restore
+	@echo "▸ (5/5) 앱 스케일 업"
+	kubectl -n $(SKALA_NS) scale deploy/axis-backend deploy/axis-ai --replicas=1
+	@echo "✓ 복구 절차 종료. 문제 시: make skala-restore BACKUP_FILE=<pre-restore_*.sql.gz> 로 원복."
 
 pf-backend:  ## cluster backend 를 localhost:8080 으로 port-forward (로컬 frontend 인증 API 테스트용)
 	@echo "▸ axis-backend port-forward 시작: http://localhost:8080"
