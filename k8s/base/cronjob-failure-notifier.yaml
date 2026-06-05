@@ -1,0 +1,152 @@
+# CronJob 실패 감시 → Slack 알림.
+#
+# 문제: 다른 CronJob(ingestion-*, delivery, global-trend, card-evaluator 등)이 실패해도
+#       kubectl/ArgoCD 를 직접 보기 전까지 아무도 모른다.
+# 해결: 10분마다 namespace 의 Job 을 조회해 condition Failed=True 인 것 중
+#       아직 안 알린 것만 Slack Webhook 으로 보낸다. 한 번 알린 Job 은
+#       annotation(axis.skala/slack-alerted)으로 표시해 재알림하지 않는다.
+#
+# 컨테이너 안 wrapper 가 아니라 Job 상태를 API 로 읽는 watcher 방식이라
+# DeadlineExceeded / OOMKilled / ImagePullBackOff / backoff 소진 등 컨테이너가
+# 코드를 실행하기도 전에 죽는 실패까지 모두 잡는다.
+#
+# SLACK_WEBHOOK_URL(axis-secrets)이 비어 있으면 알림을 건너뛰고 정상 종료한다.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: axis-cron-notifier
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app.kubernetes.io/component: cron
+    app.kubernetes.io/part-of: axis
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: axis-cron-notifier
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app.kubernetes.io/component: cron
+    app.kubernetes.io/part-of: axis
+subjects:
+  - kind: ServiceAccount
+    name: axis-cron-notifier-sa
+    namespace: skala3-finalproj-class3-team13
+roleRef:
+  kind: Role
+  name: axis-cron-notifier
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: axis-cron-failure-notifier
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app.kubernetes.io/component: cron
+    app.kubernetes.io/part-of: axis
+spec:
+  # 10분 주기. 실패 Job 은 ttlSecondsAfterFinished(1h) 동안 살아있어 그 안에 한 번은 잡힌다.
+  schedule: "*/10 * * * *"
+  timeZone: "Asia/Seoul"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 120
+      ttlSecondsAfterFinished: 600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: cron
+            cron: failure-notifier
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: axis-cron-notifier-sa
+          containers:
+            - name: notifier
+              # kubectl + jq + curl 번들 (Job 상태 조회 + JSON 파싱 + Slack post).
+              image: alpine/k8s:1.30.2
+              env:
+                - name: NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+                - name: SLACK_WEBHOOK_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: axis-secrets
+                      key: SLACK_WEBHOOK_URL
+                      optional: true   # 미설정이면 빈값 → 스크립트가 graceful skip
+                - name: HOME
+                  value: /tmp
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  : "${NAMESPACE:?}"
+                  if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
+                    echo "[notifier] SLACK_WEBHOOK_URL 미설정 — 알림 건너뜀 (정상 종료)"
+                    exit 0
+                  fi
+                  CACHE=--cache-dir=/tmp/.kube/cache
+
+                  # condition Failed=True 이고 아직 안 알린(annotation 없음) Job 만 추출.
+                  kubectl get jobs -n "$NAMESPACE" $CACHE -o json \
+                    | jq -c '.items[]
+                        | select((.status.conditions // []) | any(.type=="Failed" and .status=="True"))
+                        | select((.metadata.annotations // {})["axis.skala/slack-alerted"] != "true")' \
+                    > /tmp/failed.jsonl
+
+                  count=0
+                  while IFS= read -r job; do
+                    [ -n "$job" ] || continue
+                    name=$(printf '%s' "$job"   | jq -r '.metadata.name')
+                    cron=$(printf '%s' "$job"   | jq -r '(.metadata.ownerReferences // [])[0].name // .metadata.labels.cron // "standalone"')
+                    reason=$(printf '%s' "$job" | jq -r '[(.status.conditions // [])[] | select(.type=="Failed") | .reason] | first // "Failed"')
+                    msg=$(printf '%s' "$job"    | jq -r '[(.status.conditions // [])[] | select(.type=="Failed") | .message] | first // ""')
+                    failed=$(printf '%s' "$job" | jq -r '.status.failed // 0')
+
+                    text=":rotating_light: *CronJob 실패* — \`$cron\`
+                  • job: \`$name\`
+                  • namespace: \`$NAMESPACE\`
+                  • reason: *$reason*  (failed pods: $failed)
+                  • message: $msg
+                  • 확인: kubectl -n $NAMESPACE describe job $name / logs job/$name"
+                    payload=$(jq -n --arg t "$text" '{text:$t}')
+
+                    if curl -fsS --max-time 15 -X POST -H 'Content-Type: application/json' \
+                         --data "$payload" "$SLACK_WEBHOOK_URL" >/dev/null; then
+                      # 성공해야만 alerted 마킹 — Slack 실패 시 다음 주기 재시도.
+                      kubectl annotate job -n "$NAMESPACE" "$name" $CACHE \
+                        axis.skala/slack-alerted=true --overwrite >/dev/null
+                      count=$((count + 1))
+                      echo "[notifier] alerted: $name (cron=$cron reason=$reason)"
+                    else
+                      echo "[notifier] Slack post 실패: $name — 다음 주기 재시도"
+                    fi
+                  done < /tmp/failed.jsonl
+                  echo "[notifier] done — 신규 알림 $count 건"
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 64Mi
+                limits:
+                  cpu: 200m
+                  memory: 256Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+                # kubectl discovery 캐시 / jq 임시파일을 /tmp 에 써야 하므로 rootfs 쓰기 허용.
+                readOnlyRootFilesystem: false
+                runAsNonRoot: true
+                runAsUser: 65534
