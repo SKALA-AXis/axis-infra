@@ -1,4 +1,4 @@
-# 매일 05:00 KST(UTC 20:00) Postgres 전체 dump → axis-images PVC 의 /data/backups
+# 매일 05:40 KST(UTC 20:40) Postgres 전체 dump → axis-images PVC 의 /data/backups
 # SKALA 클러스터가 wipe 되어도 PVC 살아있는 동안 복구 가능.
 # 별도 S3 export 는 추후 추가 (sealed-secret 으로 AWS creds 주입 후).
 #
@@ -26,6 +26,20 @@
 # 해결: ① 덤프를 로컬 emptyDir(노드 디스크, 빠른 writeback)로 먼저 쓰고 검증 후
 #       EFS 로 한 번에 복사 → NFS writeback hang 원천 차단.
 #       ② 메모리 512Mi→1Gi, CPU 500m→1 상향(gzip CPU-bound, 완주시간 단축).
+#
+# 2026-06-05 재발 진단 — "조용한 창" 가정이 틀렸다:
+#   06-02~04 의 20:00:00(UTC, 정각) run 이 연속 DeadlineExceeded. 같은 코드로
+#   수동 off-peak run 은 76초 완주(pg_dump 63s + gzip검증 12s + EFS cp 1s).
+#   원인: schedule 이 "0 20"(정각)이라 hourly ingestion-a("0 * * * *", 정각)와
+#   매일 동시 시작. ingestion-a 는 12초 trigger 처럼 보이지만 실제로는 backend
+#   track A 적재 파이프라인을 비동기로 수 분간 돌린다(POST /api/pipeline/trigger).
+#   pg_dump 가 그 적재 트랜잭션/락·공유 PVC 경합과 정확히 겹쳐 lock 대기로 hang.
+#   성공 run 은 전부 정각이 아닌 분(:25/:55)이었음 → 정각 자체가 화근.
+# 해결: ① schedule 을 정각에서 분리(0 20 → 40 20). ingestion-a 적재 tail 이
+#       끝난 뒤 실행 → 충돌 제거. ② PGOPTIONS=-c lock_timeout=600000 으로 락
+#       대기를 10분에 끊어 1시간 좀비 hang 차단(COPY 실행엔 영향 없음).
+#       ③ activeDeadlineSeconds 3600→1800, backoffLimit 1→2 로 fail-fast +
+#       일시 경합 자동 재시도.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -35,18 +49,21 @@ metadata:
     app.kubernetes.io/part-of: axis
     app.kubernetes.io/component: backup
 spec:
-  # KST 05:00 = UTC 20:00 (전날). 클러스터 timezone 이 UTC.
-  schedule: "0 20 * * *"
+  # KST 05:40 = UTC 20:40 (전날). 클러스터 timezone 이 UTC.
+  # 정각(0)을 피해 :40 으로 분리 — hourly ingestion-a(정각 trigger)가 띄우는
+  # backend track A 적재 tail 이 끝난 뒤 실행하여 lock/PVC 경합을 회피.
+  schedule: "40 20 * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 7
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
-      backoffLimit: 1
-      # 1.1GB DB 가 정상 환경에서 ~2.5분에 dump 완료 (검증됨, 2026-05-29).
-      # 경합 시에도 완주하도록 60분 여유. 그 이상 hang 시 hard timeout 으로
-      # 자르고 cron 다음 cycle 에 재시도.
-      activeDeadlineSeconds: 3600
+      # 일시 경합(락 대기 등) 시 자동 재시도. lock_timeout 으로 각 시도가
+      # 10분 내 fail-fast 하므로 재시도 2회까지도 deadline 안에서 소화된다.
+      backoffLimit: 2
+      # 1.1GB DB 가 정상 환경에서 76초에 dump 완료 (검증됨, 2026-06-05).
+      # 30분 hard timeout — 그 이상 hang 시 잘라내고 cron 다음 cycle 재시도.
+      activeDeadlineSeconds: 1800
       template:
         metadata:
           labels:
@@ -64,6 +81,10 @@ spec:
                     secretKeyRef:
                       name: axis-secrets
                       key: DATABASE_URL
+                # 락 대기 10분 상한 — pg_dump 의 LOCK TABLE 이 적재 DDL/배타락에
+                # 막혀 무한 대기하는 것을 차단(이미 잡은 락의 COPY 실행엔 무영향).
+                - name: PGOPTIONS
+                  value: "-c lock_timeout=600000"
               command:
                 - /bin/sh
                 - -c
