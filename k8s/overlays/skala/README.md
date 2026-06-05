@@ -154,6 +154,39 @@ kubectl create job --from=cronjob/axis-pg-dump axis-pg-dump-manual \
 
 S3 export 는 추후 추가 (sealed-secret 으로 AWS 자격증명 주입 후).
 
+### 6-1. 복구 (restore)
+
+`job-pg-restore.yaml` — 위 백업(`/data/backups/*.sql.gz`)을 Postgres 로 되돌리는 **1회성 수동 Job**.
+⚠️ 파괴적이라 `kustomization.yaml` 에 넣지 않았다(ArgoCD 자동 실행 방지). 트리거는 사람이 한다.
+실행 자체는 표준화돼 있다 — 복구 직전 안전 스냅샷(`pre-restore_*.sql.gz`) + gzip 무결성 검증 +
+원자적 트랜잭션 복구 + EFS NFS hang 회피. 손으로 psql 치는 복구보다 안전·재현 가능.
+
+**권장: `make skala-restore` 한 방으로** (scale-down → Job apply → 로그 follow → scale-up 자동):
+
+```bash
+# 최신 백업으로 복구
+make skala-restore
+
+# 특정 백업 파일로 복구
+make skala-restore BACKUP_FILE=axis_team13_20260605_2040.sql.gz
+
+# 빈 DB(클러스터 wipe 직후 재해복구) — DROP 없이 그대로 적재
+make skala-restore DROP_PUBLIC_SCHEMA=false
+
+# 복구가 잘못됐으면 직전 안전 스냅샷으로 원복
+make skala-restore BACKUP_FILE=pre-restore_20260605_2041.sql.gz
+```
+
+보존 백업 목록 확인:
+
+```bash
+kubectl run ls-backups --rm -it --image=busybox -n skala3-finalproj-class3-team13 \
+  --overrides='{"spec":{"containers":[{"name":"ls","image":"busybox","command":["ls","-lht","/data/backups"],"volumeMounts":[{"name":"b","mountPath":"/data"}]}],"volumes":[{"name":"b","persistentVolumeClaim":{"claimName":"axis-images"}}]}}'
+```
+
+수동으로 단계별 실행하려면 `job-pg-restore.yaml` 상단 주석 참조.
+- 기본 `DROP_PUBLIC_SCHEMA=true`: public 스키마를 DROP/CREATE 후 백업으로 재생성(현재 데이터 덮어씀).
+
 ---
 
 ## 7. 트러블슈팅

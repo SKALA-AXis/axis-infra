@@ -1,0 +1,147 @@
+# axis-images PVC(/data/backups)의 pg_dump 백업을 Postgres 로 되돌리는 1회성 복구 Job.
+#
+# ⚠️ 파괴적 작업이다. 기본 동작은 대상 DB 의 public 스키마를 통째로 DROP 후
+#    백업으로 재생성한다(= 현재 데이터 전부 덮어씀). 그래서:
+#    · kustomization.yaml 의 resources 에 일부러 넣지 않았다 — ArgoCD/`apply -k` 가
+#      자동 실행하면 안 되므로 필요할 때만 `kubectl apply -f` 로 수동 실행한다.
+#    · 복구 직전 현재 DB 를 pre-restore_*.sql.gz 로 한 번 더 떠서 되돌릴 수 있게 한다.
+#
+# 동작:
+#   ① BACKUP_FILE 지정 시 그 파일, 미지정 시 /data/backups 의 최신 axis_team13_*.sql.gz 선택
+#   ② gzip 무결성 검증
+#   ③ 현재 DB 안전 스냅샷(pre-restore_*.sql.gz) — 로컬 stage 로 떠서 EFS 로 복사
+#      (백업 잡에서 검증된 NFS writeback hang 회피 패턴)
+#   ④ DROP_PUBLIC_SCHEMA=true(기본) 면 public DROP/CREATE 를 복구와 한 트랜잭션으로 묶어
+#      원자적 복구(--single-transaction). 중간 실패 시 DB 는 복구 시작 전 상태로 롤백.
+#
+# 사용:
+#   # (권장) 복구 중 쓰기 경합 방지를 위해 앱을 먼저 내린다
+#   kubectl scale deploy/axis-backend deploy/axis-ai --replicas=0 -n skala3-finalproj-class3-team13
+#
+#   # 최신 백업으로 복구
+#   kubectl apply -f k8s/overlays/skala/job-pg-restore.yaml
+#   kubectl logs -f job/axis-pg-restore -n skala3-finalproj-class3-team13
+#
+#   # 특정 파일로 복구하려면 BACKUP_FILE 값을 채워서 apply (파일명 또는 절대경로)
+#
+#   # 끝나면 앱 복구 + Job 정리
+#   kubectl scale deploy/axis-backend deploy/axis-ai --replicas=1 -n skala3-finalproj-class3-team13
+#   kubectl delete job axis-pg-restore -n skala3-finalproj-class3-team13   # 재실행하려면 먼저 삭제
+#
+# 보존 백업 목록 확인:
+#   kubectl run ls-backups --rm -it --image=busybox -n skala3-finalproj-class3-team13 \
+#     --overrides='{"spec":{"containers":[{"name":"ls","image":"busybox","command":["ls","-lht","/data/backups"],"volumeMounts":[{"name":"b","mountPath":"/data"}]}],"volumes":[{"name":"b","persistentVolumeClaim":{"claimName":"axis-images"}}]}}'
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: axis-pg-restore
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app.kubernetes.io/part-of: axis
+    app.kubernetes.io/component: backup       # NetworkPolicy allow-postgres-from-app 매칭(DB 접근)
+spec:
+  # 파괴적 작업이라 자동 재시도 금지 — 실패하면 사람이 로그 보고 판단(안전 스냅샷은 이미 떠둠).
+  backoffLimit: 0
+  # 1.1GB DB 의 plain SQL replay(인덱스 재생성 포함)는 dump 보다 길 수 있어 1시간 여유.
+  activeDeadlineSeconds: 3600
+  # 완료 후 2일 뒤 Job 자동 삭제 — 그동안 로그 확인 가능, 이후 재apply 충돌 방지.
+  ttlSecondsAfterFinished: 172800
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: axis
+        app.kubernetes.io/component: backup
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: pg-restore
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: axis-secrets
+                  key: DATABASE_URL
+            # 복구할 백업 파일. 비우면 /data/backups 의 최신 axis_team13_*.sql.gz 자동 선택.
+            # 파일명(예: axis_team13_20260605_2040.sql.gz) 또는 절대경로 모두 허용.
+            - name: BACKUP_FILE
+              value: ""
+            # true(기본): public 스키마 DROP/CREATE 후 복구(현재 데이터 덮어씀, 결정적 복구).
+            # false: 빈 DB 가정하고 DROP 없이 그대로 적재(신규/비어있는 DB 재해복구용).
+            - name: DROP_PUBLIC_SCHEMA
+              value: "true"
+            # 복구 적재가 적재 DDL/배타락에 막혀 무한 대기하는 것 방지(10분 fail-fast).
+            - name: PGOPTIONS
+              value: "-c lock_timeout=600000"
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              set -o pipefail
+
+              # ── ① 복구 소스 결정
+              if [ -n "${BACKUP_FILE:-}" ]; then
+                case "${BACKUP_FILE}" in
+                  /*) SRC="${BACKUP_FILE}" ;;
+                  *)  SRC="/data/backups/${BACKUP_FILE}" ;;
+                esac
+              else
+                SRC=$(ls -1t /data/backups/axis_team13_*.sql.gz 2>/dev/null | head -n1 || true)
+              fi
+              if [ -z "${SRC:-}" ] || [ ! -f "${SRC}" ]; then
+                echo "[restore] ERROR: 복구할 백업을 찾지 못함 (BACKUP_FILE='${BACKUP_FILE:-}')"
+                echo "[restore] /data/backups 목록:"; ls -lht /data/backups 2>/dev/null || true
+                exit 1
+              fi
+              echo "[restore] source: ${SRC}"
+              gzip -t "${SRC}"   # 무결성 검증 — 깨진 백업으로 덮어쓰는 사고 방지
+
+              # ── ② 복구 직전 현재 DB 안전 스냅샷(되돌리기용). 로컬 stage→EFS 복사로 NFS hang 회피.
+              STAMP=$(date -u +%Y%m%d_%H%M)
+              SAFETY="/data/backups/pre-restore_${STAMP}.sql.gz"
+              SAFETY_STAGE="/stage/pre-restore_${STAMP}.sql.gz"
+              mkdir -p /data/backups
+              trap 'rm -f "${SAFETY_STAGE}"' EXIT
+              echo "[restore] 현재 DB 안전 스냅샷 → ${SAFETY}"
+              pg_dump --no-owner --no-acl "${DATABASE_URL}" | gzip > "${SAFETY_STAGE}"
+              gzip -t "${SAFETY_STAGE}"
+              cp "${SAFETY_STAGE}" "${SAFETY}"
+              rm -f "${SAFETY_STAGE}"
+              echo "[restore] 안전 스냅샷 완료: $(du -h "${SAFETY}" | cut -f1)"
+
+              # ── ③ 복구 — DROP/CREATE 를 복구와 한 트랜잭션으로 묶어 원자적 적용
+              echo "[restore] 복구 시작 (DROP_PUBLIC_SCHEMA=${DROP_PUBLIC_SCHEMA:-true})..."
+              if [ "${DROP_PUBLIC_SCHEMA:-true}" = "true" ]; then
+                {
+                  echo "DROP SCHEMA IF EXISTS public CASCADE;"
+                  echo "CREATE SCHEMA public;"
+                  gunzip -c "${SRC}"
+                } | psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 --single-transaction
+              else
+                gunzip -c "${SRC}" | psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 --single-transaction
+              fi
+              echo "[restore] 복구 완료 ← ${SRC}"
+              echo "[restore] 문제 시 안전 스냅샷으로 되돌리기: BACKUP_FILE=$(basename "${SAFETY}") 로 본 Job 재실행"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              # 안전 스냅샷 gzip + psql replay 여유. (백업 잡과 동일하게 512Mi 는 NFS dirty-page
+              # 누적 시 OOM/hang 위험 → 1Gi.)
+              memory: "1Gi"
+              cpu: "1"
+          volumeMounts:
+            - name: backup-volume
+              mountPath: /data
+            - name: stage          # 로컬 노드 디스크 — 안전 스냅샷 임시 출력(EFS NFS hang 회피)
+              mountPath: /stage
+      volumes:
+        - name: backup-volume
+          persistentVolumeClaim:
+            claimName: axis-images   # pg-dump 가 백업을 쓰는 동일 PVC (/data/backups)
+        - name: stage
+          emptyDir:
+            sizeLimit: 2Gi
