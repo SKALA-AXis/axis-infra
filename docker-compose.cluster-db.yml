@@ -51,3 +51,11 @@ services:
       QDRANT_API_KEY: ""
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  frontend:
+    # nginx.conf 는 /api 를 upstream `backend:8080` 로 프록시한다.
+    # cluster 모드에선 로컬 backend 컨테이너를 안 띄우므로, `backend` 를
+    # host-gateway 로 매핑해 host 의 cluster backend port-forward(8080)로 보낸다.
+    # (host pf 는 Makefile up-cluster 에서 --address 0.0.0.0 으로 띄움)
+    extra_hosts:
+      - "backend:host-gateway"
