@@ -20,7 +20,9 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 2
-      activeDeadlineSeconds: 1800  # 30분 timeout
+      # curl --max-time 60 이 각 시도를 60s 로 제한 → 재시도(backoff 2) 포함 ~4분이면 충분.
+      # 멈춤(stuck) backstop 으로 5분 통일 (트리거는 backend 파이프라인을 async 로 띄움).
+      activeDeadlineSeconds: 300
       ttlSecondsAfterFinished: 3600
       template:
         metadata:

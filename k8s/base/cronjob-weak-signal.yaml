@@ -19,7 +19,8 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 2
-      activeDeadlineSeconds: 600
+      # curl --max-time 60 self-bound → 재시도 포함 ~4분. 멈춤 backstop 5분 통일.
+      activeDeadlineSeconds: 300
       ttlSecondsAfterFinished: 3600
       template:
         metadata:

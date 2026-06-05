@@ -60,3 +60,5 @@ resources:
   - cronjob-card-evaluator.yaml
   # 글로벌 IT 트렌드 + peer alignment (design: axis-ai/design/30-analysis/global-trends.md).
   - cronjob-global-trend.yaml
+  # CronJob 실패 → Slack 알림 (watcher + RBAC).
+  - cronjob-failure-notifier.yaml
