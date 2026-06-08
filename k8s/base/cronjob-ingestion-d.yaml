@@ -36,17 +36,27 @@ spec:
                 - -c
                 - |
                   set -eu
-                  curl -fsSL --max-time 60 \
+                  # 일시적 backend 재기동/연결거부를 흡수 (--retry-connrefused).
+                  # backend 는 즉시 202 반환(async)이라 정상 호출은 <1s.
+                  curl -fsSL \
+                    --connect-timeout 5 --max-time 60 \
+                    --retry 3 --retry-delay 5 --retry-connrefused \
                     -X POST \
                     -H "Content-Type: application/json" \
                     -H "Authorization: Bearer ${CRON_INTERNAL_TOKEN}" \
                     "http://axis-backend:8080/api/pipeline/trigger?track=D"
               env:
+                # optional: true — 키가 시크릿에서 누락돼도 파드는 기동한다.
+                # (non-optional 이면 CreateContainerConfigError 로 파드가 아예 못 떠
+                #  매 run 실패 → ArgoCD Degraded. 이 레포가 반복적으로 겪은 함정 —
+                #  cronjob-sector-pulse.yaml 주석 참고.) 키가 비면 backend 가 자체 토큰도
+                #  비어 있을 때 통과시키거나, 토큰 설정 시 명확한 401 을 반환해 진단이 쉽다.
                 - name: CRON_INTERNAL_TOKEN
                   valueFrom:
                     secretKeyRef:
                       name: axis-secrets
                       key: CRON_INTERNAL_TOKEN
+                      optional: true
               resources:
                 requests:
                   cpu: 10m
