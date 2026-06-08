@@ -72,8 +72,12 @@ jobs:
 
       - name: Install kubeconform
         run: |
-          curl -sL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz \
+          # /latest/ redirect 는 GitHub 504 로 간헐 실패 → 버전 고정 + curl 재시도.
+          KUBECONFORM_VERSION=v0.7.0
+          curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
+            "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
             | tar -xz -C /usr/local/bin kubeconform
+          kubeconform -v
 
       - name: Build base + validate
         run: |
@@ -87,6 +91,11 @@ jobs:
         run: |
           kubectl kustomize k8s/overlays/local > /tmp/axis-local.yaml
           kubeconform -strict -summary /tmp/axis-local.yaml
+
+      - name: Build overlays/skala + validate
+        run: |
+          kubectl kustomize k8s/overlays/skala > /tmp/axis-skala.yaml
+          kubeconform -strict -summary /tmp/axis-skala.yaml
 
   notify-spec-change:
     name: Notify API Spec Change

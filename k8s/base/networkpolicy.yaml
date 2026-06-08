@@ -19,7 +19,7 @@ spec:
   policyTypes:
     - Ingress
 ---
-# 2) frontend ← ALB Ingress Controller (kube-system 의 aws-load-balancer-controller)
+# 2) frontend ← Ingress Controller (SKALA: public-nginx ns / legacy: kube-system ALB)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -35,12 +35,15 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
+              kubernetes.io/metadata.name: public-nginx
+        - namespaceSelector:
+            matchLabels:
               kubernetes.io/metadata.name: kube-system
       ports:
         - protocol: TCP
           port: 3000
 ---
-# 3) backend ← ALB + 같은 네임스페이스의 CronJob
+# 3) backend ← Ingress + 같은 네임스페이스의 CronJob
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -56,6 +59,9 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
+              kubernetes.io/metadata.name: public-nginx
+        - namespaceSelector:
+            matchLabels:
               kubernetes.io/metadata.name: kube-system
         - podSelector:
             matchLabels:
@@ -64,7 +70,7 @@ spec:
         - protocol: TCP
           port: 8080
 ---
-# 4) ai ← backend ONLY (외부·다른 namespace 모두 차단)
+# 4) ai ← backend + CronJob(global-trend 등 axis-ai 직접 호출)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -81,6 +87,9 @@ spec:
         - podSelector:
             matchLabels:
               app: axis-backend
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: cron
       ports:
         - protocol: TCP
           port: 8001

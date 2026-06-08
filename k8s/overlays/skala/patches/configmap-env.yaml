@@ -1,5 +1,4 @@
-# axis-config — DATABASE_URL / Qdrant 를 SKALA 클러스터 공용 서비스 DNS 로 변경.
-# Postgres / Qdrant 는 namespace 가 다르므로 FQDN 사용.
+# axis-config — in-namespace Postgres/Qdrant (postgres.yaml, qdrant.yaml) + SKALA HTTPS.
 apiVersion: v1
 kind: ConfigMap
 metadata:

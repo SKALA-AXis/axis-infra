@@ -109,3 +109,7 @@ k8s/**/secret*.yaml.tmp
 # ArgoCD repository credential — GitHub PAT 포함, 클러스터에 직접 apply (절대 커밋 금지).
 # 생성/적용: docs/ci-cd-plan.md §6.4 참조.
 k8s/argocd/repo-secret.yaml
+
+# kustomize 렌더 산출물 — 실 secret 이 포함될 수 있음 (make skala-apply 전 디버그용).
+/json
+json

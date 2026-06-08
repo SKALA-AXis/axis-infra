@@ -141,7 +141,7 @@ make skala-logs
 
 ## 6. 백업 자동화
 
-`cronjob-pg-dump.yaml` 이 매일 KST 02:00 (UTC 17:00) 에 실행:
+`cronjob-pg-dump.yaml` 이 매일 **KST 05:40** (UTC 20:40) 에 실행:
 - `pg_dump` → `axis-images` PVC 의 `/data/backups/`
 - 14일 retention
 

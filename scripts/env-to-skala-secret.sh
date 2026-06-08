@@ -14,7 +14,7 @@
 #   POSTGRES_DB
 #   POSTGRES_USER
 #   POSTGRES_PASSWORD
-# 그 외 OPENAI_API_KEY / NAVER_* / DART_API_KEY / SMTP_* / JWT_SECRET / CRON_INTERNAL_TOKEN 는
+# 그 외 OPENAI_API_KEY / NAVER_* / DART_API_KEY / SMTP_* / AXIS_AUTH_JWT_SECRET / CRON_INTERNAL_TOKEN 는
 # 있으면 그대로, 없으면 빈값 (Pod 시작은 가능하지만 해당 외부 호출만 fail).
 #
 # 본 스크립트는 .env 의 DATABASE_URL / SPRING_DATASOURCE_* (Supabase·로컬 등) 는 무시하고,

@@ -4,8 +4,8 @@
 #   클러스터:   skala-2025 (EKS, ap-northeast-2)
 #   namespace: skala3-finalproj-class3-team13
 #   레지스트리: amdp-registry.skala-ai.com (Harbor) / project=skala26a-ai3
-#   Postgres:  postgres-1-postgresql.postgres.svc.cluster.local:5432  (cluster 공용)
-#   Qdrant:    qdrant.qdrant.svc.cluster.local:6333                    (cluster 공용)
+#   Postgres:  in-namespace Service "postgres" (postgres.yaml)
+#   Qdrant:    in-namespace Service "qdrant" (qdrant.yaml)
 #
 # base 와의 차이:
 #   · 이미지: REPLACE_ACCOUNT (ECR 가정) → Harbor (amdp-registry.skala-ai.com/skala26a-ai3)
