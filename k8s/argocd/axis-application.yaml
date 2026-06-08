@@ -29,6 +29,15 @@ metadata:
   labels:
     team: team13
     app.kubernetes.io/part-of: axis
+  # ── Slack "Degraded" 알림 구독 (선택) ────────────────────────────────────────
+  # 아래 annotation 은 team13 이 직접 관리 가능(Application CR 소유). 단, 매니저가
+  # skala-argocd 에 argocd-notifications-cm/secret 을 먼저 설정해야 동작한다
+  # (k8s/argocd/notifications-slack.example.yaml 참조). 설정 전엔 controller 가
+  # 그냥 무시하므로 미리 박아둬도 무해하지만, 혼선 방지를 위해 주석으로 동봉한다.
+  # 매니저 설정 완료 후 주석 해제:
+  # annotations:
+  #   notifications.argoproj.io/subscribe.on-health-degraded.axis-slack: ""
+  #   notifications.argoproj.io/subscribe.on-health-recovered.axis-slack: ""
   finalizers:
     # Application 삭제 시 manifest 리소스도 함께 정리.
     # 발표 직전 안전을 위해 finalizer 제거 검토:

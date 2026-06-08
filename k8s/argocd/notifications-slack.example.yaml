@@ -1,0 +1,74 @@
+# ArgoCD 앱 "Degraded" → Slack 알림 (app-level health 알림).
+#
+# ─── 왜 .example 인가 ──────────────────────────────────────────────────────────
+# 우리(team13)는 공용 ArgoCD(skala-argocd, 매니저 운영)를 사용한다(ADR-0007).
+#   · argocd-notifications-cm / -secret 같은 controller-level 설정은 **매니저 영역**.
+#   · team13 SA 는 skala-argocd namespace 의 리소스를 만들/고칠 수 없다.
+# 따라서 이 파일은 "매니저에게 전달해 1회 적용을 요청"하는 참조 매니페스트다.
+# (자동 sync 대상 아님 — k8s/overlays/skala 가 아니라 k8s/argocd 아래 .example 로 둔다.)
+#
+# 팀이 지금 당장 할 수 있는 것(매니저 설정 불필요)은 namespace 레벨 파드 크래시 감시
+# (k8s/base/cronjob-failure-notifier.yaml)이며, 그게 Degraded 의 실제 원인
+# (CrashLoopBackOff / OOMKilled / ImagePullBackOff)을 동등하게 잡는다.
+# 이 파일은 그 위에 "ArgoCD 앱 health 자체" 알림을 추가하고 싶을 때를 위한 것.
+#
+# ─── 매니저 적용 절차 ──────────────────────────────────────────────────────────
+#   1) skala-argocd 에 argocd-notifications controller 가 떠 있어야 한다
+#      (argo-cd helm 의 notifications.enabled=true, 또는 kubectl apply
+#       https://raw.githubusercontent.com/argoproj/argocd-notifications/release-1.x/manifests/install.yaml).
+#   2) 아래 ConfigMap 은 **기존 argocd-notifications-cm 에 병합(merge)** 한다.
+#      통째로 replace 하지 말 것 — 다른 팀의 trigger/template 을 덮어쓴다.
+#        kubectl -n skala-argocd patch cm argocd-notifications-cm --type merge \
+#          --patch-file <(yq 'select(.kind=="ConfigMap")' notifications-slack.example.yaml)
+#   3) webhook URL 은 Secret 으로 주입(아래 argocd-notifications-secret).
+#   4) 팀은 Application(axis-team13)에 구독 annotation 만 추가하면 된다(이 레포에서 관리 가능).
+#      → k8s/argocd/axis-application.yaml 의 metadata.annotations 참고(주석으로 동봉).
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-notifications-cm
+  namespace: skala-argocd
+data:
+  # Slack Incoming Webhook 를 generic webhook service 로 등록(별도 Slack 토큰 불필요).
+  service.webhook.axis-slack: |
+    url: $slack-webhook-url
+    headers:
+      - name: Content-Type
+        value: application/json
+
+  template.axis-app-degraded: |
+    webhook:
+      axis-slack:
+        method: POST
+        body: |
+          {"text": ":rotating_light: *ArgoCD Degraded* — `{{.app.metadata.name}}`\n• health: *{{.app.status.health.status}}*\n• sync: {{.app.status.sync.status}}\n• ns: {{.app.spec.destination.namespace}}\n• 확인: argocd app get {{.app.metadata.name}}"}
+
+  template.axis-app-recovered: |
+    webhook:
+      axis-slack:
+        method: POST
+        body: |
+          {"text": ":white_check_mark: *ArgoCD 회복* — `{{.app.metadata.name}}` 가 Healthy 로 복귀"}
+
+  # oncePer: health.status → 상태가 바뀔 때 1번만(Degraded 가 지속돼도 스팸 방지).
+  trigger.on-health-degraded: |
+    - when: app.status.health.status == 'Degraded'
+      oncePer: app.status.health.status
+      send: [axis-app-degraded]
+
+  trigger.on-health-recovered: |
+    - when: app.status.health.status == 'Healthy'
+      oncePer: app.status.health.status
+      send: [axis-app-recovered]
+---
+# webhook URL Secret. 기존 argocd-notifications-secret 이 있으면 이 key 만 병합.
+# 값은 axis-infra/.env 의 SLACK_WEBHOOK_URL 과 동일.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-notifications-secret
+  namespace: skala-argocd
+type: Opaque
+stringData:
+  slack-webhook-url: "REPLACE_SLACK_WEBHOOK_URL"
