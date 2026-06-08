@@ -44,7 +44,17 @@ spec:
                   set -eu
                   # window_days=30, peer alignment 포함, 8 keyword cap.
                   # design §4 metadata 옵션 기본값과 동일.
-                  curl -fsSL --max-time 540 \
+                  #
+                  # axis-ai 는 단일 replica(설계상 ×2 금지, ai-deployment.yaml)이고
+                  # model-cache 가 emptyDir 라 재시작마다 BGE-M3 재다운로드(콜드스타트
+                  # 1~3분)가 발생한다. 이 윈도우에 호출이 겹치면 connection refused →
+                  # `-f` 로 즉시 실패해 Job Failed → ArgoCD Degraded 가 됐다(과거 매 run 실패
+                  # 원인). --retry-connrefused + 충분한 재시도로 콜드스타트/일시 재시작을
+                  # 흡수한다. --max-time 540 이 (재시도 대기 포함) 전체 상한이라 axis-ai 가
+                  # 끝까지 안 뜨면 정상적으로 실패/알림된다.
+                  curl -fsSL \
+                    --connect-timeout 10 --max-time 540 \
+                    --retry 8 --retry-delay 30 --retry-connrefused \
                     -X POST \
                     -H "Content-Type: application/json" \
                     -d '{"window_days": 30, "include_peer_alignment": true, "max_trend_count": 8, "min_mention_count": 3}' \

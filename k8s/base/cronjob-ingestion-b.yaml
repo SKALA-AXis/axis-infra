@@ -36,17 +36,22 @@ spec:
                 - -c
                 - |
                   set -eu
-                  curl -fsSL --max-time 60 \
+                  # 일시적 backend 연결거부 흡수 (--retry-connrefused). 정상은 즉시 202.
+                  curl -fsSL \
+                    --connect-timeout 5 --max-time 60 \
+                    --retry 3 --retry-delay 5 --retry-connrefused \
                     -X POST \
                     -H "Content-Type: application/json" \
                     -H "Authorization: Bearer ${CRON_INTERNAL_TOKEN}" \
                     "http://axis-backend:8080/api/pipeline/trigger?track=B"
               env:
+                # optional: true — 키 누락 시에도 파드 기동 (CreateContainerConfigError 회피).
                 - name: CRON_INTERNAL_TOKEN
                   valueFrom:
                     secretKeyRef:
                       name: axis-secrets
                       key: CRON_INTERNAL_TOKEN
+                      optional: true
               resources:
                 requests:
                   cpu: 10m
@@ -100,17 +105,22 @@ spec:
                 - -c
                 - |
                   set -eu
-                  curl -fsSL --max-time 60 \
+                  # 일시적 backend 연결거부 흡수 (--retry-connrefused). 정상은 즉시 202.
+                  curl -fsSL \
+                    --connect-timeout 5 --max-time 60 \
+                    --retry 3 --retry-delay 5 --retry-connrefused \
                     -X POST \
                     -H "Content-Type: application/json" \
                     -H "Authorization: Bearer ${CRON_INTERNAL_TOKEN}" \
                     "http://axis-backend:8080/api/pipeline/trigger?track=B"
               env:
+                # optional: true — 키 누락 시에도 파드 기동 (CreateContainerConfigError 회피).
                 - name: CRON_INTERNAL_TOKEN
                   valueFrom:
                     secretKeyRef:
                       name: axis-secrets
                       key: CRON_INTERNAL_TOKEN
+                      optional: true
               resources:
                 requests:
                   cpu: 10m
@@ -164,17 +174,22 @@ spec:
                 - -c
                 - |
                   set -eu
-                  curl -fsSL --max-time 60 \
+                  # 일시적 backend 연결거부 흡수 (--retry-connrefused). 정상은 즉시 202.
+                  curl -fsSL \
+                    --connect-timeout 5 --max-time 60 \
+                    --retry 3 --retry-delay 5 --retry-connrefused \
                     -X POST \
                     -H "Content-Type: application/json" \
                     -H "Authorization: Bearer ${CRON_INTERNAL_TOKEN}" \
                     "http://axis-backend:8080/api/pipeline/trigger?track=B"
               env:
+                # optional: true — 키 누락 시에도 파드 기동 (CreateContainerConfigError 회피).
                 - name: CRON_INTERNAL_TOKEN
                   valueFrom:
                     secretKeyRef:
                       name: axis-secrets
                       key: CRON_INTERNAL_TOKEN
+                      optional: true
               resources:
                 requests:
                   cpu: 10m
