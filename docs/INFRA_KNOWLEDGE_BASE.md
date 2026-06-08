@@ -75,6 +75,7 @@ ENTRYPOINT ["java","-XX:MaxRAMPercentage=75","-jar","app.jar"]
 4. **GitOps bump**: `axis-infra` 를 clone → `kustomize edit set image <base>=<harbor>:<sha>` → `k8s/overlays/skala/kustomization.yaml` 커밋(`deploy: <svc> → <sha>`) → push. 충돌 시 rebase 재시도(최대 3회).
 
 ### axis-infra CI (`validate.yml`) — 계약/매니페스트 검증
+- **gitleaks**: OSS CLI v8.21.2 (`--no-git`, `.gitleaks.toml` allowlist). `gitleaks-action@v2` 는 org repo 에 유료 라이선스 필요.
 - **SQL**: `postgres:16` 서비스 컨테이너에 `db/schema.sql` 적용 → 스키마 유효성 검증.
 - **OpenAPI**: `swagger-cli validate` 로 `api/openapi.yaml`, `api/ai-internal-api.yaml` 검증.
 - **K8s 매니페스트**: `kubectl kustomize` 렌더 → `kubeconform -strict` 스키마 검증(base + overlays/local + **overlays/skala**).
@@ -219,7 +220,7 @@ k8s/
 ### Secret 관리
 - `axis-secrets`(앱 환경 비밀), `harbor-creds`, `axis-postgres-bootstrap`.
 - gitignored `.env` → `scripts/env-to-skala-secret.sh` → `make skala-secret` → 클러스터 merge-patch/apply. ArgoCD 는 Secret diff ignore.
-- JWT 키 이름: **`AXIS_AUTH_JWT_SECRET`** (backend `application.yml`). `JWT_SECRET` 은 legacy·**클러스터에서 제거 권장** (`kubectl patch secret ... remove JWT_SECRET`).
+- JWT 키 이름: **`AXIS_AUTH_JWT_SECRET`** (backend `application.yml`). `JWT_SECRET` 은 legacy·**클러스터에서 제거 권장** (`scripts/remove-legacy-jwt-secret-key.sh`).
 - ⚠ `kustomize` 렌더 산출물(`json` 등)은 `.gitignore` — 실 secret 포함 가능.
 
 ### ServiceAccount / IRSA
@@ -276,7 +277,7 @@ k8s/
 | CRON 토큰 우회 | backend fail-open(빈 토큰=허용) | prod `cron-auth-required=true` fail-closed (2026-06) |
 | JWT 키 이름 혼동 | 예시 `JWT_SECRET` vs backend `AXIS_AUTH_JWT_SECRET` | 예시/스크립트 통일 + legacy 키 클러스터 제거 |
 | card-evaluator 6GB pull | full axis-ai 이미지(Playwright/torch) 재사용 | `axis-ai-cron` 슬림 이미지 + 리소스 하향 |
-| gitleaks 미적용 | CI secret scan 없음 | gitleaks-action PR/push 스캔 |
+| gitleaks 미적용 | CI secret scan 없음 | OSS gitleaks CLI (`--no-git`) |
 | diag-cap Degraded | suspend CronJob 에서 수동 `kubectl create job` | Job 삭제 + notifier가 `diag-*` 제외 |
 | ArgoCD UI RS 10개씩 | `revisionHistoryLimit: 10` 의 0-replica 히스토리 | 정상. 필요 시 limit 하향 |
 
