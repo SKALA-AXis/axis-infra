@@ -88,6 +88,11 @@ jobs:
           kubectl kustomize k8s/overlays/local > /tmp/axis-local.yaml
           kubeconform -strict -summary /tmp/axis-local.yaml
 
+      - name: Build overlays/skala + validate
+        run: |
+          kubectl kustomize k8s/overlays/skala > /tmp/axis-skala.yaml
+          kubeconform -strict -summary /tmp/axis-skala.yaml
+
   notify-spec-change:
     name: Notify API Spec Change
     runs-on: ubuntu-latest
