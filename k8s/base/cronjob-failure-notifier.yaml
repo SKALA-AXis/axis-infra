@@ -1,14 +1,22 @@
-# CronJob 실패 감시 → Slack 알림.
+# 워크로드 실패 감시 → Slack 알림 (CronJob/Job 실패 + 상시 Pod 크래시).
 #
-# 문제: 다른 CronJob(ingestion-*, delivery, global-trend, card-evaluator 등)이 실패해도
-#       kubectl/ArgoCD 를 직접 보기 전까지 아무도 모른다.
-# 해결: 10분마다 namespace 의 Job 을 조회해 condition Failed=True 인 것 중
-#       아직 안 알린 것만 Slack Webhook 으로 보낸다. 한 번 알린 Job 은
+# 문제: ① CronJob(ingestion-*, delivery, global-trend, card-evaluator, pg-dump 등)이
+#       실패하거나, ② 상시 Deployment(backend/ai/frontend) 파드가 CrashLoopBackOff /
+#       OOMKilled / ImagePullBackOff 로 죽어도 kubectl/ArgoCD 를 직접 보기 전까진
+#       아무도 모른다. 공용(매니저 운영) ArgoCD 라 argocd-notifications 로 앱 "Degraded"
+#       알림을 거는 건 팀 권한 밖 → Degraded 를 유발하는 실제 원인(파드 비정상)을
+#       namespace 레벨에서 직접 잡아 동등하게 커버한다.
+# 해결: 10분마다 namespace 의 Job + Pod 를 API 로 조회해
+#       · Job: condition Failed=True
+#       · Pod: container 가 CrashLoopBackOff/ImagePullBackOff/ErrImagePull/
+#              CreateContainerConfigError/OOMKilled 이거나 restartCount>=5
+#       인 것 중 아직 안 알린 것만 Slack Webhook 으로 보낸다. 한 번 알린 대상은
 #       annotation(axis.skala/slack-alerted)으로 표시해 재알림하지 않는다.
 #
-# 컨테이너 안 wrapper 가 아니라 Job 상태를 API 로 읽는 watcher 방식이라
+# 컨테이너 안 wrapper 가 아니라 상태를 API 로 읽는 watcher 방식이라
 # DeadlineExceeded / OOMKilled / ImagePullBackOff / backoff 소진 등 컨테이너가
 # 코드를 실행하기도 전에 죽는 실패까지 모두 잡는다.
+# Job 이 소유한 파드는 Job 패스가 담당하므로 Pod 패스에서 제외(중복 알림 방지).
 #
 # SLACK_WEBHOOK_URL(axis-secrets)이 비어 있으면 알림을 건너뛰고 정상 종료한다.
 ---
@@ -23,6 +31,10 @@ metadata:
 rules:
   - apiGroups: ["batch"]
     resources: ["jobs"]
+    verbs: ["get", "list", "watch", "patch"]
+  # 상시 워크로드(Deployment 등) 파드 크래시 감시용 — 조회 + 알림표시 annotation patch.
+  - apiGroups: [""]
+    resources: ["pods"]
     verbs: ["get", "list", "watch", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -134,7 +146,67 @@ spec:
                       echo "[notifier] Slack post 실패: $name — 다음 주기 재시도"
                     fi
                   done < /tmp/failed.jsonl
-                  echo "[notifier] done — 신규 알림 $count 건"
+                  job_count=$count
+
+                  # ── Pass 2: 상시 Pod 크래시 (Deployment/StatefulSet 등) ──────
+                  # Job 소유 파드는 위 Job 패스가 담당 → 제외. notifier 자기 자신도 제외.
+                  # container 가 CrashLoopBackOff/ImagePullBackOff/ErrImagePull/
+                  # CreateContainerConfigError/OOMKilled 이거나 restartCount>=5 면 비정상.
+                  kubectl get pods -n "$NAMESPACE" $CACHE -o json \
+                    | jq -c '.items[]
+                        | select((.metadata.ownerReferences // []) | map(.kind) | index("Job") | not)
+                        | select((.metadata.labels.cron // "") != "failure-notifier")
+                        | select((.metadata.annotations // {})["axis.skala/slack-alerted"] != "true")
+                        | . as $p
+                        | [ ($p.status.containerStatuses // [])[]
+                            | {
+                                name,
+                                restartCount,
+                                reason: (
+                                  (.state.waiting.reason // "") as $w
+                                  | (.lastState.terminated.reason // "") as $lt
+                                  | (.state.terminated.reason // "") as $t
+                                  | if (["CrashLoopBackOff","ImagePullBackOff","ErrImagePull","CreateContainerConfigError","CreateContainerError","InvalidImageName"] | index($w)) then $w
+                                    elif ($lt == "OOMKilled" or $t == "OOMKilled") then "OOMKilled"
+                                    elif (.restartCount >= 5) then "RestartLoop"
+                                    else "" end)
+                              }
+                            | select(.reason != "")
+                          ] as $bad
+                        | select(($bad | length) > 0)
+                        | { name: $p.metadata.name,
+                            node: ($p.spec.nodeName // "?"),
+                            owner: ((.metadata.ownerReferences // [])[0].name // "standalone"),
+                            bad: $bad }' \
+                    > /tmp/badpods.jsonl
+
+                  while IFS= read -r pod; do
+                    [ -n "$pod" ] || continue
+                    name=$(printf '%s' "$pod"  | jq -r '.name')
+                    node=$(printf '%s' "$pod"  | jq -r '.node')
+                    owner=$(printf '%s' "$pod" | jq -r '.owner')
+                    detail=$(printf '%s' "$pod" | jq -r '[.bad[] | "\(.name)=\(.reason)(restarts \(.restartCount))"] | join(", ")')
+
+                    text=":fire: *Pod 비정상* — \`$owner\`
+                  • pod: \`$name\`
+                  • namespace: \`$NAMESPACE\`  (node: \`$node\`)
+                  • containers: $detail
+                  • 확인: kubectl -n $NAMESPACE describe pod $name / logs $name --previous"
+                    payload=$(jq -n --arg t "$text" '{text:$t}')
+
+                    if curl -fsS --max-time 15 -X POST -H 'Content-Type: application/json' \
+                         --data "$payload" "$SLACK_WEBHOOK_URL" >/dev/null; then
+                      # 성공해야만 alerted 마킹 — Slack 실패 시 다음 주기 재시도.
+                      kubectl annotate pod -n "$NAMESPACE" "$name" $CACHE \
+                        axis.skala/slack-alerted=true --overwrite >/dev/null
+                      count=$((count + 1))
+                      echo "[notifier] alerted pod: $name (owner=$owner)"
+                    else
+                      echo "[notifier] Slack post 실패(pod): $name — 다음 주기 재시도"
+                    fi
+                  done < /tmp/badpods.jsonl
+
+                  echo "[notifier] done — 신규 알림 $count 건 (job=$job_count pod=$((count - job_count)))"
               resources:
                 requests:
                   cpu: 10m
