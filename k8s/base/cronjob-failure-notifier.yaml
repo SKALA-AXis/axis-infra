@@ -112,10 +112,13 @@ spec:
                   CACHE=--cache-dir=/tmp/.kube/cache
 
                   # condition Failed=True 이고 아직 안 알린(annotation 없음) Job 만 추출.
+                  # diag-* 수동 디버그 Job · axis.skala/diagnostic 라벨 Job 은 ArgoCD/Slack 노이즈 제외.
                   kubectl get jobs -n "$NAMESPACE" $CACHE -o json \
                     | jq -c '.items[]
                         | select((.status.conditions // []) | any(.type=="Failed" and .status=="True"))
-                        | select((.metadata.annotations // {})["axis.skala/slack-alerted"] != "true")' \
+                        | select((.metadata.annotations // {})["axis.skala/slack-alerted"] != "true")
+                        | select((.metadata.labels // {})["axis.skala/diagnostic"] != "true")
+                        | select((.metadata.name | startswith("diag-")) | not)' \
                     > /tmp/failed.jsonl
 
                   count=0

@@ -18,9 +18,9 @@ data:
   # 공용 nginx + cert-manager(letsencrypt-prod) 로 발급한 HTTPS 도메인.
   AXIS_APP_BASE_URL: "https://axis-team13.skala25a.project.skala-ai.com"
 
-  # 임시 — Hibernate schema validation 스킵 (raw_articles.company jsonb vs entity varchar mismatch).
-  # backend 팀이 RawArticle entity 를 jsonb 매핑으로 정정하면 'validate' 로 복원 권장.
-  SPRING_JPA_HIBERNATE_DDL_AUTO: "none"
+  # Hibernate schema validation — Flyway 마이그레이션과 entity 정합성 부팅 시 검증.
+  # RawArticle.company 는 @JdbcTypeCode(JSON) jsonb 매핑으로 정정 완료.
+  SPRING_JPA_HIBERNATE_DDL_AUTO: "validate"
 
   # Qdrant — in-namespace (qdrant.yaml 의 Service "qdrant" 와 일치, 같은 ns 면 짧은 이름 OK)
   QDRANT_HOST: "http://qdrant"

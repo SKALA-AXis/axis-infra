@@ -14,6 +14,8 @@ spec:
   # scripts/refresh_capability_evolution.py 미구현 — 매월 Job Failed → Degraded.
   # profile-refresh(분기)가 profile_snapshot.capability_evolution 을 이미 채움.
   # W4-3 구현 전까지 suspend. (design: axis-ai/design/01-analysis-pipeline-implementation-plan.md §3.4.6)
+  # ⚠ 수동 디버그: kubectl create job --from=cronjob/... 는 스크립트 없어 실패 → ArgoCD Degraded.
+  #    필요 시 scripts/cleanup-diag-jobs.sh 로 diag-* Job 삭제. 라벨 axis.skala/diagnostic=true 권장.
   suspend: true
   # 월 1회 (1일 03:00 KST). peer 5 사 × LLM 1 회 ≈ $0.75/월.
   schedule: "0 3 1 * *"

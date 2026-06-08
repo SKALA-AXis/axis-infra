@@ -1,0 +1,17 @@
+# gitleaks allowlist — 예시/템플릿 파일의 placeholder 는 스캔 제외.
+title = "axis gitleaks config"
+
+[allowlist]
+description = "infra templates and example env files"
+paths = [
+  '''\.env\.(example|local\.example|skala\.example)$''',
+  '''secret\.(example|local\.yaml\.example|skala\.yaml\.example)\.yaml$''',
+  '''k8s/.*/secret\..*\.example\.yaml$''',
+  '''docs/.*\.md$''',
+]
+
+[[rules]]
+id = "generic-api-key-placeholder"
+description = "REPLACE_* placeholder in k8s templates"
+regex = '''REPLACE_[A-Z0-9_]+'''
+paths = ['''k8s/''']

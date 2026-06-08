@@ -1,0 +1,15 @@
+# PodDisruptionBudget — 노드 drain/업그레이드 시 최소 1 replica 유지.
+# backend/frontend 는 replicas:2, maxUnavailable:0 과 함께 drain 중 가용성 보장.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: axis-backend-pdb
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app: axis-backend
+    app.kubernetes.io/part-of: axis
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: axis-backend

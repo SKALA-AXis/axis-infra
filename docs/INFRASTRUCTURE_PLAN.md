@@ -222,7 +222,7 @@ egress 는 모두 허용 (외부 SaaS 호출 필요: Supabase · Qdrant Cloud ·
 | `SARAMIN_API_KEY` | Saramin | ai |
 | `SMTP_USER` | SendGrid (또는 Gmail app password) | ai (D8b=a) |
 | `SMTP_PASSWORD` | 동일 | ai |
-| `JWT_SECRET` | 자체 생성 | backend |
+| `AXIS_AUTH_JWT_SECRET` | 자체 생성 | backend |
 | `CRON_INTERNAL_TOKEN` | 자체 생성 (B7 / D7) | backend (검증) + cron (전송) |
 
 > **현재 코드의 `SLACK_WEBHOOK_URL` 환경변수 (application.yml:37) 는 D9=a 결정 시 제거**. 매니페스트에는 포함 X.
@@ -457,7 +457,7 @@ jobs:
 | `SMTP_FROM` | | | ✓ | ConfigMap | |
 | `BRIEFING_RECIPIENTS` | | | ✓ | ConfigMap | 콤마 구분 |
 | `BRIEFING_TIME` | | | ✓ | ConfigMap | `08:30` (참조) |
-| `JWT_SECRET` | | ✓ | | Secret | |
+| `AXIS_AUTH_JWT_SECRET` | | ✓ | | Secret | |
 | `CRON_INTERNAL_TOKEN` | | ✓ (검증) | | Secret | CronJob 도 같은 값 (전송) |
 | `JAVA_TOOL_OPTIONS` | | ✓ | | Deployment env (literal) | `-XX:MaxRAMPercentage=75 -XX:+UseG1GC` |
 
