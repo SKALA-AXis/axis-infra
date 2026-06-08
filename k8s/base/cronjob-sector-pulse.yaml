@@ -36,17 +36,51 @@ spec:
                 - -c
                 - |
                   set -eu
-                  psql "${POSTGRES_URL}" -c "REFRESH MATERIALIZED VIEW CONCURRENTLY sector_pulse;"
+                  # postgres 일시 재기동/연결거부 흡수. 주 1회(월 02:00) 단발성이라
+                  # 실패 시 다음 run 까지 7일 — ingestion-a 처럼 후속 성공이 마커를
+                  # 덮어쓰지 못해 Degraded 가 오래 보였다.
+                  max_attempts=5
+                  delay=15
+                  attempt=1
+                  run_refresh() {
+                    psql "${POSTGRES_URL}" -v ON_ERROR_STOP=1 -c "$1"
+                  }
+                  retry_refresh() {
+                    local sql="$1"
+                    attempt=1
+                    while [ "$attempt" -le "$max_attempts" ]; do
+                      if run_refresh "$sql"; then
+                        return 0
+                      fi
+                      echo "psql attempt ${attempt}/${max_attempts} failed, retry in ${delay}s..." >&2
+                      attempt=$((attempt + 1))
+                      [ "$attempt" -le "$max_attempts" ] && sleep "$delay"
+                    done
+                    return 1
+                  }
+                  # CONCURRENTLY: readers non-blocking. unique index + populated MV 필요.
+                  if retry_refresh "REFRESH MATERIALIZED VIEW CONCURRENTLY sector_pulse;"; then
+                    echo "sector_pulse refreshed (CONCURRENTLY)"
+                    exit 0
+                  fi
+                  # MV 미초기화·unique index 부재 등 — blocking REFRESH 로 자가복구.
+                  echo "CONCURRENTLY refresh failed — falling back to blocking REFRESH" >&2
+                  retry_refresh "REFRESH MATERIALIZED VIEW sector_pulse;"
+                  echo "sector_pulse refreshed (blocking fallback)"
               env:
                 # axis-secrets 에는 POSTGRES_URL 키가 없고 DATABASE_URL(libpq 포맷
-                # postgresql://user:pass@host:5432/db)이 존재한다. 누락 키(required)면
-                # 파드가 기동조차 못 해(CreateContainerConfigError) 크론이 실패하므로
-                # 실재하는 DATABASE_URL 키를 psql 접속 문자열로 사용한다.
+                # postgresql://user:pass@host:5432/db)이 존재한다. 실재하는 DATABASE_URL
+                # 키를 psql 접속 문자열로 사용한다.
                 - name: POSTGRES_URL
                   valueFrom:
                     secretKeyRef:
                       name: axis-secrets
                       key: DATABASE_URL
+                      # optional: true — 키 누락 시에도 파드 기동 (CreateContainerConfigError 회피).
+                      optional: true
+                # 커넥션 stall fail-fast (pg-dump 와 동일 패턴).
+                - name: PGCONNECT_TIMEOUT
+                  value: "10"
               resources:
                 requests:
                   cpu: 100m
