@@ -75,6 +75,7 @@ ENTRYPOINT ["java","-XX:MaxRAMPercentage=75","-jar","app.jar"]
 4. **GitOps bump**: `axis-infra` 를 clone → `kustomize edit set image <base>=<harbor>:<sha>` → `k8s/overlays/skala/kustomization.yaml` 커밋(`deploy: <svc> → <sha>`) → push. 충돌 시 rebase 재시도(최대 3회).
 
 ### axis-infra CI (`validate.yml`) — 계약/매니페스트 검증
+- **gitleaks**: OSS CLI v8.21.2 (`--no-git`, `.gitleaks.toml` allowlist). `gitleaks-action@v2` 는 org repo 에 유료 라이선스 필요.
 - **SQL**: `postgres:16` 서비스 컨테이너에 `db/schema.sql` 적용 → 스키마 유효성 검증.
 - **OpenAPI**: `swagger-cli validate` 로 `api/openapi.yaml`, `api/ai-internal-api.yaml` 검증.
 - **K8s 매니페스트**: `kubectl kustomize` 렌더 → `kubeconform -strict` 스키마 검증(base + overlays/local + **overlays/skala**).
@@ -187,11 +188,11 @@ k8s/
 | ingestion-c | 08:30, 17:30 | backend 트리거 | |
 | ingestion-d | 03:30 | backend 트리거 track=D | |
 | delivery | 평일 08:30 | 일일 브리핑 메일 발송 | |
-| card-evaluator | 5분마다 | 카드 평가 | |
+| card-evaluator | 5분마다 | `axis-ai-cron` 이미지로 LLM-as-Judge | Playwright/torch 제외 |
 | global-trend | 월 02:30 | curl axis-ai `/global/trends/run` (retry-connrefused) | LLM |
 | profile-refresh | 분기 1/4/7/10 03:00 | axis-ai `refresh_peer_profile_snapshots.py` | PYTHONPATH=/app |
 | sector-pulse | 월 02:00 | psql REFRESH MV (retry + CONCURRENTLY 폴백) | |
-| capability-evolution | 매월 1일 03:00 | **suspend: true** (스크립트 미구현) | |
+| capability-evolution | 매월 1일 03:00 | **suspend: true** (스크립트 미구현) | 수동 `diag-*` Job 금지 |
 | weak-signal | 월 09:00 | suspend: true | |
 | **pg-dump** | 매일 **05:40 KST** (UTC 20:40) | DB 백업 → `axis-images` PVC | §11 백업 |
 
@@ -200,6 +201,10 @@ k8s/
 ---
 
 ## 8. 네트워킹 & 보안
+
+### PodDisruptionBudget
+- `axis-backend-pdb` / `axis-frontend-pdb`: `minAvailable: 1` — 노드 drain·클러스터 업그레이드 시 최소 1 Pod 유지.
+- axis-ai 는 replicas=1 이라 PDB 효과 제한적(의도적 단일 replica).
 
 ### NetworkPolicy (`networkpolicy.yaml`)
 - **default-deny ingress** + 명시적 allow. egress 는 전체 허용(외부 SaaS: OpenAI/DART/Naver/SES 등).
@@ -215,7 +220,7 @@ k8s/
 ### Secret 관리
 - `axis-secrets`(앱 환경 비밀), `harbor-creds`, `axis-postgres-bootstrap`.
 - gitignored `.env` → `scripts/env-to-skala-secret.sh` → `make skala-secret` → 클러스터 merge-patch/apply. ArgoCD 는 Secret diff ignore.
-- JWT 키 이름: **`AXIS_AUTH_JWT_SECRET`** (backend `application.yml`). `JWT_SECRET` 은 legacy·미사용.
+- JWT 키 이름: **`AXIS_AUTH_JWT_SECRET`** (backend `application.yml`). `JWT_SECRET` 은 legacy·**클러스터에서 제거 권장** (`scripts/remove-legacy-jwt-secret-key.sh`).
 - ⚠ `kustomize` 렌더 산출물(`json` 등)은 `.gitignore` — 실 secret 포함 가능.
 
 ### ServiceAccount / IRSA
@@ -231,7 +236,7 @@ k8s/
 주요 키:
 - `AI_SERVER_URL: http://axis-ai:8001`, `QDRANT_HOST/PORT`
 - `AXIS_APP_BASE_URL: https://axis-team13.skala25a.project.skala-ai.com` (이메일 인증 링크)
-- `SPRING_PROFILES_ACTIVE: prod`, `SPRING_JPA_HIBERNATE_DDL_AUTO: none`(Flyway 가 스키마 관리)
+- `SPRING_PROFILES_ACTIVE: prod`, `SPRING_JPA_HIBERNATE_DDL_AUTO: validate`(entity↔DB 정합성 부팅 검증; Flyway 가 스키마 변경)
 - `AXIS_SCHEDULER_ENABLED: false` — Spring `@Scheduled` 끔. **트리거는 CronJob 단일화**(과거 이중 발송 버그 방지).
 - LLM 비용 제어: `ENABLE_RELEVANCE_LLM`, 배치 크기/최대 배치 수 제한.
 
@@ -247,7 +252,8 @@ k8s/
 
 ## 11. 데이터베이스 & 마이그레이션
 
-- **Flyway**: backend 가 기동 시 `src/main/resources/db/migration/V*.sql` 자동 적용(현재 ~V39). `DDL_AUTO=none` 로 Hibernate 자동 변경 차단, 스키마는 Flyway 단일 관리.
+- **Flyway**: backend 가 기동 시 `src/main/resources/db/migration/V*.sql` 자동 적용(현재 ~V39). `DDL_AUTO=validate` 로 entity↔DB drift 시 **부팅 실패**(의도). 스키마 변경은 Flyway 단일 관리.
+- **CI 검증 (2단)**: ① `axis-infra` CI — `db/schema.sql` 적용 가능 여부. ② `axis-backend` CI `PostgreSqlSchemaValidationIT` — Flyway migrate 후 Hibernate `validate` 부팅. skala overlay 에 `update/create` 금지 grep.
 - **선언적 스키마**: `axis-infra/db/schema.sql` + `schema.dbml` 을 진실원으로 두고 CI 가 검증. (마이그레이션과 선언 스키마 정합성 유지 필요 — 예: CHECK 제약)
 - ⚠ **버전 충돌 주의**: 기능 브랜치가 오래 분기되면 같은 `Vnn` 번호가 둘이 되어 Flyway 가 기동 실패(`more than one migration with version`). 머지 전 배포된 최고 버전 위로 재넘버링 필요.
 - **백업**: `axis-pg-dump` CronJob — **KST 05:40**(UTC 20:40), `axis-images` PVC `/data/backups`. per-pod deadline 600s + backoff 3(2026-06 구조 개선). S3 export 는 미구현(추후).
@@ -269,7 +275,10 @@ k8s/
 | sector-pulse 실패 | psql 일시 연결거부 / MV edge | PR #45: psql 재시도 + CONCURRENTLY→blocking 폴백 |
 | capability-evolution Degraded | `refresh_capability_evolution.py` **미구현** | PR #46: CronJob suspend |
 | CRON 토큰 우회 | backend fail-open(빈 토큰=허용) | prod `cron-auth-required=true` fail-closed (2026-06) |
-| JWT 키 이름 혼동 | 예시 `JWT_SECRET` vs backend `AXIS_AUTH_JWT_SECRET` | 예시/스크립트 통일 (#43 이후 보강) |
+| JWT 키 이름 혼동 | 예시 `JWT_SECRET` vs backend `AXIS_AUTH_JWT_SECRET` | 예시/스크립트 통일 + legacy 키 클러스터 제거 |
+| card-evaluator 6GB pull | full axis-ai 이미지(Playwright/torch) 재사용 | `axis-ai-cron` 슬림 이미지 + 리소스 하향 |
+| gitleaks 미적용 | CI secret scan 없음 | OSS gitleaks CLI (`--no-git`) |
+| diag-cap Degraded | suspend CronJob 에서 수동 `kubectl create job` | Job 삭제 + notifier가 `diag-*` 제외 |
 | ArgoCD UI RS 10개씩 | `revisionHistoryLimit: 10` 의 0-replica 히스토리 | 정상. 필요 시 limit 하향 |
 
 ### GitOps 디버깅 체크리스트

@@ -33,7 +33,8 @@ spec:
           serviceAccountName: axis-ai-sa
           containers:
             - name: evaluator
-              image: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-ai:REPLACE_TAG
+              # axis-ai-cron: Playwright/torch 제외 (~수백 MB). Dockerfile.cron 참조.
+              image: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-ai-cron:REPLACE_TAG
               command: ["python", "-m", "scripts.evaluate_recent_cards"]
               envFrom:
                 - configMapRef:
@@ -41,6 +42,8 @@ spec:
                 - secretRef:
                     name: axis-secrets
               env:
+                - name: PYTHONPATH
+                  value: /app
                 - name: EVAL_BATCH_LIMIT
                   value: "20"
                 - name: EVAL_DAILY_BUDGET_USD
@@ -49,11 +52,11 @@ spec:
                   value: "24"
               resources:
                 requests:
-                  cpu: 100m
-                  memory: 256Mi
+                  cpu: 50m
+                  memory: 128Mi
                 limits:
-                  cpu: 500m
-                  memory: 1Gi
+                  cpu: 300m
+                  memory: 512Mi
               securityContext:
                 allowPrivilegeEscalation: false
                 capabilities:

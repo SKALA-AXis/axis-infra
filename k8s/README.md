@@ -121,8 +121,9 @@ curl -fsSL https://axis.skax.internal/health
 - ExternalSecret CRD — secret.yaml 대체
 - ServiceMonitor — Prometheus 메트릭 수집
 - Application (ArgoCD CRD) — GitOps 자동 sync
-- PodDisruptionBudget — 노드 drain 시 가용성 보장
 - topologySpreadConstraints — 2 AZ 분산
+
+**base 에 포함됨 (2026-06):** PodDisruptionBudget (`pdb-backend.yaml`, `pdb-frontend.yaml`)
 
 ---
 

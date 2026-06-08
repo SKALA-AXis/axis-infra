@@ -1,0 +1,13 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: axis-frontend-pdb
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app: axis-frontend
+    app.kubernetes.io/part-of: axis
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: axis-frontend

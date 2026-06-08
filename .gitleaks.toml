@@ -1,0 +1,17 @@
+# gitleaks allowlist — k8s 템플릿·문서·예시 파일의 placeholder 는 실 secret 이 아님.
+# gitleaks-action@v2 는 org repo 에 유료 라이선스 필요 → CI 에서 OSS CLI 직접 실행.
+title = "axis-infra gitleaks config"
+
+[allowlist]
+description = "infra templates, docs, and example secrets"
+paths = [
+  '''(?i)\.env\.(example|local\.example|skala\.example)$''',
+  '''(?i)secret\.(example|local\.yaml\.example|skala\.yaml\.example)$''',
+  '''k8s/''',
+  '''docs/''',
+  '''helm/''',
+  '''db/''',
+  '''api/''',
+  '''scripts/''',
+  '''Makefile''',
+]

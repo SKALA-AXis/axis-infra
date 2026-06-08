@@ -29,6 +29,11 @@ spec:
         app.kubernetes.io/part-of: axis
     spec:
       serviceAccountName: axis-frontend-sa
+      # nginx:alpine 의 nginx 사용자(UID 101). emptyDir 로 cache/run 쓰기.
+      securityContext:
+        runAsUser: 101
+        runAsNonRoot: true
+        fsGroup: 101
       containers:
         - name: web
           image: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-frontend:REPLACE_TAG
@@ -68,8 +73,20 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 3
+          volumeMounts:
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
-            readOnlyRootFilesystem: false  # nginx 임시 파일 쓰기 필요
+            readOnlyRootFilesystem: false
+            runAsUser: 101
+            runAsNonRoot: true
+      volumes:
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
