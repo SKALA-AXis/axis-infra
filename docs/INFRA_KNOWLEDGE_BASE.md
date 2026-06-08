@@ -92,6 +92,8 @@ ENTRYPOINT ["java","-XX:MaxRAMPercentage=75","-jar","app.jar"]
    → ArgoCD 가 develop 변경 감지(3분 polling) → cluster sync
 ```
 
+> **신규 이미지 추가 시**: `kustomization.yaml` 에 `axis-ai-cron` 등 **Harbor에 push된 태그**만 참조. infra 머지가 axis-ai Build and Push 보다 앞서면 `ImagePullBackOff` → CronJob `DeadlineExceeded` 발생 (2026-06-08 card-evaluator).
+
 ### ArgoCD Application (`k8s/argocd/axis-application.yaml`)
 | 설정 | 값 | 의미 |
 |---|---|---|
@@ -279,6 +281,7 @@ k8s/
 | card-evaluator 6GB pull | full axis-ai 이미지(Playwright/torch) 재사용 | `axis-ai-cron` 슬림 이미지 + 리소스 하향 |
 | gitleaks 미적용 | CI secret scan 없음 | OSS gitleaks CLI (`--no-git`) |
 | diag-cap Degraded | suspend CronJob 에서 수동 `kubectl create job` | Job 삭제 + notifier가 `diag-*` 제외 |
+| card-evaluator DeadlineExceeded | infra가 `axis-ai-cron:f02ce52` 참조했으나 Harbor 미push | axis-ai #105 merge → `543283c` push; deploy 순서 주의 |
 | ArgoCD UI RS 10개씩 | `revisionHistoryLimit: 10` 의 0-replica 히스토리 | 정상. 필요 시 limit 하향 |
 
 ### GitOps 디버깅 체크리스트
