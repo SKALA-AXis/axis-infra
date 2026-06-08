@@ -11,8 +11,11 @@ metadata:
     app.kubernetes.io/component: cron
     app.kubernetes.io/part-of: axis
 spec:
+  # scripts/refresh_capability_evolution.py 미구현 — 매월 Job Failed → Degraded.
+  # profile-refresh(분기)가 profile_snapshot.capability_evolution 을 이미 채움.
+  # W4-3 구현 전까지 suspend. (design: axis-ai/design/01-analysis-pipeline-implementation-plan.md §3.4.6)
+  suspend: true
   # 월 1회 (1일 03:00 KST). peer 5 사 × LLM 1 회 ≈ $0.75/월.
-  suspend: false
   schedule: "0 3 1 * *"
   timeZone: "Asia/Seoul"
   concurrencyPolicy: Forbid
