@@ -1,6 +1,6 @@
-# 매일 05:40 KST(UTC 20:40) Postgres 전체 dump → axis-images PVC 의 /data/backups
-# SKALA 클러스터가 wipe 되어도 PVC 살아있는 동안 복구 가능.
-# 별도 S3 export 는 추후 추가 (sealed-secret 으로 AWS creds 주입 후).
+# 매일 05:40 KST(UTC 20:40) Postgres dump → axis-images PVC + S3 (team13 전용 버킷, IRSA).
+# SKALA 클러스터 wipe 시 EFS PVC 또는 S3 pg/ prefix 에서 복구.
+# S3: s3://axis-team13-backups/pg/ — 14일 lifecycle. 1회 프로비저닝: scripts/provision-backup-s3.sh
 #
 # ──────────────────────────────────────────────────────────────────────────
 # 2026-06-08 근본 원인 진단 (이전 5번의 schedule/timeout 추측을 끝냄)
@@ -36,6 +36,7 @@
 #   ⑥ EFS 메타/복사 op 는 timeout 으로 감싸 soft NFS stall 도 시도를 빨리 실패시킴
 #      (D-state hard hang 은 ①②가 backstop).
 #   ⑦ 덤프는 로컬 emptyDir 로 먼저 쓰고 검증 후 EFS 로 원자적 복사(기존 유지).
+#   ⑧ EFS persist 후 s3-publish 컨테이너가 IRSA(axis-backup-sa)로 동일 파일 업로드.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -66,6 +67,7 @@ spec:
             app.kubernetes.io/part-of: axis
             app.kubernetes.io/component: backup       # NetworkPolicy allow-postgres-from-app 매칭
         spec:
+          serviceAccountName: axis-backup-sa
           # Never: 실패 시 같은 Pod 재시작이 아니라 새 Pod 생성 → 다른 노드 재배치로
           # 노드-로컬 efs-csi 마운트 stall 을 탈출.
           restartPolicy: Never
@@ -73,7 +75,7 @@ spec:
           # ContainerCreating(마운트 stall) 시간도 포함되어, 마운트가 30분 매달리는
           # 케이스를 10분에 끊고 새 Pod 로 넘어가게 한다.
           activeDeadlineSeconds: 600
-          containers:
+          initContainers:
             - name: pg-dump
               image: postgres:16-alpine
               imagePullPolicy: IfNotPresent
@@ -104,9 +106,10 @@ spec:
                   # (efs-csi 마운트) 단계에서 막힌 것(=Pod activeDeadlineSeconds 가 처리).
                   echo "[pg-dump $(ts)] container started (mount OK)"
                   STAMP=$(date -u +%Y%m%d_%H%M)
-                  OUT="/data/backups/axis_team13_${STAMP}.sql.gz"
+                  FILENAME="axis_team13_${STAMP}.sql.gz"
+                  OUT="/data/backups/${FILENAME}"
                   TMP="${OUT}.tmp"
-                  STAGE="/stage/axis_team13_${STAMP}.sql.gz"
+                  STAGE="/stage/${FILENAME}"
                   ERR="/stage/pgdump_${STAMP}.err"
                   echo "[pg-dump $(ts)] mkdir/cleanup (EFS) ..."
                   timeout 60 mkdir -p /data/backups
@@ -136,6 +139,7 @@ spec:
                   echo "[pg-dump $(ts)] retention scan ..."
                   timeout 120 find /data/backups -type f -name '*.sql.gz' -mtime +14 -delete || true
                   timeout 120 find /data/backups -type f -name '*.tmp' -mtime +1 -delete || true
+                  printf 'FILENAME=%s\n' "${FILENAME}" > /work/meta.env
                   echo "[pg-dump $(ts)] DONE (retention applied)"
               resources:
                 requests:
@@ -152,6 +156,46 @@ spec:
                   mountPath: /data
                 - name: stage          # 로컬 노드 디스크 — gzip 임시 출력(EFS NFS hang 회피)
                   mountPath: /stage
+                - name: work
+                  mountPath: /work
+          containers:
+            - name: s3-publish
+              image: amazon/aws-cli:2.15.30
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: AWS_DEFAULT_REGION
+                  value: ap-northeast-2
+                - name: BACKUP_S3_BUCKET
+                  value: axis-team13-backups
+                - name: BACKUP_S3_PREFIX
+                  value: pg
+              command:
+                - /bin/sh
+                - -ec
+                - |
+                  set -eu
+                  . /work/meta.env
+                  SRC="/data/backups/${FILENAME}"
+                  S3_URI="s3://${BACKUP_S3_BUCKET}/${BACKUP_S3_PREFIX}/${FILENAME}"
+                  test -f "${SRC}"
+                  echo "[s3-publish] uploading ${SRC} → ${S3_URI}"
+                  aws s3 cp "${SRC}" "${S3_URI}" --only-show-errors --sse AES256
+                  aws s3 ls "${S3_URI}" >/dev/null
+                  echo "[s3-publish] verified ${S3_URI}"
+              resources:
+                requests:
+                  memory: "128Mi"
+                  cpu: "50m"
+                limits:
+                  memory: "256Mi"
+                  cpu: "500m"
+              volumeMounts:
+                - name: backup-volume
+                  mountPath: /data
+                  readOnly: true
+                - name: work
+                  mountPath: /work
+                  readOnly: true
           volumes:
             - name: backup-volume
               persistentVolumeClaim:
@@ -159,3 +203,5 @@ spec:
             - name: stage
               emptyDir:
                 sizeLimit: 2Gi           # 압축 덤프(~280MB) 스테이징용. 노드 ephemeral storage.
+            - name: work
+              emptyDir: {}
