@@ -1,17 +1,17 @@
-# gitleaks allowlist — 예시/템플릿 파일의 placeholder 는 스캔 제외.
-title = "axis gitleaks config"
+# gitleaks allowlist — k8s 템플릿·문서·예시 파일의 placeholder 는 실 secret 이 아님.
+# gitleaks-action@v2 는 org repo 에 유료 라이선스 필요 → CI 에서 OSS CLI 직접 실행.
+title = "axis-infra gitleaks config"
 
 [allowlist]
-description = "infra templates and example env files"
+description = "infra templates, docs, and example secrets"
 paths = [
-  '''\.env\.(example|local\.example|skala\.example)$''',
-  '''secret\.(example|local\.yaml\.example|skala\.yaml\.example)\.yaml$''',
-  '''k8s/.*/secret\..*\.example\.yaml$''',
-  '''docs/.*\.md$''',
+  '''(?i)\.env\.(example|local\.example|skala\.example)$''',
+  '''(?i)secret\.(example|local\.yaml\.example|skala\.yaml\.example)$''',
+  '''k8s/''',
+  '''docs/''',
+  '''helm/''',
+  '''db/''',
+  '''api/''',
+  '''scripts/''',
+  '''Makefile''',
 ]
-
-[[rules]]
-id = "generic-api-key-placeholder"
-description = "REPLACE_* placeholder in k8s templates"
-regex = '''REPLACE_[A-Z0-9_]+'''
-paths = ['''k8s/''']
