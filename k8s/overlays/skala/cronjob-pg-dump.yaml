@@ -45,6 +45,10 @@ metadata:
   labels:
     app.kubernetes.io/part-of: axis
     app.kubernetes.io/component: backup
+  annotations:
+    # container→initContainer 구조 변경 시 SSA 병합이 pg-dump 이름 중복을 만들 수 있음.
+    # Replace 로 전체 교체해 마이그레이션 안전화 (develop merge 후 1회 sync).
+    argocd.argoproj.io/sync-options: Replace=true
 spec:
   # KST 05:40 = UTC 20:40 (전날). 클러스터 timezone 이 UTC.
   # 시간대는 더 이상 의존 요인이 아니다(시도별 fail-fast + 새 Pod 재시도로 흡수).
