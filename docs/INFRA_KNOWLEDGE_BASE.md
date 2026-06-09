@@ -192,7 +192,7 @@ k8s/
 | ingestion-d | **04:25** | backend 트리거 track=D | ingestion-a 03:00/04:00 파이프라인과 겹침 회피 |
 | delivery | 평일 08:30 | 일일 브리핑 메일 발송 | |
 | card-evaluator | 5분마다 | `axis-ai-cron` 이미지로 LLM-as-Judge | Playwright/torch 제외 |
-| global-trend | 월 02:30 | curl axis-ai `/global/trends/run` (retry-connrefused) | LLM |
+| global-trend | 매일 02:30 KST | curl axis-ai `/global/trends/run` (retry-connrefused) | LLM |
 | profile-refresh | 분기 1/4/7/10 03:00 | axis-ai `refresh_peer_profile_snapshots.py` | PYTHONPATH=/app |
 | sector-pulse | 월 02:00 | psql REFRESH MV (retry + CONCURRENTLY 폴백) | |
 | capability-evolution | 매월 1일 03:00 | **suspend: true** (스크립트 미구현) | 수동 `diag-*` Job 금지 |
