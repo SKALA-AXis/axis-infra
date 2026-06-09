@@ -39,7 +39,7 @@ spec:
                 - -m
                 - scripts.postprocess_singleton_clusters
                 - --lookback-hours
-                - "2"
+                - "4"
                 - --max-source-size
                 - "3"
                 - --min-target-size
