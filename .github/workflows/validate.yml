@@ -23,13 +23,11 @@ jobs:
       # releases CDN 504 간헐 장애 대비: tool cache + gh release download + curl fallback.
       - name: Restore gitleaks tool cache
         uses: actions/cache@v4
-        id: gitleaks-tool-cache
         with:
           path: ${{ runner.tool_cache }}/gitleaks-v8.21.2
           key: gitleaks-v8.21.2-linux-x64
 
-      - name: Install gitleaks
-        if: steps.gitleaks-tool-cache.outputs.cache-hit != 'true'
+      - name: Setup gitleaks
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -37,30 +35,31 @@ jobs:
           GITLEAKS_VERSION=v8.21.2
           TOOL_DIR="${{ runner.tool_cache }}/gitleaks-v8.21.2"
           ARCHIVE="gitleaks_${GITLEAKS_VERSION#v}_linux_x64.tar.gz"
-          mkdir -p "$TOOL_DIR" /tmp/gitleaks-dl
-          for attempt in $(seq 1 10); do
-            if gh release download "$GITLEAKS_VERSION" -R gitleaks/gitleaks \
-              -p "$ARCHIVE" -D /tmp/gitleaks-dl 2>/dev/null \
-              && tar -xzf "/tmp/gitleaks-dl/$ARCHIVE" -C "$TOOL_DIR" gitleaks; then
-              chmod +x "$TOOL_DIR/gitleaks"
-              exit 0
-            fi
-            if curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors \
-              -o "/tmp/gitleaks-dl/$ARCHIVE" \
-              "https://github.com/gitleaks/gitleaks/releases/download/${GITLEAKS_VERSION}/${ARCHIVE}" \
-              && tar -xzf "/tmp/gitleaks-dl/$ARCHIVE" -C "$TOOL_DIR" gitleaks; then
-              chmod +x "$TOOL_DIR/gitleaks"
-              exit 0
-            fi
-            sleep $((attempt * 4))
-          done
-          echo "gitleaks install failed after retries"
-          exit 1
-
-      - name: Add gitleaks to PATH
-        run: |
-          echo "${{ runner.tool_cache }}/gitleaks-v8.21.2" >> "$GITHUB_PATH"
-          gitleaks version
+          if [ ! -x "$TOOL_DIR/gitleaks" ]; then
+            mkdir -p "$TOOL_DIR" /tmp/gitleaks-dl
+            installed=false
+            for attempt in $(seq 1 10); do
+              rm -f "/tmp/gitleaks-dl/$ARCHIVE"
+              if gh release download "$GITLEAKS_VERSION" -R gitleaks/gitleaks \
+                -p "$ARCHIVE" -D /tmp/gitleaks-dl \
+                && tar -xzf "/tmp/gitleaks-dl/$ARCHIVE" -C "$TOOL_DIR" gitleaks; then
+                installed=true
+                break
+              fi
+              if curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors \
+                -o "/tmp/gitleaks-dl/$ARCHIVE" \
+                "https://github.com/gitleaks/gitleaks/releases/download/${GITLEAKS_VERSION}/${ARCHIVE}" \
+                && tar -xzf "/tmp/gitleaks-dl/$ARCHIVE" -C "$TOOL_DIR" gitleaks; then
+                installed=true
+                break
+              fi
+              sleep $((attempt * 4))
+            done
+            [ "$installed" = true ] || { echo "gitleaks install failed after retries"; exit 1; }
+            chmod +x "$TOOL_DIR/gitleaks"
+          fi
+          echo "$TOOL_DIR" >> "$GITHUB_PATH"
+          "$TOOL_DIR/gitleaks" version
 
       - name: Run gitleaks
         run: gitleaks detect --source . --config .gitleaks.toml --no-git --verbose
@@ -125,13 +124,11 @@ jobs:
 
       - name: Restore kubeconform tool cache
         uses: actions/cache@v4
-        id: kubeconform-tool-cache
         with:
           path: ${{ runner.tool_cache }}/kubeconform-v0.7.0
           key: kubeconform-v0.7.0-linux-amd64
 
-      - name: Install kubeconform
-        if: steps.kubeconform-tool-cache.outputs.cache-hit != 'true'
+      - name: Setup kubeconform
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -140,30 +137,31 @@ jobs:
           KUBECONFORM_VERSION=v0.7.0
           TOOL_DIR="${{ runner.tool_cache }}/kubeconform-v0.7.0"
           ARCHIVE="kubeconform-linux-amd64.tar.gz"
-          mkdir -p "$TOOL_DIR" /tmp/kubeconform-dl
-          for attempt in $(seq 1 10); do
-            if gh release download "$KUBECONFORM_VERSION" -R yannh/kubeconform \
-              -p "$ARCHIVE" -D /tmp/kubeconform-dl 2>/dev/null \
-              && tar -xzf "/tmp/kubeconform-dl/$ARCHIVE" -C "$TOOL_DIR" kubeconform; then
-              chmod +x "$TOOL_DIR/kubeconform"
-              exit 0
-            fi
-            if curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors \
-              -o "/tmp/kubeconform-dl/$ARCHIVE" \
-              "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/${ARCHIVE}" \
-              && tar -xzf "/tmp/kubeconform-dl/$ARCHIVE" -C "$TOOL_DIR" kubeconform; then
-              chmod +x "$TOOL_DIR/kubeconform"
-              exit 0
-            fi
-            sleep $((attempt * 4))
-          done
-          echo "kubeconform install failed after retries"
-          exit 1
-
-      - name: Add kubeconform to PATH
-        run: |
-          echo "${{ runner.tool_cache }}/kubeconform-v0.7.0" >> "$GITHUB_PATH"
-          kubeconform -v
+          if [ ! -x "$TOOL_DIR/kubeconform" ]; then
+            mkdir -p "$TOOL_DIR" /tmp/kubeconform-dl
+            installed=false
+            for attempt in $(seq 1 10); do
+              rm -f "/tmp/kubeconform-dl/$ARCHIVE"
+              if gh release download "$KUBECONFORM_VERSION" -R yannh/kubeconform \
+                -p "$ARCHIVE" -D /tmp/kubeconform-dl \
+                && tar -xzf "/tmp/kubeconform-dl/$ARCHIVE" -C "$TOOL_DIR" kubeconform; then
+                installed=true
+                break
+              fi
+              if curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors \
+                -o "/tmp/kubeconform-dl/$ARCHIVE" \
+                "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/${ARCHIVE}" \
+                && tar -xzf "/tmp/kubeconform-dl/$ARCHIVE" -C "$TOOL_DIR" kubeconform; then
+                installed=true
+                break
+              fi
+              sleep $((attempt * 4))
+            done
+            [ "$installed" = true ] || { echo "kubeconform install failed after retries"; exit 1; }
+            chmod +x "$TOOL_DIR/kubeconform"
+          fi
+          echo "$TOOL_DIR" >> "$GITHUB_PATH"
+          "$TOOL_DIR/kubeconform" -v
 
       - name: Reject unsafe Hibernate DDL modes in skala overlay
         run: |
