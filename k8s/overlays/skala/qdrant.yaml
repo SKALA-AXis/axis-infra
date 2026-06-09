@@ -1,6 +1,10 @@
 # SKALA EKS overlay — namespace 내부 Qdrant.
 # StorageClass: gp3 (SKALA 클러스터 default).
 # 데이터 보존: PVC qdrant-data (5Gi). 임베딩 재생성 비용 큼 → 백업 권장.
+#
+# 버전 정책: PVC segment 포맷이 major 간 비호환 (v1.9 → v1.18 업그레이드 시
+#   on_disk vs mmap 역직렬화 panic). 무중단 major bump 금지 — snapshot export/import
+#   또는 컬렉션 재적재 전까지 이미지 pin 유지.
 ---
 apiVersion: v1
 kind: Service
@@ -67,7 +71,7 @@ spec:
     spec:
       containers:
         - name: qdrant
-          image: qdrant/qdrant:v1.18.0
+          image: qdrant/qdrant:v1.9.4
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

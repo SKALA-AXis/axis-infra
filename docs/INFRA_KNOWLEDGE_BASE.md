@@ -283,6 +283,8 @@ k8s/
 | gitleaks 미적용 | CI secret scan 없음 | OSS gitleaks CLI (`--no-git`) |
 | diag-cap Degraded | suspend CronJob 에서 수동 `kubectl create job` | Job 삭제 + notifier가 `diag-*` 제외 |
 | card-evaluator DeadlineExceeded | infra가 `axis-ai-cron:f02ce52` 참조했으나 Harbor 미push | axis-ai #105 merge → `543283c` push; deploy 순서 주의 |
+| qdrant CrashLoopBackOff | **v1.9.4 PVC** 를 **v1.18.0** 으로 무중단 업그레이드 → segment `on_disk` 역직렬화 panic | 이미지 **v1.9.4 pin** 복구. major bump 는 snapshot export/import 후만 |
+| 아침 7시 Cron·Pod 알림 폭주 | ① Qdrant 다운 → ingestion 실패 ② ArgoCD 롤아웃 중 **구 RS** `ErrImagePull` ③ 의존 서비스 불능 시 Cron이 deadline 까지 hang | 근본 원인(벡터 DB·이미지 태그) 먼저 해결. notifier deadline 300s |
 | ArgoCD UI RS 10개씩 | `revisionHistoryLimit: 10` 의 0-replica 히스토리 | 정상. 필요 시 limit 하향 |
 
 ### GitOps 디버깅 체크리스트
