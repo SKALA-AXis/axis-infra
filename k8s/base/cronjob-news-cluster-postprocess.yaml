@@ -1,0 +1,68 @@
+# 최근 뉴스 클러스터 후처리.
+# ingestion-a 가 crawl_run/source 단위로 전처리하면서 같은 이벤트가 singleton으로
+# 쪼개질 수 있어, 최근 published_at window를 한 번 더 보수적으로 consolidation한다.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: axis-cron-news-cluster-postprocess
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app.kubernetes.io/component: cron
+    app.kubernetes.io/part-of: axis
+spec:
+  suspend: false
+  # ingestion-a 는 매시 정각 실행. 크롤링/전처리/클러스터링이 backend async로
+  # 몇 분 이상 걸릴 수 있어, 한 시간에 한 번 충분한 지연을 두고 실행한다.
+  schedule: "25 * * * *"
+  timeZone: "Asia/Seoul"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 300
+      ttlSecondsAfterFinished: 1800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: cron
+            cron: news-cluster-postprocess
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: axis-ai-sa
+          containers:
+            - name: postprocess
+              image: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-ai-cron:REPLACE_TAG
+              command:
+                - python
+                - -m
+                - scripts.postprocess_singleton_clusters
+                - --lookback-hours
+                - "2"
+                - --max-source-size
+                - "3"
+                - --min-target-size
+                - "4"
+                - --apply
+              envFrom:
+                - configMapRef:
+                    name: axis-config
+                - secretRef:
+                    name: axis-secrets
+              env:
+                - name: PYTHONPATH
+                  value: /app
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  cpu: 300m
+                  memory: 512Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+                runAsNonRoot: true
+                runAsUser: 65534
