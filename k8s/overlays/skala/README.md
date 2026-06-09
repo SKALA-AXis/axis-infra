@@ -143,7 +143,16 @@ make skala-logs
 
 `cronjob-pg-dump.yaml` 이 매일 **KST 05:40** (UTC 20:40) 에 실행:
 - `pg_dump` → `axis-images` PVC 의 `/data/backups/`
-- 14일 retention
+- 동일 파일을 **S3** `s3://axis-team13-backups/pg/` 로 IRSA 업로드 (14일 lifecycle)
+- EFS 로컬 retention 14일
+
+**1회 AWS 프로비저닝** (버킷 + IAM role):
+
+```bash
+chmod +x scripts/provision-backup-s3.sh
+./scripts/provision-backup-s3.sh
+kubectl apply -f k8s/overlays/skala/serviceaccount-backup.yaml
+```
 
 **첫 배치 (이전 데이터 백필) 끝난 직후 수동으로 한 번 실행 권장**:
 
@@ -152,7 +161,12 @@ kubectl create job --from=cronjob/axis-pg-dump axis-pg-dump-manual \
   -n skala3-finalproj-class3-team13
 ```
 
-S3 export 는 추후 추가 (sealed-secret 으로 AWS 자격증명 주입 후).
+S3 에서 복구(EFS 백업 없을 때):
+
+```bash
+aws s3 cp s3://axis-team13-backups/pg/axis_team13_YYYYMMDD_HHMM.sql.gz ./restore.sql.gz
+# 이후 job-pg-restore.yaml 의 BACKUP_FILE 로 지정하거나 PVC 에 복사
+```
 
 ### 6-1. 복구 (restore)
 

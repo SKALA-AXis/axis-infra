@@ -194,7 +194,7 @@ k8s/
 | sector-pulse | 월 02:00 | psql REFRESH MV (retry + CONCURRENTLY 폴백) | |
 | capability-evolution | 매월 1일 03:00 | **suspend: true** (스크립트 미구현) | 수동 `diag-*` Job 금지 |
 | weak-signal | 월 09:00 | suspend: true | |
-| **pg-dump** | 매일 **05:40 KST** (UTC 20:40) | DB 백업 → `axis-images` PVC | §11 백업 |
+| **pg-dump** | 매일 **05:40 KST** (UTC 20:40) | DB 백업 → `axis-images` PVC + S3 `axis-team13-backups/pg/` | §11 백업 |
 
 > **호출형 cron resilience (2026-06)**: ingestion/global-trend/delivery/weak-signal 은 curl `--retry-connrefused` + `CRON_INTERNAL_TOKEN optional:true`. sector-pulse 는 psql 재시도 루프.
 
@@ -226,6 +226,7 @@ k8s/
 ### ServiceAccount / IRSA
 - 워크로드별 SA: `axis-frontend-sa`, `axis-backend-sa`, `axis-ai-sa`, `axis-cron-sa`.
 - 이메일: **AWS SES V2 + IRSA** (`ses-mailer-sa`) — SMTP 없이 API 직접 호출.
+- 백업: **S3 pg dump + IRSA** (`axis-backup-sa`) — `s3://axis-team13-backups/pg/`. `scripts/provision-backup-s3.sh` 1회.
 
 ### axis-ai replicas=1 (×2 금지)
 - `axis-images` PVC(RWX)에 **동시 write race** — ai-deployment.yaml 주석으로 ×2 명시 금지.
@@ -256,7 +257,7 @@ k8s/
 - **CI 검증 (2단)**: ① `axis-infra` CI — `db/schema.sql` 적용 가능 여부. ② `axis-backend` CI `PostgreSqlSchemaValidationIT` — Flyway migrate 후 Hibernate `validate` 부팅. skala overlay 에 `update/create` 금지 grep.
 - **선언적 스키마**: `axis-infra/db/schema.sql` + `schema.dbml` 을 진실원으로 두고 CI 가 검증. (마이그레이션과 선언 스키마 정합성 유지 필요 — 예: CHECK 제약)
 - ⚠ **버전 충돌 주의**: 기능 브랜치가 오래 분기되면 같은 `Vnn` 번호가 둘이 되어 Flyway 가 기동 실패(`more than one migration with version`). 머지 전 배포된 최고 버전 위로 재넘버링 필요.
-- **백업**: `axis-pg-dump` CronJob — **KST 05:40**(UTC 20:40), `axis-images` PVC `/data/backups`. per-pod deadline 600s + backoff 3(2026-06 구조 개선). S3 export 는 미구현(추후).
+- **백업**: `axis-pg-dump` CronJob — **KST 05:40**(UTC 20:40), `axis-images` PVC `/data/backups` + **S3** `s3://axis-team13-backups/pg/` (IRSA `axis-backup-sa`, 14일 lifecycle). per-pod deadline 600s + backoff 3.
 
 ---
 
