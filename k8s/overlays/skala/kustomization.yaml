@@ -32,6 +32,7 @@ resources:
 - postgres.yaml
 - qdrant.yaml
 - cronjob-pg-dump.yaml
+- axis-backup-pvc.yaml
 - serviceaccount-backup.yaml
 - networkpolicy-db.yaml
 - service-aliases.yaml

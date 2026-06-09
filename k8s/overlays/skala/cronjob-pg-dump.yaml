@@ -1,42 +1,12 @@
-# 매일 05:40 KST(UTC 20:40) Postgres dump → axis-images PVC + S3 (team13 전용 버킷, IRSA).
-# SKALA 클러스터 wipe 시 EFS PVC 또는 S3 pg/ prefix 에서 복구.
-# S3: s3://axis-team13-backups/pg/ — 14일 lifecycle. 1회 프로비저닝: scripts/provision-backup-s3.sh
+# 매일 02:10 KST Postgres dump → 전용 PVC(axis-backup-pvc) + S3 (IRSA).
+# axis-images(카드뉴스) 와 PVC 분리 + dump 단계는 EFS 미마운트(efs-csi stall 회피).
 #
-# ──────────────────────────────────────────────────────────────────────────
-# 2026-06-08 근본 원인 진단 (이전 5번의 schedule/timeout 추측을 끝냄)
-# ──────────────────────────────────────────────────────────────────────────
-# 증거(클러스터 실측):
-#   · 온디맨드 수동 dump = 85s 완주 (pg_dump 69s, gzip검증 12s, EFS cp 4s).
-#     락 0건, 롱트랜잭션 0건, DB 1GB. → 스크립트·EFS write·DB 크기 문제 아님.
-#   · 스케줄 run 3회(06-05/06/07, 매번 20:40:00Z) 전부 DeadlineExceeded.
-#     job.status.failed=1, 단일 Pod 가 20:40:00→21:10:00 "정확히 30분 통짜로"
-#     매달린 뒤 activeDeadlineSeconds 에 의해 kill.
-#   · lock_timeout=600000(10분) 이 설정돼 있었으나 발화 안 함(10/20분에 안 끊김).
-#     → pg_dump 가 Postgres "락 대기" 중이었던 게 아니다(락이면 10분에 error).
-#   · 실패 시각 EFS 파일시스템 전체 I/O ≈ 유휴(~10MB/h). → EFS 처리량 경합 아님.
-#   · 수동(낮 시간) run 은 항상 성공, 스케줄(05:40 KST) run 만 실패 → 시간대/노드
-#     의존적. EFS 는 클러스터 공용(EKS_EFS, elastic) — access point 만 우리 것.
-# 결론: 스크립트가 잡을 수 없는 "비차단 hang". 단일 Pod 가 deadline 전체를
-#   통짜로 소진했다는 건 (a) 컨테이너가 30분 내내 ContainerCreating(공용
-#   efs-csi 마운트 stall) 이었거나 (b) 타임아웃 없는 I/O/커넥션 stall 이라는 뜻.
-#   어느 쪽이든 "한 Pod 가 deadline 을 독식 → 재시도 기회 없이 fail" 이 진짜 화근.
+# 구조:
+#   ① pg-dump (emptyDir only) — pg_dump + gzip, EFS 마운트 없음 → ContainerCreating stall 차단
+#   ② efs-persist — 전용 PVC에 원자 복사 + retention
+#   ③ s3-publish — IRSA 업로드
 #
-# 수정 전략 (window 추측이 아니라 구조적 내성 + 관측성):
-#   ① 시도별(Pod-level) activeDeadlineSeconds 600s 로 각 시도를 짧게 끊는다.
-#      정상 85s 대비 충분하되, hang 시 30분 독식 대신 10분에 잘라낸다.
-#   ② restartPolicy: Never + backoffLimit 3 → 시도마다 "새 Pod"가 뜬다.
-#      같은 노드의 efs-csi 마운트 stall 에 걸려도 다음 시도는 다른 노드로
-#      재배치돼 빠져나온다(OnFailure 는 같은 Pod/노드 재시작이라 stall 못 벗어남).
-#   ③ Job-level activeDeadlineSeconds 2400s 는 전체 backstop(폭주 차단).
-#   ④ PGOPTIONS 에 statement_timeout 추가 — lock_timeout 은 "락 획득"만 끊지만
-#      이건 "실행 중 stall(COPY)"도 끊어 fail-fast → 재시도로 회복.
-#      PGCONNECT_TIMEOUT 로 커넥션 stall 도 fail-fast.
-#   ⑤ 모든 단계에 UTC 타임스탬프 로그 + 시작 즉시 heartbeat. 다음에 또 hang 하면
-#      "어느 단계에서 멈췄는지" 로그로 즉시 판별(컨테이너 진입 여부 포함).
-#   ⑥ EFS 메타/복사 op 는 timeout 으로 감싸 soft NFS stall 도 시도를 빨리 실패시킴
-#      (D-state hard hang 은 ①②가 backstop).
-#   ⑦ 덤프는 로컬 emptyDir 로 먼저 쓰고 검증 후 EFS 로 원자적 복사(기존 유지).
-#   ⑧ EFS persist 후 s3-publish 컨테이너가 IRSA(axis-backup-sa)로 동일 파일 업로드.
+# hang 내성: Pod 900s × backoff 3 + restartPolicy Never (노드 재배치).
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -46,39 +16,28 @@ metadata:
     app.kubernetes.io/part-of: axis
     app.kubernetes.io/component: backup
   annotations:
-    # container→initContainer 구조 변경 시 SSA 병합이 pg-dump 이름 중복을 만들 수 있음.
-    # Replace 로 전체 교체해 마이그레이션 안전화 (develop merge 후 1회 sync).
     argocd.argoproj.io/sync-options: Replace=true
 spec:
-  # KST 05:40 = UTC 20:40 (전날). 클러스터 timezone 이 UTC.
-  # 시간대는 더 이상 의존 요인이 아니다(시도별 fail-fast + 새 Pod 재시도로 흡수).
-  schedule: "40 20 * * *"
+  # 02:10 KST — ingestion-a(매시 :00) 직후 피크·05:40 구간 EFS stall 이력 회피.
+  schedule: "10 2 * * *"
+  timeZone: "Asia/Seoul"
   concurrencyPolicy: Forbid
-  # 스케줄 시점에 컨트롤러가 잠깐 밀려도 1시간 내면 실행(누락 방지).
   startingDeadlineSeconds: 3600
   successfulJobsHistoryLimit: 7
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
-      # 새 Pod 로 최대 4회 시도(초기 1 + 재시도 3). 각 시도는 Pod-level
-      # activeDeadlineSeconds 로 짧게 끊기므로, stall 노드를 벗어나 회복한다.
       backoffLimit: 3
-      # 전체 backstop. 시도별 600s × (1+3) + backoff 대기 여유.
-      activeDeadlineSeconds: 2400
+      activeDeadlineSeconds: 3600
       template:
         metadata:
           labels:
             app.kubernetes.io/part-of: axis
-            app.kubernetes.io/component: backup       # NetworkPolicy allow-postgres-from-app 매칭
+            app.kubernetes.io/component: backup
         spec:
           serviceAccountName: axis-backup-sa
-          # Never: 실패 시 같은 Pod 재시작이 아니라 새 Pod 생성 → 다른 노드 재배치로
-          # 노드-로컬 efs-csi 마운트 stall 을 탈출.
           restartPolicy: Never
-          # 시도(Pod) 1회 상한 = 10분. 정상 85s 대비 충분, hang 은 여기서 잘림.
-          # ContainerCreating(마운트 stall) 시간도 포함되어, 마운트가 30분 매달리는
-          # 케이스를 10분에 끊고 새 Pod 로 넘어가게 한다.
-          activeDeadlineSeconds: 600
+          activeDeadlineSeconds: 900
           initContainers:
             - name: pg-dump
               image: postgres:16-alpine
@@ -89,40 +48,24 @@ spec:
                     secretKeyRef:
                       name: axis-secrets
                       key: DATABASE_URL
-                # 커넥션 stall fail-fast (공용 Postgres 가 느릴 때 무한 대기 차단).
                 - name: PGCONNECT_TIMEOUT
                   value: "15"
-                # lock_timeout: 락 "획득" 대기 60초 상한.
-                # statement_timeout: 실행 "중" stall(COPY 등) 480초 상한 — lock_timeout
-                #   이 못 잡는 비-락 stall 을 fail-fast 시켜 새 Pod 재시도로 회복.
                 - name: PGOPTIONS
                   value: "-c lock_timeout=60000 -c statement_timeout=480000"
               command:
                 - /bin/sh
                 - -c
                 - |
-                  # pipefail: pg_dump 가 중간 실패해도 gzip 의 exit 0 에 묻히지 않게.
-                  # busybox ash (postgres:16-alpine) 는 pipefail 지원.
                   set -eu
                   set -o pipefail
                   ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
-                  # 컨테이너 진입 즉시 heartbeat — 이 줄이 로그에 없으면 ContainerCreating
-                  # (efs-csi 마운트) 단계에서 막힌 것(=Pod activeDeadlineSeconds 가 처리).
-                  echo "[pg-dump $(ts)] container started (mount OK)"
+                  echo "[pg-dump $(ts)] started (no EFS mount — local stage only)"
                   STAMP=$(date -u +%Y%m%d_%H%M)
                   FILENAME="axis_team13_${STAMP}.sql.gz"
-                  OUT="/data/backups/${FILENAME}"
-                  TMP="${OUT}.tmp"
                   STAGE="/stage/${FILENAME}"
                   ERR="/stage/pgdump_${STAMP}.err"
-                  echo "[pg-dump $(ts)] mkdir/cleanup (EFS) ..."
-                  timeout 60 mkdir -p /data/backups
-                  timeout 60 rm -f "${TMP}" "${STAGE}"
-                  # 실패/중단 시 로컬 stage + EFS tmp 잔여 자동 정리
-                  trap 'rm -f "${STAGE}" "${TMP}" "${ERR}" 2>/dev/null || true' EXIT
-                  echo "[pg-dump $(ts)] pg_dump → ${STAGE} (local stage) START"
-                  # ① 로컬 emptyDir 로 먼저 dump (EFS NFS writeback hang 원천 차단 — DB
-                  #    read 가 노드 디스크 속도로 진행), --verbose 로 테이블별 진행 기록.
+                  rm -f "${STAGE}" "${ERR}"
+                  echo "[pg-dump $(ts)] pg_dump → ${STAGE} START"
                   if pg_dump --no-owner --no-acl --verbose "${DATABASE_URL}" 2>"${ERR}" | gzip > "${STAGE}"; then
                     echo "[pg-dump $(ts)] pg_dump DONE size=$(du -h "${STAGE}" | cut -f1)"
                   else
@@ -130,38 +73,64 @@ spec:
                     tail -25 "${ERR}" || true
                     exit 1
                   fi
-                  # ② gzip 무결성 검증
                   echo "[pg-dump $(ts)] gzip -t (verify) ..."
                   gzip -t "${STAGE}"
-                  # ③ 통과 시 EFS 로 원자적 복사(.tmp → mv). soft NFS stall 은 timeout 으로 차단.
-                  echo "[pg-dump $(ts)] cp → EFS (${OUT}) ..."
-                  timeout 300 cp "${STAGE}" "${TMP}"
-                  timeout 60 mv "${TMP}" "${OUT}"
-                  rm -f "${STAGE}"
-                  echo "[pg-dump $(ts)] persisted size=$(du -h "${OUT}" | cut -f1)"
-                  # retention: 14일 이전 dump + 1일 이전 잔여 tmp 삭제 (PVC 용량 보호)
-                  echo "[pg-dump $(ts)] retention scan ..."
-                  timeout 120 find /data/backups -type f -name '*.sql.gz' -mtime +14 -delete || true
-                  timeout 120 find /data/backups -type f -name '*.tmp' -mtime +1 -delete || true
                   printf 'FILENAME=%s\n' "${FILENAME}" > /work/meta.env
-                  echo "[pg-dump $(ts)] DONE (retention applied)"
+                  echo "[pg-dump $(ts)] DONE (stage ready for EFS persist)"
               resources:
                 requests:
                   memory: "256Mi"
                   cpu: "200m"
                 limits:
-                  # 512Mi 는 gzip→EFS dirty-page 누적 시 OOM/NFS hang → DeadlineExceeded.
-                  # 1Gi 로 충분한 여유 확보(덤프 출력 ~280MB). gzip 은 CPU-bound 라
-                  # CPU 1 로 올려 완주시간 단축(500m→1 시 2.5분→~1.3분).
                   memory: "1Gi"
                   cpu: "1"
               volumeMounts:
-                - name: backup-volume
-                  mountPath: /data
-                - name: stage          # 로컬 노드 디스크 — gzip 임시 출력(EFS NFS hang 회피)
+                - name: stage
                   mountPath: /stage
                 - name: work
                   mountPath: /work
+            - name: efs-persist
+              image: postgres:16-alpine
+              imagePullPolicy: IfNotPresent
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+                  . /work/meta.env
+                  OUT="/data/backups/${FILENAME}"
+                  TMP="${OUT}.tmp"
+                  STAGE="/stage/${FILENAME}"
+                  echo "[efs-persist $(ts)] EFS mount OK — persist ${FILENAME}"
+                  if [ ! -f "${STAGE}" ]; then
+                    echo "[efs-persist $(ts)] ERROR missing stage file ${STAGE}:"
+                    ls -la /stage/ || true
+                    exit 1
+                  fi
+                  timeout 60 mkdir -p /data/backups
+                  timeout 300 cp "${STAGE}" "${TMP}"
+                  timeout 60 mv "${TMP}" "${OUT}"
+                  echo "[efs-persist $(ts)] persisted size=$(du -h "${OUT}" | cut -f1)"
+                  timeout 120 find /data/backups -type f -name '*.sql.gz' -mtime +14 -delete || true
+                  timeout 120 find /data/backups -type f -name '*.tmp' -mtime +1 -delete || true
+                  echo "[efs-persist $(ts)] DONE"
+              resources:
+                requests:
+                  memory: "128Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "256Mi"
+                  cpu: "500m"
+              volumeMounts:
+                - name: backup-volume
+                  mountPath: /data
+                - name: stage
+                  mountPath: /stage
+                  readOnly: true
+                - name: work
+                  mountPath: /work
+                  readOnly: true
           containers:
             - name: s3-publish
               image: amazon/aws-cli:2.15.30
@@ -203,9 +172,9 @@ spec:
           volumes:
             - name: backup-volume
               persistentVolumeClaim:
-                claimName: axis-images   # 기존 PVC 재사용 (/data/images 와 형제 디렉토리)
+                claimName: axis-backup-pvc
             - name: stage
               emptyDir:
-                sizeLimit: 2Gi           # 압축 덤프(~280MB) 스테이징용. 노드 ephemeral storage.
+                sizeLimit: 2Gi
             - name: work
               emptyDir: {}
