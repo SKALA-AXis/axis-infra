@@ -47,7 +47,7 @@ images:
   newTag: f3f86a7
 - name: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-backend
   newName: amdp-registry.skala-ai.com/skala26a-ai3/axis-backend
-  newTag: cad08bb
+  newTag: 12f9015
 - name: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-frontend
   newName: amdp-registry.skala-ai.com/skala26a-ai3/axis-frontend
   newTag: 623a9d1
