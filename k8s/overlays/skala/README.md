@@ -141,8 +141,8 @@ make skala-logs
 
 ## 6. 백업 자동화
 
-`cronjob-pg-dump.yaml` 이 매일 **KST 05:40** (UTC 20:40) 에 실행:
-- `pg_dump` → `axis-images` PVC 의 `/data/backups/`
+`cronjob-pg-dump.yaml` 이 매일 **KST 02:10** 에 실행:
+- `pg_dump` → 전용 PVC `axis-backup-pvc` 의 `/data/backups/` (axis-images 와 분리)
 - 동일 파일을 **S3** `s3://axis-team13-backups/pg/` 로 IRSA 업로드 (14일 lifecycle)
 - EFS 로컬 retention 14일
 
@@ -195,7 +195,7 @@ make skala-restore BACKUP_FILE=pre-restore_20260605_2041.sql.gz
 
 ```bash
 kubectl run ls-backups --rm -it --image=busybox -n skala3-finalproj-class3-team13 \
-  --overrides='{"spec":{"containers":[{"name":"ls","image":"busybox","command":["ls","-lht","/data/backups"],"volumeMounts":[{"name":"b","mountPath":"/data"}]}],"volumes":[{"name":"b","persistentVolumeClaim":{"claimName":"axis-images"}}]}}'
+  --overrides='{"spec":{"containers":[{"name":"ls","image":"busybox","command":["ls","-lht","/data/backups"],"volumeMounts":[{"name":"b","mountPath":"/data"}]}],"volumes":[{"name":"b","persistentVolumeClaim":{"claimName":"axis-backup-pvc"}}]}}'
 ```
 
 수동으로 단계별 실행하려면 `job-pg-restore.yaml` 상단 주석 참조.

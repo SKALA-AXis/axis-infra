@@ -141,7 +141,7 @@ spec:
       volumes:
         - name: backup-volume
           persistentVolumeClaim:
-            claimName: axis-images   # pg-dump 가 백업을 쓰는 동일 PVC (/data/backups)
+            claimName: axis-backup-pvc   # pg-dump 전용 PVC (/data/backups)
         - name: stage
           emptyDir:
             sizeLimit: 2Gi
