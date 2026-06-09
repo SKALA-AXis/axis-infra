@@ -2924,6 +2924,56 @@ paths:
           $ref: "#/components/responses/NotFound"
         '500':
           $ref: "#/components/responses/InternalServerError"
+  /api/global/trends:
+    get:
+      tags:
+      - global
+      summary: 저장된 글로벌 트렌드 조회
+      description: |
+        ``global_industry_trends`` 테이블 read-only 조회.
+        cron 또는 on-demand 분석 결과를 keyword 별 row 로 반환.
+        spec: axis-ai/design/30-analysis/global-trends.md §9.2
+      operationId: listGlobalTrends
+      parameters:
+      - name: from
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 조회 시작일 (YYYY-MM-DD). default 30일 전.
+      - name: to
+        in: query
+        schema:
+          type: string
+          format: date
+        description: 조회 종료일 (YYYY-MM-DD). default 오늘.
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+          maximum: 50
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 0
+          minimum: 0
+      responses:
+        '200':
+          description: 저장된 글로벌 트렌드 목록
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/ApiResponse"
+                - type: object
+                  properties:
+                    data:
+                      $ref: "#/components/schemas/GlobalTrendListResponse"
+        '500':
+          $ref: "#/components/responses/InternalServerError"
   /api/global/trends/run:
     post:
       tags:
@@ -6843,6 +6893,110 @@ components:
         user_question:
           type: string
           nullable: true
+    GlobalTrendListResponse:
+      type: object
+      description: 저장된 global_industry_trends 조회 응답.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/GlobalTrendItem"
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+        latest_trend_date:
+          type: string
+          format: date
+          nullable: true
+        warning:
+          type: string
+          nullable: true
+    GlobalTrendItem:
+      type: object
+      properties:
+        id:
+          type: string
+        source_analysis_id:
+          type: string
+          nullable: true
+        trend_date:
+          type: string
+          format: date
+        industry:
+          type: string
+        region:
+          type: string
+        keyword:
+          type: string
+        keyword_category:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        summary:
+          type: string
+          nullable: true
+        mention_count:
+          type: integer
+        impact_score:
+          type: number
+          format: float
+          nullable: true
+        confidence:
+          type: number
+          format: float
+          nullable: true
+        related_peer_ids:
+          type: array
+          items:
+            type: string
+        related_card_ids:
+          type: array
+          items:
+            type: string
+        sk_ax_implication:
+          type: string
+          nullable: true
+        peer_alignment:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        impact_matrix:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        forecasts:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        leading_companies:
+          type: array
+          items:
+            type: string
+        intensity:
+          type: string
+          nullable: true
+        frequency_delta_pct:
+          type: number
+          format: float
+          nullable: true
+        created_at:
+          type: string
+        updated_at:
+          type: string
     GlobalTrendsRequest:
       type: object
       description: |
