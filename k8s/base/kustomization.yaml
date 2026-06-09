@@ -55,6 +55,7 @@ resources:
   - cronjob-ingestion-c.yaml
   - cronjob-ingestion-d.yaml
   - cronjob-delivery.yaml
+  - cronjob-today-insight.yaml
   - cronjob-weak-signal.yaml
   # axis-ai 1단계 분석 supervisor 의 context layer + evaluation layer CronJob (W2-2 / W4-3 / W4-4 / W5-2).
   - cronjob-profile-refresh.yaml
