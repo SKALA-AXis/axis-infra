@@ -38,6 +38,9 @@ spec:
                     name: axis-config
                 - secretRef:
                     name: axis-secrets
+              env:
+                - name: PYTHONPATH
+                  value: /app
               resources:
                 requests:
                   cpu: 500m
