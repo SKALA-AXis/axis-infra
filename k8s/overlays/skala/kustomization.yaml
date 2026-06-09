@@ -65,6 +65,9 @@ patches:
 - path: patches/deployment-frontend.yaml
 - path: patches/deployment-backend.yaml
 - path: patches/deployment-ai.yaml
+- path: patches/cronjob-harbor-pull.yaml
+  target:
+    kind: CronJob
 - path: patches/configmap-env.yaml
 - path: patches/ingress-host.yaml
   target:
