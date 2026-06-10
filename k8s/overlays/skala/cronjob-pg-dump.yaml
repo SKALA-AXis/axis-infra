@@ -19,7 +19,7 @@ metadata:
     argocd.argoproj.io/sync-options: Replace=true
 spec:
   # 02:10 KST — ingestion-a(매시 :00) 직후 피크·05:40 구간 EFS stall 이력 회피.
-  schedule: "10 2 * * *"
+  schedule: "30 21 * * *"  # 노드 야간 셧다운(23:00-07:00 KST) 회피 — docs/adr/0007 참조
   timeZone: "Asia/Seoul"
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 3600

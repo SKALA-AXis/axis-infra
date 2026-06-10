@@ -14,7 +14,7 @@ metadata:
 spec:
   # 분기 1회 (1/4/7/10월 1일 03:00 KST). peer 5 사 × PeerProfileAgent.
   suspend: false
-  schedule: "0 3 1 1,4,7,10 *"
+  schedule: "30 10 1 1,4,7,10 *"  # 노드 야간 셧다운(23:00-07:00 KST) 회피 — docs/adr/0007 참조
   timeZone: "Asia/Seoul"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
