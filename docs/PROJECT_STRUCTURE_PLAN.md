@@ -4,6 +4,8 @@
 > **목표**: 현업 수준의 프로젝트 구조 관리 체계를 도입하되, **발표(6/23, D-13) 전에는 동작을 바꾸지 않는 작업만** 수행하고 구조 변경은 발표 후로 격리한다.
 > **검증 방법**: 레포별 자동 분석 + 핵심 주장(시크릿 추적 여부, 파일 줄 수)은 `git ls-files`/`wc -l`로 직접 재검증함. 본 문서의 수치는 재검증된 값만 사용.
 
+> **레포별 작업 분해**: [structure-tasks/axis-ai.md](structure-tasks/axis-ai.md) · [structure-tasks/axis-backend.md](structure-tasks/axis-backend.md) · [structure-tasks/axis-frontend.md](structure-tasks/axis-frontend.md) · [structure-tasks/axis-infra.md](structure-tasks/axis-infra.md)
+
 ---
 
 ## 0. 요약 (TL;DR)
