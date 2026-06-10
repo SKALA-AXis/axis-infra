@@ -53,7 +53,10 @@ spec:
               memory: 512Mi
             limits:
               cpu: 1000m
-              memory: 2Gi
+              # 4Gi — EFS(NFS) 쓰기의 dirty page cache 가 cgroup 메모리에 잡혀
+              # 2Gi 에서 다운로드 중 OOMKilled (2026-06-10 실측, exit 137).
+              # init 은 main(5Gi req) 시작 전에 끝나므로 pod 유효 요청량 영향 없음.
+              memory: 4Gi
           volumeMounts:
             - name: model-cache
               mountPath: /root/.cache/huggingface
