@@ -13,7 +13,7 @@ metadata:
 spec:
   # 매 5 분 v2 카드 LLM-as-Judge 평가. daily cap $5 (EVAL_DAILY_BUDGET_USD).
   suspend: false
-  schedule: "*/5 * * * *"
+  schedule: "*/5 7-22 * * *"  # 노드 야간 셧다운(23:00-07:00 KST) 회피 — docs/adr/0007 참조
   timeZone: "Asia/Seoul"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3

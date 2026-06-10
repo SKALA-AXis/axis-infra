@@ -1,18 +1,17 @@
-# Track A · 뉴스성 고빈도 인제스션.
-#   · naver_news / global_newsroom
-#   · backend 의 /api/pipeline/trigger?track=A 호출 (B1 코드 변경 후 동작).
-#   · concurrencyPolicy: Forbid — 직전 Job 안 끝났으면 새 Job 미생성.
-#   · 인증: CRON_INTERNAL_TOKEN (B7 + D7=a) — backend 가 Authorization 헤더 검증.
+# Today's Insight · 평일 08:10 KST 사전 생성.
+#   · backend POST /api/dashboard/today-insight/cron-generate (1회) → axis-ai /today-insight/generate.
+#   · Spring @Scheduled 대신 CronJob — backend replicas:2 중복 트리거 방지.
+#   · 인증: CRON_INTERNAL_TOKEN (axis-secrets).
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: axis-cron-ingestion-a
+  name: axis-cron-today-insight
   namespace: skala3-finalproj-class3-team13
   labels:
     app.kubernetes.io/component: cron
     app.kubernetes.io/part-of: axis
 spec:
-  schedule: "10 7-22 * * *"  # 노드 야간 셧다운(23:00-07:00 KST) 회피 — docs/adr/0007 참조
+  schedule: "10 8 * * 1-5"
   timeZone: "Asia/Seoul"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
@@ -20,15 +19,14 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 2
-      # curl --max-time 60 이 각 시도를 60s 로 제한 → 재시도(backoff 2) 포함 ~4분이면 충분.
-      # 멈춤(stuck) backstop 으로 5분 통일 (트리거는 backend 파이프라인을 async 로 띄움).
-      activeDeadlineSeconds: 300
+      # axis-ai LLM 호출 timeout 90s + gpt-5.5 reasoning 여유.
+      activeDeadlineSeconds: 600
       ttlSecondsAfterFinished: 3600
       template:
         metadata:
           labels:
             app.kubernetes.io/component: cron
-            cron: ingestion-a
+            cron: today-insight
         spec:
           restartPolicy: OnFailure
           serviceAccountName: axis-cron-sa
@@ -40,16 +38,14 @@ spec:
                 - -c
                 - |
                   set -eu
-                  # 일시적 backend 연결거부 흡수 (--retry-connrefused). 정상은 즉시 202.
                   curl -fsSL \
-                    --connect-timeout 5 --max-time 60 \
-                    --retry 3 --retry-delay 5 --retry-connrefused \
+                    --connect-timeout 5 --max-time 180 \
+                    --retry 2 --retry-delay 10 --retry-connrefused \
                     -X POST \
                     -H "Content-Type: application/json" \
                     -H "Authorization: Bearer ${CRON_INTERNAL_TOKEN}" \
-                    "http://axis-backend:8080/api/pipeline/trigger?track=A"
+                    "http://axis-backend:8080/api/dashboard/today-insight/cron-generate"
               env:
-                # optional: true — 키 누락 시에도 파드 기동 (CreateContainerConfigError 회피).
                 - name: CRON_INTERNAL_TOKEN
                   valueFrom:
                     secretKeyRef:

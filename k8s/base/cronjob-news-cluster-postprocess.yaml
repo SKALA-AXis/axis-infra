@@ -13,7 +13,7 @@ spec:
   suspend: false
   # ingestion-a 는 매시 정각 실행. 크롤링/전처리/클러스터링이 backend async로
   # 몇 분 이상 걸릴 수 있어, 한 시간에 한 번 충분한 지연을 두고 실행한다.
-  schedule: "25 * * * *"
+  schedule: "25 7-22 * * *"  # 노드 야간 셧다운(23:00-07:00 KST) 회피 — docs/adr/0007 참조
   timeZone: "Asia/Seoul"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3

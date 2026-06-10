@@ -1,0 +1,23 @@
+# BGE-M3 + Reranker 모델 캐시 PVC (huggingface hub cache).
+#   · 기존: ai-deployment 의 model-cache emptyDir — Pod 재시작마다 HF 에서 ~3.4GB 재다운로드.
+#   · 노드가 매일 23:00–07:00 KST 재생성되는 환경(ADR 0007)이라 매 아침 재다운로드 발생
+#     → PVC 로 영속화해 기동 시간 단축 + HF 가용성/속도 의존 제거.
+#   · ReadWriteMany — RollingUpdate 중 신/구 Pod 가 다른 노드에서 동시 mount 가능해야 함.
+#   · StorageClass 는 환경별 overlay 에서 patch (skala: efs-sc-shared, local: standard).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: axis-models
+  namespace: skala3-finalproj-class3-team13
+  annotations:
+    # ArgoCD 가 manifest 에서 빠져도 PVC 는 prune 하지 않음 (모델 캐시 보호).
+    argocd.argoproj.io/sync-options: Prune=false
+  labels:
+    app.kubernetes.io/part-of: axis
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: REPLACE_RWX_STORAGE_CLASS  # 예: efs-sc · azurefile · nfs-client

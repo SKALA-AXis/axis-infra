@@ -41,16 +41,16 @@ resources:
 images:
 - name: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-ai
   newName: amdp-registry.skala-ai.com/skala26a-ai3/axis-ai
-  newTag: 52f8ca5
+  newTag: 3a7f2a7
 - name: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-ai-cron
   newName: amdp-registry.skala-ai.com/skala26a-ai3/axis-ai-cron
-  newTag: 52f8ca5
+  newTag: 3a7f2a7
 - name: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-backend
   newName: amdp-registry.skala-ai.com/skala26a-ai3/axis-backend
-  newTag: cad08bb
+  newTag: 583a6c0
 - name: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-frontend
   newName: amdp-registry.skala-ai.com/skala26a-ai3/axis-frontend
-  newTag: 623a9d1
+  newTag: 3647b74
 
   # ── pullPolicy + imagePullSecrets (3 Deployment)
 
@@ -65,6 +65,9 @@ patches:
 - path: patches/deployment-frontend.yaml
 - path: patches/deployment-backend.yaml
 - path: patches/deployment-ai.yaml
+- path: patches/cronjob-harbor-pull.yaml
+  target:
+    kind: CronJob
 - path: patches/configmap-env.yaml
 - path: patches/ingress-host.yaml
   target:
@@ -82,3 +85,7 @@ patches:
   target:
     kind: PersistentVolumeClaim
     name: axis-images
+- path: patches/pvc-models.yaml
+  target:
+    kind: PersistentVolumeClaim
+    name: axis-models

@@ -30,6 +30,33 @@ spec:
         app.kubernetes.io/part-of: axis
     spec:
       serviceAccountName: axis-ai-sa
+      # 모델 워밍업 — BGE-M3/Reranker 를 PVC 캐시에 미리 받아둠.
+      # initContainer 는 probe 대상이 아니므로 EFS 첫 다운로드가 아무리 느려도
+      # startupProbe 재시작 루프가 생기지 않음 (2026-06-10: 13분 예산도 2회 소진한 실측 후 도입).
+      # snapshot_download 는 idempotent — 캐시 적중 시 수 초 내 통과.
+      initContainers:
+        - name: model-warmup
+          image: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-ai:REPLACE_TAG
+          imagePullPolicy: IfNotPresent
+          command:
+            - python
+            - -c
+            - |
+              from huggingface_hub import snapshot_download
+              for repo in ("BAAI/bge-m3", "BAAI/bge-reranker-v2-m3"):
+                  print(f"warmup: {repo}", flush=True)
+                  snapshot_download(repo)
+              print("warmup: done", flush=True)
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+          volumeMounts:
+            - name: model-cache
+              mountPath: /root/.cache/huggingface
       containers:
         - name: ai
           image: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-ai:REPLACE_TAG
@@ -65,7 +92,11 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 5
             timeoutSeconds: 5
-            failureThreshold: 60  # 약 5분 — BGE-M3 + Reranker 다운로드/로드 시간 확보
+            # 약 13분 — 앱이 startup hook 에서 모델 다운로드를 마쳐야 포트를 열기 때문에
+            # PVC(EFS) 첫 다운로드(~3.4GB)가 통째로 이 예산 안에 들어옴.
+            # 60(5분)으로는 EFS 첫 기동에서 재시작 루프 발생 (2026-06-10 실측).
+            # 캐시 적중 시(두 번째 기동부터)는 1~2분 내 통과.
+            failureThreshold: 150
           livenessProbe:
             httpGet:
               path: /healthz
@@ -97,7 +128,8 @@ spec:
             claimName: axis-images
             # ai 는 read-only X
         - name: model-cache
-          # BGE-M3 + Reranker 모델 캐시. Pod 재시작마다 재다운로드 (1~3분).
-          # v1: PVC RWX 로 전환하여 노드 간 공유 가능.
-          emptyDir:
-            sizeLimit: 8Gi
+          # BGE-M3 + Reranker 모델 캐시 — PVC 영속화 (axis-models-pvc.yaml).
+          # 노드가 매일 재생성되는 환경(ADR 0007)에서 emptyDir 는 매 아침 ~3.4GB
+          # HF 재다운로드를 유발했음. 첫 기동 시 1회만 다운로드 후 재사용.
+          persistentVolumeClaim:
+            claimName: axis-models
