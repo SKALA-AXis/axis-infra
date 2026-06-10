@@ -65,7 +65,11 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 5
             timeoutSeconds: 5
-            failureThreshold: 60  # 약 5분 — BGE-M3 + Reranker 다운로드/로드 시간 확보
+            # 약 13분 — 앱이 startup hook 에서 모델 다운로드를 마쳐야 포트를 열기 때문에
+            # PVC(EFS) 첫 다운로드(~3.4GB)가 통째로 이 예산 안에 들어옴.
+            # 60(5분)으로는 EFS 첫 기동에서 재시작 루프 발생 (2026-06-10 실측).
+            # 캐시 적중 시(두 번째 기동부터)는 1~2분 내 통과.
+            failureThreshold: 150
           livenessProbe:
             httpGet:
               path: /healthz
