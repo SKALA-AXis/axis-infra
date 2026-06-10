@@ -11,7 +11,7 @@ metadata:
     app.kubernetes.io/part-of: axis
 spec:
   suspend: false
-  schedule: "55 23 * * 0"
+  schedule: "55 21 * * 0"  # 노드 야간 셧다운(23:00-07:00 KST) 회피 — docs/adr/0007 참조
   timeZone: "Asia/Seoul"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3

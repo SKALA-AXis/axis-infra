@@ -16,7 +16,7 @@ spec:
   # unsuspend 전: axis-ai 이미지에 스크립트 포함 확인 + 수동 Job 1회 성공 검증.
   suspend: true
   # 월 1회 (1일 03:00 KST). peer 5 사 × LLM 1 회 ≈ $0.75/월.
-  schedule: "0 3 1 * *"
+  schedule: "0 10 1 * *"  # 노드 야간 셧다운(23:00-07:00 KST) 회피 — docs/adr/0007 참조
   timeZone: "Asia/Seoul"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3

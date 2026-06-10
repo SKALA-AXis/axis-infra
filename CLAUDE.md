@@ -152,6 +152,11 @@ ALB:       skala3-team13-axis-alb-1349892737.ap-northeast-2.elb.amazonaws.com
 ArgoCD:    https://argocd.skala25a.project.skala-ai.com (공용 skala-argocd)
 ```
 
+> ⚠️ **노드 야간 셧다운**: skala-2025 워커 노드는 매일 **23:00–07:00 KST 동안 내려간다**
+> (플랫폼 정책, 팀 제어 불가). 이 시간대 서비스는 전부 Pending이고, 이 창에 스케줄된
+> CronJob은 100% 실패한다. CronJob은 반드시 07:00–22:59 KST 안에만 스케줄할 것 —
+> CI(`scripts/validate-cron-window.py`)가 강제함. 상세: [docs/adr/0007](docs/adr/0007-cron-night-shutdown-window.md)
+
 **배포 흐름** (자세히는 [docs/ci-cd-plan.md](docs/ci-cd-plan.md)):
 
 ```
@@ -384,6 +389,7 @@ axis-infra/
 ## 절대 하지 말 것
 
 - `.env` 파일 커밋 금지 (API 키 노출)
+- CronJob을 23:00–07:00 KST 사이에 스케줄 금지 (노드 야간 셧다운 — ADR 0007)
 - `openapi.yaml` 변경 후 팀 공지 없이 머지 금지
 - `schema.sql` 직접 수정 금지 (마이그레이션 파일로 관리)
 - Qdrant 페이로드에 원문 전체 텍스트 저장 금지
