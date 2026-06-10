@@ -1,0 +1,185 @@
+# 화면용 Daily Briefing · 매일 08:20 KST 사전 생성.
+#   · axis-ai POST /briefing/generate 호출 → BriefingGenerationAgent 실행.
+#   · save=true 로 briefing_reports / briefing_report_cards / briefing_report_articles 저장.
+#   · 프론트/백엔드는 사용자가 화면을 열 때 저장된 briefing_reports.payload 만 조회한다.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: axis-cron-briefing-generate
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app.kubernetes.io/component: cron
+    app.kubernetes.io/part-of: axis
+spec:
+  schedule: "20 8 * * *"
+  timeZone: "Asia/Seoul"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      # BriefingGenerationAgent 는 DB lookup + LLM display copy 정제 1~2회가 포함된다.
+      # 정상 1~3분, 콜드스타트/재시도까지 10분 상한.
+      activeDeadlineSeconds: 600
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: cron
+            cron: briefing-generate
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: axis-cron-sa
+          containers:
+            - name: trigger
+              image: curlimages/curl:8.5.0
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  anchor_date="$(TZ=Asia/Seoul date +%F)"
+                  payload="{\"briefing_type\":\"daily\",\"anchor_date\":\"${anchor_date}\",\"limit\":20,\"save\":true,\"refine_display_copy\":true}"
+                  curl -fsSL \
+                    --connect-timeout 10 --max-time 540 \
+                    --retry 6 --retry-delay 20 --retry-connrefused \
+                    -X POST \
+                    -H "Content-Type: application/json" \
+                    -d "${payload}" \
+                    "http://axis-ai:8001/briefing/generate"
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  cpu: 100m
+                  memory: 64Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 65534
+---
+# 화면용 Weekly Briefing · 매주 금요일 18:30 KST 사전 생성.
+#   · 해당 주 월요일부터 anchor_date까지의 카드뉴스를 briefing_reports에 저장한다.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: axis-cron-briefing-generate-weekly
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app.kubernetes.io/component: cron
+    app.kubernetes.io/part-of: axis
+spec:
+  schedule: "30 18 * * 5"
+  timeZone: "Asia/Seoul"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 900
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: cron
+            cron: briefing-generate-weekly
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: axis-cron-sa
+          containers:
+            - name: trigger
+              image: curlimages/curl:8.5.0
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  anchor_date="$(TZ=Asia/Seoul date +%F)"
+                  payload="{\"briefing_type\":\"weekly\",\"anchor_date\":\"${anchor_date}\",\"limit\":30,\"save\":true,\"refine_display_copy\":true}"
+                  curl -fsSL \
+                    --connect-timeout 10 --max-time 840 \
+                    --retry 6 --retry-delay 20 --retry-connrefused \
+                    -X POST \
+                    -H "Content-Type: application/json" \
+                    -d "${payload}" \
+                    "http://axis-ai:8001/briefing/generate"
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  cpu: 100m
+                  memory: 64Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 65534
+---
+# 화면용 Monthly Briefing · 매월 1일 08:35 KST 직전 월 결과 사전 생성.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: axis-cron-briefing-generate-monthly
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app.kubernetes.io/component: cron
+    app.kubernetes.io/part-of: axis
+spec:
+  schedule: "35 8 1 * *"
+  timeZone: "Asia/Seoul"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 1200
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: cron
+            cron: briefing-generate-monthly
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: axis-cron-sa
+          containers:
+            - name: trigger
+              image: curlimages/curl:8.5.0
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  anchor_date="$(TZ=Asia/Seoul date -d 'yesterday' +%F)"
+                  payload="{\"briefing_type\":\"monthly\",\"anchor_date\":\"${anchor_date}\",\"limit\":50,\"save\":true,\"refine_display_copy\":true}"
+                  curl -fsSL \
+                    --connect-timeout 10 --max-time 1140 \
+                    --retry 6 --retry-delay 20 --retry-connrefused \
+                    -X POST \
+                    -H "Content-Type: application/json" \
+                    -d "${payload}" \
+                    "http://axis-ai:8001/briefing/generate"
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  cpu: 100m
+                  memory: 64Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 65534
