@@ -64,7 +64,7 @@ metadata:
     app.kubernetes.io/part-of: axis
 spec:
   # 10분 주기. 실패 Job 은 ttlSecondsAfterFinished(1h) 동안 살아있어 그 안에 한 번은 잡힌다.
-  schedule: "*/10 * * * *"
+  schedule: "*/10 7-22 * * *"  # 노드 야간 셧다운(23:00-07:00 KST) 회피 — docs/adr/0007 참조
   timeZone: "Asia/Seoul"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
