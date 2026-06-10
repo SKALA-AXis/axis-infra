@@ -85,3 +85,7 @@ patches:
   target:
     kind: PersistentVolumeClaim
     name: axis-images
+- path: patches/pvc-models.yaml
+  target:
+    kind: PersistentVolumeClaim
+    name: axis-models

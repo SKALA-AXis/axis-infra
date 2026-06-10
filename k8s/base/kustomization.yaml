@@ -33,6 +33,7 @@ resources:
   # 즉 secret.example.yaml 은 템플릿일 뿐, 직접 적용되지 않는다.
   # 스토리지
   - axis-images-pvc.yaml
+  - axis-models-pvc.yaml
   # 워크로드
   - frontend-deployment.yaml
   - frontend-service.yaml

@@ -1,0 +1,5 @@
+# SKALA EFS 의 RWX storage class 사용 (efs-sc-shared = ReadWriteMany 지원).
+# JSON 6902 patch 로 storageClassName 만 치환 (pvc-images.yaml 과 동일 패턴).
+- op: replace
+  path: /spec/storageClassName
+  value: efs-sc-shared

@@ -97,7 +97,8 @@ spec:
             claimName: axis-images
             # ai 는 read-only X
         - name: model-cache
-          # BGE-M3 + Reranker 모델 캐시. Pod 재시작마다 재다운로드 (1~3분).
-          # v1: PVC RWX 로 전환하여 노드 간 공유 가능.
-          emptyDir:
-            sizeLimit: 8Gi
+          # BGE-M3 + Reranker 모델 캐시 — PVC 영속화 (axis-models-pvc.yaml).
+          # 노드가 매일 재생성되는 환경(ADR 0007)에서 emptyDir 는 매 아침 ~3.4GB
+          # HF 재다운로드를 유발했음. 첫 기동 시 1회만 다운로드 후 재사용.
+          persistentVolumeClaim:
+            claimName: axis-models
