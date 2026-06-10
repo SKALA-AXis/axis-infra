@@ -20,7 +20,8 @@
 - [ ] **CLAUDE.md 현행화** (현재 v3 기준 5/18 작성, 실코드는 v4+):
   - [ ] `ingestion_graph.py` 5노드 서술 → 실제 `pipeline/analysis_flow_graph.py`(966줄, issue_integrate→…→card_writer 7노드)로 교체
   - [ ] 미기재 주요 모듈 추가: `today_insight_agent`, `it_trend_agent`, `integration_agent`, `mixer_analysis_agent`, `chat_orchestrator_agent`, `analysis_pipeline.py`
-  - [ ] 노출도 산식·트렌드 섹터를 infra CLAUDE.md 정본과 통일 (현재 ai: `0.40/0.30/0.20/0.10, high≥0.70` + `security/ai_tech/large_deal/sk_ax_biz/other` vs infra: `0.50/0.30/0.20, high≥0.65` + `ax/security/infra/deal/other`) — **코드 구현값 대조 후 팀 확정 1회 필요**
+  - [ ] 트렌드 섹터: 코드 정본 확정됨 (`src/config/sectors.py` = `ax/security/infra/deal/other`) → ai CLAUDE.md의 `security/ai_tech/large_deal/sk_ax_biz/other` 서술을 코드값으로 교체
+  - [ ] 노출도 산식: **구현(`src/preprocessing/classification.py:92`)은 `0.70·cluster_size + 0.30·company_mention, high≥0.65`로, ai·infra CLAUDE.md 양쪽 산식과 모두 다름.** "코드가 맞다(문서 갱신)" vs "코드가 1차 미팅 확정 스펙에서 이탈했다(코드 수정)"를 팀이 결정한 뒤 문서/코드 일치시킬 것
   - [ ] LangGraph 버전 표기 통일 (ai CLAUDE.md 1.1.x vs infra 0.2.x vs pyproject `langgraph>=0.1`)
 - [ ] PR 템플릿에 "문서 갱신 필요 여부" 체크박스 추가
 
@@ -31,7 +32,7 @@
   - 의존 방향 규칙: `types ← {agents, pipeline, api, services}` 단방향
   - [ ] `import-linter` 도입, CI에 layers 계약 추가
 - [ ] **2-A2. `briefing_generation_agent.py` 분해** (7,028줄, 메서드 ~296개)
-  - [ ] 선행: 현 동작 골든 스냅샷 테스트 작성 (대표 입력 → 출력 고정)
+  - [ ] 선행: 현 동작 스냅샷 테스트 작성 — **LLM 호출은 mock으로 고정 필수** (실 LLM 출력은 비결정적이라 스냅샷 비교 불가). 검증 대상 = 프롬프트 조립 결과·분기 로직·출력 dict 구조
   - [ ] `agents/briefing/` 패키지: generation / context / display_copy / synthesis — 공개 인터페이스 불변
   - [ ] 시작 전 팀 채널 선언 (이 파일 건드리는 브랜치 모두 머지 후 조용한 창에서)
 - [ ] **2-A3. `strategic_insight_agent.py` 분해** (6,071줄) — 2-A2와 동일 절차

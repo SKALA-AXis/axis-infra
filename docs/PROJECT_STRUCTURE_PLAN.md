@@ -68,7 +68,7 @@ src/  (172 .py, ~96,500줄)
 | # | 문제 | 근거 | 위험 |
 |---|---|---|---|
 | A1 | **거대 에이전트**: `briefing_generation_agent.py` 7,028줄(메서드 ~296개), `strategic_insight_agent.py` 6,071줄 | wc -l 실측 | 두 명 이상이 동시에 못 건드림. PR 충돌의 진원지. 테스트 작성 사실상 불가 |
-| A2 | **모듈 순환 의존**: api ↔ agents ↔ services ↔ pipeline 체인 | import 분석 | 어디를 고쳐도 전체가 흔들림. 단위 테스트 mock 비용 급증 |
+| A2 | **모듈 순환 의존**: api ↔ agents 양방향 실증 (`router.py`→agents, `chat_orchestrator_agent.py`·`today_insight_agent.py`→api 스키마) + services/pipeline 연쇄 | import grep 실측 | 절단 지점이 좁고 명확(스키마 import 2파일)해서 2-A1 비용은 크지 않음 — 방치 시 확산이 문제 |
 | A3 | **untracked 파일 11건 방치**: `crawler/fast_filter.py`, `monitors/urgent.py`, `sources/{bigkinds,consensus,kipris,rss}.py`, `tests/test_parser_agents.py`, `data/peer_financials/sk_ax.json`, `docs/AGENT_ARCHITECTURE_VERIFICATION.md`, `tmp-cards/`, `src/axis_ai.egg-info/` | git status | **로컬에만 존재 = 백업 없음.** 노트북 분실 시 소실. 어떤 게 진행 중 작업이고 어떤 게 쓰레기인지 작성자만 앎 |
 | A4 | **CLAUDE.md 드리프트**: ingestion_graph 5노드 서술 vs 실제 analysis_flow 7노드, 신규 에이전트 5개+ 미기재, infra CLAUDE.md와 노출도 산식·섹터 taxonomy 불일치 | 문서 대조 | 온보딩/AI 도구가 틀린 지도 사용 |
 | A5 | API 라우터(898줄, 전 엔드포인트) 테스트 0 | tests/ 목록 | 계약 회귀를 backend 스모크에만 의존 |
@@ -83,7 +83,7 @@ src/  (172 .py, ~96,500줄)
 | # | 문제 | 근거 | 위험 |
 |---|---|---|---|
 | B1 | `PeerOverviewTableService` 2,223줄 — 조회+변환+캐싱+계산+정규식이 한 클래스 | wc -l 실측 | JDBC 강결합으로 테스트 불가 |
-| B2 | `ApiContractFixtureService` 778줄을 161개 사용처가 의존 — 전 도메인 fixture가 한 파일 | 사용처 검색 | 도메인 하나 고치면 전 컨트롤러 재컴파일·충돌 |
+| B2 | `ApiContractFixtureService` 778줄을 97개 사용처가 의존(실측 grep) — 전 도메인 fixture가 한 파일 | 사용처 검색 | 도메인 하나 고치면 전 컨트롤러 재컴파일·충돌 |
 | B3 | `bin/` 디렉토리(빌드 산출물 38개)가 커밋됨 | git ls-files | diff 노이즈, 소스와 산출물 불일치 혼동 |
 | B4 | peer 5사·IP 대역·기본 기간값 하드코딩 | 코드 확인 | peer 추가 = 코드 수정 배포 |
 | B5 | 거대 서비스(CardNews/GlobalSearch/PeerOverview) 단위 테스트 부재 — 테스트 10개 중 단위 4개 | tests 목록 | 리팩토링 안전망 없음 |
@@ -111,8 +111,8 @@ src/  (172 .py, ~96,500줄)
 |---|---|---|
 | I1 | 문서 중복·버전 산재: `CLAUDE.md`≈`AGENTS.md`, `CONVENTION.md`≈`AXIS_개발표준정의서_infra_v1.0.md`(80% 중복), 개발계획 v2/v3 공존, `.docx`·한글파일명 PDF 혼입 | 단일 소스 불명 |
 | I2 | 백업/복사본 파일: `api/openapi copy.yaml`(131KB, 5/18 시점 사본), 로컬의 `secret.skala 2.yaml`·`.env.skala.tmp.bak` (※ **git 추적 아님** — 로컬 위생 문제) | 혼동 유발 |
-| I3 | placeholder 잔여: `ingress.yaml`의 REPLACE_CERT_UUID, `cronjob-profile-refresh.yaml`의 REPLACE_TAG | 발표 전 치환 체크리스트 |
-| I4 | 파일명-리소스명 불일치 1건: `cronjob-failure-notifier.yaml` → `axis-cron-notifier` | 경미 |
+| I3 | ~~placeholder 잔여~~ → **2차 검증에서 기각**: `kubectl kustomize overlays/skala` 렌더 결과 REPLACE 잔존 0건 — base의 placeholder는 전부 overlay가 치환함. 발표 전 작업은 "렌더 grep REPLACE = 0건 확인" 1줄로 충분 | 정정됨 |
+| I4 | 네이밍 불일치(정정): CronJob 이름은 `axis-cron-failure-notifier`로 파일명과 일치. 불일치는 같은 파일 내 보조 리소스(Role/RoleBinding/SA/ConfigMap = `axis-cron-notifier`)와 CronJob 사이 | 경미 |
 | I5 | schema.sql(V40 스냅샷)과 backend Flyway(V43)의 동기화 프로세스 미문서화 | 어느 쪽이 SSoT인지 V41+ 구간 모호 |
 
 ### 2.5 오탐 정정 (분석 도구가 보고했으나 직접 검증으로 기각한 것)
@@ -121,6 +121,19 @@ src/  (172 .py, ~96,500줄)
 
 1. **"`.env` 실값·`secret.skala 2.yaml`이 git에 커밋됨" → 사실 아님.** `git ls-files` 확인 결과 양 레포 모두 추적 파일은 `.example` 계열뿐이다. 실값 파일은 gitignore가 정상 작동 중이며 **로컬 작업 디렉토리에만 존재**한다. 따라서 "키 로테이션 + git 히스토리 정제" 같은 비상 조치는 **불필요**하다. (단, 로컬 복사본 정리는 위생 차원에서 수행 — Phase 0)
 2. **"router.py 33,848줄, it_trend_agent 62,676줄" → 바이트 수를 줄 수로 오인.** 실측: router.py 898줄, it_trend 1,508줄. 단 briefing_generation 7,028줄·strategic_insight 6,071줄·PeerOverviewTableService 2,223줄·AxisPlanningViews 2,980줄은 실측 확인.
+
+### 2.6 2차 검증(2026-06-10, 본 문서 발행 후 비판 검토)에서 정정·확정된 항목
+
+| 항목 | 1차 기재 | 2차 검증 결과 |
+|---|---|---|
+| backend Fixture 사용처 | 161곳 | **97곳** (grep 실측) |
+| infra placeholder 잔존 | "발표 전 치환 필요" | **기각** — `kubectl kustomize overlays/skala` 렌더에 REPLACE 0건, overlay가 전부 치환 |
+| failure-notifier 네이밍 | "파일명 vs 리소스명 불일치" | CronJob명은 파일명과 일치. 불일치는 보조 리소스(Role/SA 등 `axis-cron-notifier`)와의 사이 |
+| 섹터 taxonomy 정본 | infra판 추정 | **확정** — 코드 `src/config/sectors.py` = `ax/security/infra/deal(+other)` |
+| 노출도 산식 정본 | infra판 추정 | **양쪽 문서 모두 코드와 다름** — 구현은 `0.70·cluster + 0.30·mention, high≥0.65` (`preprocessing/classification.py:92`). 팀 의사결정 필요 |
+| backend Flyway | "V1~V43 연속" | V1~V43 + **V32_5**(분수 버전) 44개, 중복 없음 — 연속성 문제는 아니나 표기 정정 |
+| frontend api.ts 신선도 | "재생성 필요 가능성" | **확정 필요** — openapi.yaml 6/9 변경(`GET /api/global/trends` 추가, #51)이 api.ts(5/18)에 미반영 |
+| 검증 통과(이상 없음 재확인) | — | _deprecated import 0건, ingestion_graph.py 부재, api↔agents 순환 실재(2파일), 인라인 style 85건, untracked 47건, bin/ 38파일 추적, FE에 router/zustand/react-query/vitest 부재 — 전부 1차 기재와 일치 |
 
 ---
 
@@ -171,7 +184,7 @@ src/  (172 .py, ~96,500줄)
 | 순서 | 작업 | 방법 | 충돌 방지 |
 |---|---|---|---|
 | 2-A1 | 공용 타입 중앙화로 순환 의존 절단 | `src/types/`(또는 `src/contracts/`) 신설 → State/스키마/공용 모델 이동, 의존 방향: types ← {agents, pipeline, api, services} 단방향. import-linter로 CI 강제 | **이동만, 로직 무변경.** 한 PR = 한 모듈군 |
-| 2-A2 | `briefing_generation_agent.py` 7,028줄 분해 | `agents/briefing/` 패키지로: generation / context / display_copy / synthesis. 공개 인터페이스(클래스명·메서드 시그니처) 불변 | 분해 전 현 동작 스냅샷 테스트(골든 출력) 먼저 작성 |
+| 2-A2 | `briefing_generation_agent.py` 7,028줄 분해 | `agents/briefing/` 패키지로: generation / context / display_copy / synthesis. 공개 인터페이스(클래스명·메서드 시그니처) 불변 | 분해 전 스냅샷 테스트 — **LLM 호출은 mock 고정 필수**(실 LLM은 비결정적), 검증 대상은 프롬프트 조립·분기·출력 구조 |
 | 2-A3 | `strategic_insight_agent.py` 6,071줄 동일 분해 | 〃 | 〃 |
 | 2-A4 | 크롤러 BaseCrawler 템플릿 메서드 통일 | fetch/parse/post_process 추상화 | 소스 1개씩 이행 |
 | 2-A5 | api/router.py 엔드포인트 테스트 (mock agent) | 우선 happy-path 전수 | — |
@@ -240,7 +253,7 @@ src/  (172 .py, ~96,500줄)
 | 발표 준비와 Phase 1 병행 부담 | Phase 1은 전부 문서 작업 — 코드 프리즈와 무관, 분담 가능 |
 | Phase 2 중 인수인계 시작 | "분해 완료"보다 "분해 방법 문서화"를 우선 — 못 끝내면 HANDOVER.md에 로드맵으로 남김 |
 | Harbor 삭제 원인 미상 | 매니저 회신 대기. 자동 정리 정책이면 cleanup 워크플로 설계를 그에 맞춤 (작업 #2 보류 중) |
-| 노출도 산식·섹터 taxonomy 정본 확인 | 1-1 진행 전 팀 확인 1회 필요 (infra CLAUDE.md 값이 1차 미팅 확정으로 추정되나 코드 구현값 대조 필요) |
+| 노출도 산식·섹터 taxonomy 정본 | **2차 검증으로 해소/구체화**: 섹터는 코드(`src/config/sectors.py`) = infra판(`ax/security/infra/deal/other`) 확정 → ai CLAUDE.md만 수정. 산식은 **코드 구현이 제3의 값** — `0.70·cluster_size + 0.30·company_mention, high≥0.65` (`src/preprocessing/classification.py:92`), 문서의 cluster_size_norm/tier1_diversity 산식은 미구현. "코드가 맞고 문서 갱신"인지 "코드가 확정 스펙에서 이탈"인지 **팀 의사결정 필요** |
 | frontend 이중 구조 장기화 | 팀원 일정상 발표 후로 미뤄질 수 있음 — 최소한 "어느 쪽이 정본인지" 선언만 발표 전에 |
 
 ---

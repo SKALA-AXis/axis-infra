@@ -26,7 +26,7 @@
 - [ ] **2-B1. `PeerOverviewTableService` 분해** (2,223줄 — 조회+변환+캐싱+계산 혼재)
   - [ ] 선행: 현 응답 고정하는 통합 테스트 1개
   - [ ] 3분할: `PeerOverviewTableQuery`(JDBC) / `PeerOverviewTableFormatter` / `PeerOverviewTableCache`
-- [ ] **2-B2. `ApiContractFixtureService` 도메인 분리** (778줄, 사용처 161곳)
+- [ ] **2-B2. `ApiContractFixtureService` 도메인 분리** (778줄, 사용처 97곳 — grep 실측)
   - [ ] 도메인별 Fixture 클래스(AuthFixture, CardFixture, DashboardFixture…) 또는 `contract-fixtures.json` 로더 일반화
   - [ ] 컨트롤러 의존을 도메인별로 좁힘 — 한 PR에 도메인 1~2개씩
 - [ ] **2-B3. 하드코딩 제거**
@@ -39,6 +39,6 @@
 | 항목 | 값 |
 |---|---|
 | PeerOverviewTableService | 2,223줄 |
-| ApiContractFixtureService | 778줄 / 사용처 161 |
+| ApiContractFixtureService | 778줄 / 사용처 97 (실측) |
 | 테스트 | 10개 (스모크·통합 위주, 단위 4개) |
-| Flyway | V1~V43 연속, validate-on-migrate 정상 |
+| Flyway | V1~V43 + V32_5, 총 44개·중복 없음, validate-on-migrate 정상 |

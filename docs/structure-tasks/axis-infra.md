@@ -9,7 +9,7 @@
 - [ ] 로컬 잔존물 삭제: `k8s/overlays/skala/secret.skala 2.yaml`, `.env.skala.tmp.bak` (※ 둘 다 **git 미추적** — 보안 사고 아님, 로컬 위생)
 - [ ] `.gitignore`에 macOS 복사본 패턴 보강: `* [0-9].yaml`, `* [0-9].md`
 - [ ] untracked 문서 처분: `docs/AI_AGENT_DESIGN.md`, `docs/AXIS_DIFFERENTIATION_FEASIBILITY.md`, `docs/admin_page.md`, 한글명 PDF → 커밋 or `docs/_archived/`
-- [ ] (경미) `cronjob-failure-notifier.yaml` 파일명 vs 리소스명(`axis-cron-notifier`) 통일 — k8s 변경이므로 PR
+- [ ] (경미) `cronjob-failure-notifier.yaml` 내부 보조 리소스(Role/RoleBinding/SA/ConfigMap = `axis-cron-notifier`)와 CronJob(`axis-cron-failure-notifier`) 네이밍 통일 — k8s 변경이므로 PR (※ CronJob명은 파일명과 일치, 1차 분석의 "파일명 불일치" 주장은 오류)
 
 ## Phase 1 — 문서 거버넌스 (~6/20)
 
@@ -24,8 +24,7 @@
 
 ## 발표 직전 체크리스트 (6/21~22 — 기존 CLAUDE.md 체크리스트 + 추가분)
 
-- [ ] `k8s/base/ingress.yaml` REPLACE_CERT_UUID(ACM ARN) 치환
-- [ ] `k8s/base/cronjob-profile-refresh.yaml` REPLACE_TAG 치환
+- [ ] placeholder 최종 확인 — **치환 작업 불필요** (2차 검증: overlay 렌더에 REPLACE 잔존 0건). 확인만: `kubectl kustomize k8s/overlays/skala | grep -c REPLACE` → 0이면 통과
 - [ ] `BRIEFING_RECIPIENTS` team13 6명 확정
 - [ ] `axis-cron-delivery` suspend 상태 확인
 - [ ] Application finalizer 제거 검토

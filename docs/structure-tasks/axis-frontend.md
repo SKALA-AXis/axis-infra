@@ -7,7 +7,7 @@
 
 - `src/app/`(레거시, 90 TSX) + `src/features/`(신 구조, 27개 feature) **이중 구조**이며, 동일 이름 컴포넌트가 양쪽에 존재 (HomeDashboardView, BriefingsView, KeywordGraphView, HomeCardNewsView 등). DashboardShell은 `app/` 쪽을 import — `features/` 쪽 다수는 미사용으로 보임
 - CLAUDE.md는 React Router v6 / Zustand / React Query / `src/pages` 구조를 서술하지만 **현재 코드는 셋 다 사용하지 않음** (커스텀 `useViewRouting` + 로컬 상태 + Repository 패턴)
-- `src/types/api.ts` 마지막 재생성 5/18, infra `openapi.yaml`은 6/9 갱신 → **재생성 필요 가능성**
+- `src/types/api.ts` 마지막 재생성 5/18, infra `openapi.yaml`은 6/9 갱신 — **재생성 필요 확정**: 6/9 커밋(#51)이 `GET /api/global/trends` 계약을 추가했고 api.ts에 미반영
 - 테스트 0개 (`"test": "echo 'No tests yet' && exit 0"`), 인라인 `style={{}}` 85건, untracked 47건
 - 거대 컴포넌트 실측: `AxisPlanningViews.tsx` 2,980줄, `MixerView.tsx` 1,218줄, `KeywordGraphView.tsx` 1,143줄, `HomeDashboardView.tsx` 1,074줄
 - Repository 패턴(HTTP+mock 듀얼) 설계는 우수. 단 KeywordGraphView 등에서 httpClient 직접 호출 2건이 패턴 우회
