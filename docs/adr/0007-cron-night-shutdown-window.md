@@ -45,7 +45,6 @@ axis-pg-dump (02:10 KST):  Failed — 밤사이 스케줄할 노드가 없어 �
 | axis-cron-global-trend | 02:30 매일 | 07:40 매일 |
 | axis-cron-ingestion-d | 04:25 매일 | 07:15 매일 |
 | axis-cron-sector-pulse | 월 02:00 | 월 07:50 |
-| axis-cron-capability-evolution | 매월 1일 03:00 | 매월 1일 10:00 |
 | axis-cron-profile-refresh | 분기 1일 03:00 | 분기 1일 10:30 |
 | axis-cron-weekly-digest | 일 23:55 | **일 21:55** (셧다운 직전이 아닌 안전 구간) |
 | axis-cron-ingestion-a | 매시 :00 | 07–22시 :10 |
