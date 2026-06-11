@@ -35,7 +35,8 @@
 - [x] PR #59 — cron 야간 셧다운 창 재배치 + CI 가드 (머지됨, 6/11 아침 검증: 야간 실패 잡 0건)
 - [x] PR #60/#62/#63 — 모델 캐시 PVC + initContainer 워밍업 + 4Gi (머지됨, 6/11 아침 워밍업 4초 통과)
 - [ ] 서비스 3레포 Trivy PR: backend#64 / ai#124(머지됨) / frontend#77 — 잔여분 머지 확인
-- [ ] Harbor artifact 삭제 사건 — 매니저 문의 시 **retention 정책 설정 요청을 같이** ("SHA 태그 최근 10개 유지, develop/buildcache 제외"). 자체 cleanup 워크플로는 **폐기**: 로봇 계정에 delete 권한 없음 확인(6/11) + 프로젝트 storage quota 무제한 + 잔여 기간 2주라 자동화 과투자. 6/23 이후 운영 전환 시에만 재검토
+- [x] Harbor retention **설정 완료** (6/11): artifact 최근 10개 + develop/buildcache 각 3개, 매일 스케줄. 자체 cleanup 워크플로 폐기 확정
+  - ⚠️ **롤백 창 주의**: 보존 10개 = 최근 ~10회 배포분. 그보다 오래된 커밋으로 `git revert` 롤백 시 해당 이미지가 이미 purge 됐을 수 있음 → ImagePullBackOff. 그 경우 해당 커밋에서 `gh workflow run build-and-push.yml --ref <sha>` 로 재빌드 후 롤백. 옛 태그 404 는 이제 **정상 동작**
 
 ## Phase 3 — 가드 자동화 (발표 후, 서비스 레포와 병행)
 
