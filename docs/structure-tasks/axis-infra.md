@@ -32,10 +32,10 @@
 
 ## 진행 중 / 머지 대기 (이 계획과 별개로 이미 떠 있는 것)
 
-- [ ] PR #59 — cron 야간 셧다운 창 재배치 + CI 가드 (**머지 필요**)
-- [ ] PR #60 — BGE-M3 모델 캐시 PVC (**머지 필요**, 머지 시 PVC quota 5/5)
-- [ ] 서비스 3레포 Trivy PR: backend#64 / ai#124 / frontend#77
-- [ ] Harbor artifact 삭제 사건 — 매니저 회신 대기 → 회신 후 cleanup 워크플로 설계 (로봇 delete 권한 테스트 포함)
+- [x] PR #59 — cron 야간 셧다운 창 재배치 + CI 가드 (머지됨, 6/11 아침 검증: 야간 실패 잡 0건)
+- [x] PR #60/#62/#63 — 모델 캐시 PVC + initContainer 워밍업 + 4Gi (머지됨, 6/11 아침 워밍업 4초 통과)
+- [ ] 서비스 3레포 Trivy PR: backend#64 / ai#124(머지됨) / frontend#77 — 잔여분 머지 확인
+- [ ] Harbor artifact 삭제 사건 — 매니저 문의 시 **retention 정책 설정 요청을 같이** ("SHA 태그 최근 10개 유지, develop/buildcache 제외"). 자체 cleanup 워크플로는 **폐기**: 로봇 계정에 delete 권한 없음 확인(6/11) + 프로젝트 storage quota 무제한 + 잔여 기간 2주라 자동화 과투자. 6/23 이후 운영 전환 시에만 재검토
 
 ## Phase 3 — 가드 자동화 (발표 후, 서비스 레포와 병행)
 
