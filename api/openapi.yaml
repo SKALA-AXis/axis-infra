@@ -2252,7 +2252,7 @@ paths:
               include_source_cards: true
       responses:
         '200':
-          description: 공유 링크
+          description: 저장된 믹서 결과 기반 공유 payload
           content:
             application/json:
               schema:
@@ -2746,6 +2746,14 @@ paths:
                     data:
                       type: object
                       properties:
+                        status:
+                          type: string
+                          example: ready
+                        result_kind:
+                          type: string
+                          example: mixer_share_payload
+                        mix_id:
+                          type: string
                         share_url:
                           type: string
                         expires_at:
@@ -2922,6 +2930,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         '404':
           $ref: "#/components/responses/NotFound"
+        '503':
+          $ref: "#/components/responses/ServiceUnavailable"
         '500':
           $ref: "#/components/responses/InternalServerError"
   /api/global/trends/run:

@@ -1,5 +1,6 @@
--- AXIS crawler/parser-aware product schema, V40 target
--- Snapshot date: 2026-05-29 KST
+-- AXIS crawler/parser-aware product schema snapshot
+-- Snapshot date: 2026-06-11 KST
+-- Migration baseline: backend Flyway V44 (V40 integrated issue storage + V41~V44 read-model/seed additions).
 --
 -- Physical app tables after V32:
 --   peer_companies, raw_articles, raw_article_parse_results,
@@ -535,7 +536,7 @@ CREATE TABLE IF NOT EXISTS briefing_reports (
     CONSTRAINT briefing_reports_status_check
         CHECK (status IN ('queued', 'running', 'completed', 'completed_partial', 'failed')),
     CONSTRAINT briefing_reports_type_check
-        CHECK (briefing_type IN ('daily', 'weekly', 'custom')),
+        CHECK (briefing_type IN ('daily', 'weekly', 'monthly', 'custom')),
     CONSTRAINT briefing_reports_date_order CHECK (date_from <= date_to),
     CONSTRAINT chk_briefing_reports_primary_card_in_related
         CHECK (
