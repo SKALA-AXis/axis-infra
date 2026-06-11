@@ -1,0 +1,302 @@
+=== peer_companies.tier ===
+tier|count
+domestic|4
+self|1
+(2 rows)
+=== peer_companies.id ===
+id|name|tier
+hyundai_autoever|현대오토에버|domestic
+lg_cns|LG CNS|domestic
+posco_dx|포스코DX|domestic
+samsung_sds|삼성SDS|domestic
+sk_ax|SK AX|self
+(5 rows)
+=== raw_articles.source_name ===
+source_name|count
+naver_news|7496
+naver_datalab|6175
+naver_research|309
+meta_official|222
+amazon_official|197
+SK AX Site|155
+microsoft_official|116
+LG CNS Press|102
+dart|100
+nvidia_official|77
+ir_pdf|67
+Samsung SDS Press Release|53
+BCG|51
+stock_market|47
+SPRi|40
+google_official|37
+POSCO DX NewsRoom|25
+apple_newsroom|13
+SK AX Newsroom|12
+Hyundai AutoEver News|10
+Hyundai AutoEver Blog|1
+(21 rows)
+=== raw_articles.source_type ===
+source_type|count
+news|7496
+search_trend|6175
+official|865
+securities_report|309
+company_site|155
+dart|100
+trend_report|91
+ir|67
+market_data|47
+(9 rows)
+=== raw_articles.processing_status ===
+processing_status|count
+PROCESSED|10677
+SKIPPED|4526
+RAW|101
+SKIPPED_RELEVANCE|1
+(4 rows)
+=== raw_articles.relevance_label ===
+relevance_label|count
+|6949
+irrelevant|4508
+relevant|3847
+uncertain|1
+(4 rows)
+=== raw_articles.importance_level ===
+importance_level|count
+|14272
+high|941
+medium|92
+(3 rows)
+=== raw_articles.crawl_status ===
+crawl_status|count
+success|15301
+failed|4
+(2 rows)
+=== raw_articles.content_type ===
+content_type|count
+html|8579
+api|6322
+pdf|404
+(3 rows)
+=== raw_articles.language ===
+language|count
+ko|14592
+en|713
+(2 rows)
+=== crawl_runs.run_type ===
+run_type|count
+realtime|29
+backfill|1247
+(2 rows)
+=== crawl_runs.status ===
+status|count
+failed|3
+success|1260
+running|13
+(3 rows)
+=== crawl_runs.source_name ===
+source_name|count
+naver_news|846
+naver_research|89
+jobs|86
+company_news|75
+global_newsroom|72
+dart|29
+bcg|18
+naver_datalab|15
+ir|15
+sk_ax_site|11
+spri|9
+stock|8
+naver_news,global_newsroom|2
+stock,naver_research|1
+(14 rows)
+=== crawl_run_articles.action ===
+action|count
+duplicate|15680
+inserted|5715
+legacy_link|9017
+(3 rows)
+=== crawl_run_articles.fetch_status ===
+fetch_status|count
+failed|1
+success|30411
+(2 rows)
+=== card_news.event_type ===
+event_type|count
+financial|50
+contract|43
+partnership|40
+tech_release|32
+personnel|14
+ma|5
+regulation|3
+expansion|2
+tech|1
+company|1
+(10 rows)
+=== card_news.importance ===
+importance|count
+high|181
+medium|9
+urgent|1
+(3 rows)
+=== card_news.primary_keyword_category ===
+primary_keyword_category|count
+ax|92
+infra|44
+other|23
+security|15
+|12
+deal|5
+(6 rows)
+=== raw_article_business_signals.business_area ===
+business_area|count
+company_total|15596
+cloud|3403
+ai_ax|3383
+enterprise_it|1925
+vehicle_sw|1264
+logistics|811
+smart_factory|601
+sk_ax|100
+cloud|ai_ax|enterprise_it|43
+orders_pipeline|25
+IT서비스|17
+물류|15
+클라우드|12
+robotics|12
+it_service|10
+automation|9
+risk|9
+IT서비스부문(SK AX)|8
+ITO (IT Outsourcing)|7
+SI (System Integration)|7
+rd|7
+ai_ax|enterprise_it|6
+SI|6
+차량SW|6
+차량SW (Automotive SW)|6
+IT|5
+IT 서비스|차량용 SW|5
+Digital Business Service|5
+IT서비스|물류|5
+클라우드&AI|5
+(30 rows)
+=== raw_article_business_signals.signal_type ===
+signal_type|count
+investment|8320
+growth|7029
+risk|2596
+forecast|1942
+efficiency|1815
+strategy|1746
+valuation|1300
+service_launch|1291
+orders_pipeline|1091
+product_service|121
+business_overview|68
+rd|28
+profitability|28
+outlook|2
+(14 rows)
+=== raw_article_business_signals.sentiment ===
+sentiment|count
+negative|5767
+positive|9870
+neutral|11740
+(3 rows)
+=== raw_article_financial_metrics.metric_name ===
+metric_name|count
+revenue_total|1158
+operating_profit|459
+operating_margin|289
+eps|215
+pbr|212
+target_price|207
+per|200
+net_income|187
+gross_profit|127
+profit_before_tax|104
+cost_of_sales|104
+current_price|79
+upside_pct|70
+gross_margin|12
+ebitda|7
+backlog|7
+orders|6
+roe|4
+capex|2
+(19 rows)
+=== raw_article_financial_metrics.source_type ===
+source_type|count
+dart|724
+ir|1354
+securities_report|1371
+(3 rows)
+=== raw_article_parse_results.parse_status ===
+ERROR:  column "parse_status" does not exist
+LINE 1: SELECT parse_status, count(*) FROM raw_article_parse_results...
+               ^
+=== raw_article_parse_results.parser_quality_label ===
+parser_quality_label|count
+fail|15
+pass|361
+|100
+(3 rows)
+=== market_price_ohlcv.ticker_count ===
+count
+5
+(1 row)
+=== market_price_ohlcv.ticker.peer ===
+exchange|ticker|peer_company_id|count
+KRX|022100|posco_dx|823
+KRX|307950|hyundai_autoever|823
+KRX|018260|samsung_sds|823
+KRX|034730|sk_ax|822
+KRX|064400|lg_cns|314
+KRX|064400||1
+KRX|018260||1
+KRX|307950||1
+KRX|022100||1
+(9 rows)
+=== insight_reports.insight_type ===
+insight_type|count
+legacy_ledger|10
+(1 row)
+=== insight_reports.status ===
+status|count
+completed|10
+(1 row)
+=== legacy_records.source_table ===
+source_table|count
+raw_article_business_signals|28268
+crawl_run_articles|22633
+pipeline_logs|16343
+raw_article_source_metadata|12268
+article_peer_companies|9202
+raw_article_financial_metrics|3602
+crawl_runs|2652
+evidence_chain|163
+card_news_articles|133
+analysis_ledger|52
+market_instruments|5
+(11 rows)
+=== flyway_schema_history ===
+installed_rank|version|description|success|installed_on
+32|32|add card news anchor foreign keys|t|2026-05-20 01:49:47.256285
+31|31|restore crawler parser fact schema|t|2026-05-19 13:36:38.333095
+30|30|collapse legacy tables into minimal product schema|t|2026-05-19 12:49:55.286777
+29|29|front product read models and analysis tables|t|2026-05-19 12:49:54.431837
+28|28|consolidate raw article metadata and stock prices|t|2026-05-19 08:27:13.737044
+27|27|drop raw article credibility columns|t|2026-05-19 04:42:17.739006
+26|26|add raw article analysis fact tables|t|2026-05-18 05:59:23.578319
+25|25|drop redundant raw article projection tables|t|2026-05-18 00:56:24.416879
+24|24|separate crawl run article metadata writes|t|2026-05-18 00:47:15.822045
+23|23|normalize raw article nested metadata|t|2026-05-15 10:05:17.852399
+22|22|split raw article source metadata|t|2026-05-15 10:02:09.155136
+21|21|add briefing feedback log relation tables|t|2026-05-15 02:15:42.28205
+20|20|normalize article card peer relations|t|2026-05-15 02:14:01.725146
+19|19|add analysis ledger|t|2026-05-15 00:26:38.941488
+18|18|add infra cost daily|t|2026-05-13 07:58:13.459777
+(15 rows)

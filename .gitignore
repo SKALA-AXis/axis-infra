@@ -113,3 +113,10 @@ k8s/argocd/repo-secret.yaml
 # kustomize 렌더 산출물 — 실 secret 이 포함될 수 있음 (make skala-apply 전 디버그용).
 /json
 json
+
+# 실값 환경파일 — example 만 추적 (.env.skala 가 미커버 상태로 git add -A 위험했음, 2026-06-11)
+.env.skala
+# macOS Finder 복사본 (예: "secret.skala 2.yaml", "문서 2.md")
+* [0-9].yaml
+* [0-9].yml
+* [0-9].md

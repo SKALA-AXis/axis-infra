@@ -111,8 +111,8 @@ PostgreSQL (원문 아카이브)    Qdrant (벡터 검색엔진)
 | Reranker | BGE-reranker-v2-m3 | FlagEmbedding 1.x | Cross-Encoder 방식 |
 | Vector DB | Qdrant | 1.9.x | 하이브리드 검색 네이티브 |
 | Raw DB | PostgreSQL | 16.x | 원문 아카이브 |
-| 파이프라인 | LangGraph | 0.2.x | Supervisor 패턴 |
-| AI 서버 | FastAPI + uv | FastAPI 0.115.x | Python 내부 서버 |
+| 파이프라인 | LangGraph | 1.2.x (lock 실측) | Supervisor 패턴 |
+| AI 서버 | FastAPI + uv | FastAPI 0.13x (lock 실측) | Python 내부 서버 |
 | 백엔드 | SpringBoot | 3.x (Java 17) | REST API 서버 |
 | 프론트 | React + Vite | React 18.x | TypeScript |
 | 로컬 개발 | Docker Compose | v2.x | 개인 Mac (선택) |
@@ -254,13 +254,13 @@ other      기타
 ### 노출도 밴드 (v3 — 결정적 산식)
 
 ```
-exposure_score = 0.50·cluster_size_norm + 0.30·credibility_max
-               + 0.20·peer_mention_rate
-
-high     ≥ 0.65
-medium   0.40 ~ 0.65
-low      < 0.40
+exposure_score = 0.70·cluster_size_score + 0.30·company_mention_score
+high ≥ 0.65   (axis-ai src/preprocessing/classification.py 구현 실측, 2026-06-11)
 ```
+
+> ⚠️ 위는 **코드 구현 기준**. 1차 미팅 확정 스펙(0.50/0.30/0.20 3항)과 다름 —
+> "코드가 맞다(문서 갱신)" vs "스펙 이탈(코드 수정)" 팀 결정 필요
+> (PROJECT_STRUCTURE_PLAN §2.6). 결정 전까지 분석·발표 자료는 구현값 기준.
 
 > v1의 urgent/notable/reference는 폐기 (deprecated). 호환을 위해 API 스키마에서만 표시 유지.
 

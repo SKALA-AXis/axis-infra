@@ -1,0 +1,18 @@
+table_name|column_name|foreign_table_name|foreign_column_name
+briefing_reports|primary_peer_company_id|peer_companies|id
+briefing_reports|primary_card_news_id|card_news|id
+card_news|peer_company_id|peer_companies|id
+card_news|primary_raw_article_id|raw_articles|id
+crawl_run_articles|raw_article_id|raw_articles|id
+crawl_run_articles|crawl_run_id|crawl_runs|id
+insight_reports|primary_peer_company_id|peer_companies|id
+insight_reports|primary_card_news_id|card_news|id
+market_price_ohlcv|raw_article_id|raw_articles|id
+market_price_ohlcv|peer_company_id|peer_companies|id
+mixer_results|primary_peer_company_id|peer_companies|id
+mixer_results|primary_card_news_id|card_news|id
+raw_article_business_signals|raw_article_id|raw_articles|id
+raw_article_financial_metrics|raw_article_id|raw_articles|id
+raw_article_parse_results|raw_article_id|raw_articles|id
+raw_articles|crawl_run_id|crawl_runs|id
+(16 rows)
