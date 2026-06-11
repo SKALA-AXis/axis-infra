@@ -17,7 +17,7 @@
 
 ## Phase 1 — 문서 동기화 (~6/20, 동작 불변)
 
-- [ ] **CLAUDE.md 현행화** (현재 v3 기준 5/18 작성, 실코드는 v4+):
+- [x] **CLAUDE.md 현행화** (PR #142, 6/11 — 구조·그래프·엔드포인트·산식 실측 교체):
   - [ ] `ingestion_graph.py` 5노드 서술 → 실제 `pipeline/analysis_flow_graph.py`(966줄, issue_integrate→…→card_writer 7노드)로 교체
   - [ ] 미기재 주요 모듈 추가: `today_insight_agent`, `it_trend_agent`, `integration_agent`, `mixer_analysis_agent`, `chat_orchestrator_agent`, `analysis_pipeline.py`
   - [ ] 트렌드 섹터: 코드 정본 확정됨 (`src/config/sectors.py` = `ax/security/infra/deal/other`) → ai CLAUDE.md의 `security/ai_tech/large_deal/sk_ax_biz/other` 서술을 코드값으로 교체

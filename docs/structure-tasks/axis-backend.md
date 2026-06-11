@@ -5,7 +5,7 @@
 
 ## Phase 0 — 위생 (즉시, ~6/12)
 
-- [ ] **`bin/` 추적 해제** — 빌드 산출물 38개가 커밋돼 있음 (소스 영향 0):
+- [x] **`bin/` 추적 해제** (PR #72, 6/11) — 빌드 산출물 38개가 커밋돼 있음 (소스 영향 0):
   ```bash
   echo "bin/" >> .gitignore
   git rm -r --cached bin/
@@ -26,7 +26,7 @@
 - [ ] **2-B1. `PeerOverviewTableService` 분해** (2,223줄 — 조회+변환+캐싱+계산 혼재)
   - [ ] 선행: 현 응답 고정하는 통합 테스트 1개
   - [ ] 3분할: `PeerOverviewTableQuery`(JDBC) / `PeerOverviewTableFormatter` / `PeerOverviewTableCache`
-- [ ] **2-B2. `ApiContractFixtureService` 도메인 분리** (778줄, 사용처 97곳 — grep 실측)
+- [x] ~~2-B2. ApiContractFixtureService 도메인 분리~~ — **자연 해소(6/11)**: 팀이 fixture 체계 자체를 제거 (CLAUDE.md 정책도 '임시 데이터 반환 금지'로 개정됨)
   - [ ] 도메인별 Fixture 클래스(AuthFixture, CardFixture, DashboardFixture…) 또는 `contract-fixtures.json` 로더 일반화
   - [ ] 컨트롤러 의존을 도메인별로 좁힘 — 한 PR에 도메인 1~2개씩
 - [ ] **2-B3. 하드코딩 제거**
