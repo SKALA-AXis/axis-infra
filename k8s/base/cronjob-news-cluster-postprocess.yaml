@@ -41,9 +41,9 @@ spec:
                 - --lookback-hours
                 - "4"
                 - --max-source-size
-                - "3"
+                - "0"
                 - --min-target-size
-                - "4"
+                - "2"
                 - --apply
               envFrom:
                 - configMapRef:

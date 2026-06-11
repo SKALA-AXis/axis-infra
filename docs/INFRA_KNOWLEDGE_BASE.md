@@ -195,7 +195,6 @@ k8s/
 | global-trend | 매일 02:30 KST | curl axis-ai `/global/trends/run` (retry-connrefused) | LLM |
 | profile-refresh | 분기 1/4/7/10 03:00 | axis-ai `refresh_peer_profile_snapshots.py` | PYTHONPATH=/app |
 | sector-pulse | 월 02:00 | psql REFRESH MV (retry + CONCURRENTLY 폴백) | |
-| capability-evolution | 매월 1일 03:00 | **suspend: true** (스크립트 미구현) | 수동 `diag-*` Job 금지 |
 | weak-signal | 월 09:00 | suspend: true | |
 | **pg-dump** | 매일 **02:10 KST** | DB 백업 → 전용 PVC `axis-backup-pvc` + S3 `axis-team13-backups/pg/` | §11 백업; dump 단계 EFS 미마운트 |
 
@@ -278,7 +277,6 @@ k8s/
 | profile-refresh 한 번도 성공 못함 | `python scripts/x.py` 에서 `import src` 실패(PYTHONPATH 부재) | 크론에 `PYTHONPATH=/app` 추가 |
 | global-trend / ingestion Degraded | axis-ai 콜드스타트·단일 replica 다운타임 / cron curl 재시도 없음 | PR #44: curl `--retry-connrefused`, ingestion optional secret |
 | sector-pulse 실패 | psql 일시 연결거부 / MV edge | PR #45: psql 재시도 + CONCURRENTLY→blocking 폴백 |
-| capability-evolution Degraded | `refresh_capability_evolution.py` **미구현** | PR #46: CronJob suspend |
 | CRON 토큰 우회 | backend fail-open(빈 토큰=허용) | prod `cron-auth-required=true` fail-closed (2026-06) |
 | JWT 키 이름 혼동 | 예시 `JWT_SECRET` vs backend `AXIS_AUTH_JWT_SECRET` | 예시/스크립트 통일 + legacy 키 클러스터 제거 |
 | card-evaluator 6GB pull | full axis-ai 이미지(Playwright/torch) 재사용 | `axis-ai-cron` 슬림 이미지 + 리소스 하향 |
@@ -299,7 +297,7 @@ k8s/
 
 ## 13. 비용 관점
 
-- LLM 호출 크론(global-trend, profile-refresh, capability-evolution, 카드뉴스 생성)이 비용 주요인.
+- LLM 호출 크론(global-trend, profile-refresh, 카드뉴스 생성)이 비용 주요인.
 - 카드뉴스 생성 파이프라인은 비용 이슈로 상시 자동화 대신 **주기적 수동 트리거** 운용 중(가변).
 - 관련 가드: ConfigMap 의 `ENABLE_RELEVANCE_LLM`, 배치 상한, 일부 크론 `suspend`.
 
