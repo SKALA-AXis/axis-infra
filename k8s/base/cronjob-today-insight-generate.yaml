@@ -1,0 +1,62 @@
+# Today's Insight daily pre-generation.
+#   · axis-ai POST /today-insight/generate 호출 → today_insight_reports 저장.
+#   · Today Insight is daily-only; weekly/monthly outputs are briefing_reports.
+#   · 홈 화면과 챗봇은 사용자 진입 시 LLM을 돌리지 않고 저장 결과만 조회한다.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: axis-cron-today-insight-daily
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app.kubernetes.io/component: cron
+    app.kubernetes.io/part-of: axis
+spec:
+  schedule: "10 8 * * *"
+  timeZone: "Asia/Seoul"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 600
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: cron
+            cron: today-insight-daily
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: axis-cron-sa
+          containers:
+            - name: trigger
+              image: curlimages/curl:8.5.0
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  anchor_date="$(TZ=Asia/Seoul date +%F)"
+                  payload="{\"anchor_date\":\"${anchor_date}\",\"window_days\":60,\"max_issues\":8,\"max_cards\":12,\"use_cached\":false,\"force_refresh\":true,\"cache_only\":false,\"preload_model\":true,\"save\":true,\"context\":{\"update_policy\":\"daily_0810_kst\",\"memory_policy\":\"rolling_60_days\"}}"
+                  curl -fsSL \
+                    --connect-timeout 10 --max-time 540 \
+                    --retry 6 --retry-delay 20 --retry-connrefused \
+                    -X POST \
+                    -H "Content-Type: application/json" \
+                    -d "${payload}" \
+                    "http://axis-ai:8001/today-insight/generate"
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  cpu: 100m
+                  memory: 64Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 65534
