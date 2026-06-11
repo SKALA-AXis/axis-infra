@@ -26,9 +26,10 @@ data:
   QDRANT_HOST: "http://qdrant"
   QDRANT_PORT: "6333"
 
-  # AI 전처리 LLM — 명시적으로 켠 경우에만 relevance LLM 사용.
-  # 일반 분석/카드 생성 LLM 은 ENABLE_OPENAI_CALLS 를 별도로 켤 때만 사용한다.
+  # AI 전처리/분석/후처리 LLM.
+  ENABLE_OPENAI_CALLS: "true"
   ENABLE_RELEVANCE_LLM: "true"
+  POSTPROCESS_TITLE_LLM_JUDGE_ENABLED: "true"
   RELEVANCE_LLM_BATCH_SIZE: "20"
   RELEVANCE_LLM_MAX_BATCHES_PER_RUN: "3"
 
