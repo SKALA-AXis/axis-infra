@@ -21,7 +21,7 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 1
-      activeDeadlineSeconds: 300
+      activeDeadlineSeconds: 900
       ttlSecondsAfterFinished: 1800
       template:
         metadata:
@@ -39,7 +39,7 @@ spec:
                 - -m
                 - scripts.postprocess_singleton_clusters
                 - --lookback-hours
-                - "4"
+                - "24"
                 - --max-source-size
                 - "0"
                 - --min-target-size
@@ -53,6 +53,12 @@ spec:
               env:
                 - name: PYTHONPATH
                   value: /app
+                - name: ENABLE_OPENAI_CALLS
+                  value: "true"
+                - name: ENABLE_RELEVANCE_LLM
+                  value: "true"
+                - name: POSTPROCESS_TITLE_LLM_JUDGE_ENABLED
+                  value: "true"
               resources:
                 requests:
                   cpu: 50m
