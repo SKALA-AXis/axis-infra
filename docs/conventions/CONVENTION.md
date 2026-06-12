@@ -869,6 +869,24 @@ repos:
 
 ---
 
+## 15. DB 마이그레이션 안전 규칙 (2026-06-12 사고 후 명문화)
+
+> 사고: 미커밋 Flyway 초안(V44)이 로컬 bootRun + port-forward 경유로 **운영 DB에
+> 직접 적용**됨 → 다음 배포가 체크섬 충돌로 CrashLoop. (상세: backend PR #79)
+
+1. **공유 클러스터 DB에 flyway migrate는 배포 경로로만.** develop 머지 → 이미지 빌드
+   → ArgoCD 배포된 pod의 Flyway만 운영 DB를 migrate할 수 있습니다.
+2. **로컬 스키마 실험은 docker postgres에서만.** `--spring.flyway.enabled=true`
+   override를 쓰기 전에 `lsof -i :5432`로 **port-forward가 5432를 점유 중인지 반드시
+   확인**합니다 — docker DB인 줄 알았던 localhost:5432가 운영 DB일 수 있습니다.
+3. **기술적 강제**: 운영 DB에는 `axis.environment='prod'` 마커가 설정돼 있고, backend의
+   `beforeMigrate__prod_guard.sql`이 배포 경로 밖(placeholder `axis_migrate_source≠cluster`)
+   migrate를 RAISE EXCEPTION으로 차단합니다.
+4. **이미 적용된 마이그레이션 파일은 수정 금지** — 변경이 필요하면 새 V번호로 추가합니다.
+5. 새 마이그레이션 추가 시 `axis-infra/db/schema.sql`(SSoT)도 같은 PR 세트로 동기화합니다.
+
+---
+
 ## 📌 핵심 요약 (TL;DR)
 
 1. **멀티레포 4개 (infra / backend / ai / frontend)**, `axis-infra`가 단일 진실 공급원
