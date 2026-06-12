@@ -190,9 +190,20 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const changedFiles = process.env.CHANGED_FILES.trim().split('\n');
-            const fileList = changedFiles.map(f => `- \`${f}\``).join('\n');
+            const marker = '<!-- axis-api-spec-change -->';
+            const changedFiles = (process.env.CHANGED_FILES ?? '')
+              .trim()
+              .split('\n')
+              .map((file) => file.trim())
+              .filter(Boolean);
+            if (changedFiles.length === 0) {
+              core.info('No changed spec files to report.');
+              return;
+            }
+
+            const fileList = changedFiles.map((file) => `- \`${file}\``).join('\n');
             const body = [
+              marker,
               '## ⚠️ API 스펙 변경 감지',
               '',
               '다음 API 스펙 파일이 변경되었습니다:',
@@ -217,10 +228,32 @@ jobs:
               '',
               '> 이 PR이 머지되기 전에 관련 레포 PR을 함께 준비해주세요.',
             ].join('\n');
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+            const existing = comments.find((comment) => comment.body?.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+              core.info(`Updated existing API spec change comment (#${existing.id}).`);
+              return;
+            }
+
             await github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
+              owner,
+              repo,
+              issue_number,
               body,
             });
         env:
