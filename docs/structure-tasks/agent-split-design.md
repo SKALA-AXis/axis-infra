@@ -1,6 +1,6 @@
 # 거대 에이전트 분해 설계서 (Phase 2-A2/A3 실행안)
 
-> 2026-06-11 실측 분석 기반. 상위: [axis-ai.md](axis-ai.md) · [PROJECT_STRUCTURE_PLAN.md](../PROJECT_STRUCTURE_PLAN.md)
+> 2026-06-11 실측 분석 기반 · **2026-06-12 1단계 실행 개시** (prompts/utils 분리 완료, fallback 재평가). 상위: [axis-ai.md](axis-ai.md) · [PROJECT_STRUCTURE_PLAN.md](../PROJECT_STRUCTURE_PLAN.md)
 > 대상: `briefing_generation_agent.py` **7,292줄**(~310 정의) / `strategic_insight_agent.py` **9,215줄**(~298 정의) — 후자는 6/10 측정(6,071줄) 후 하루 만에 +3,000줄. **분해 전까지 계속 자란다.**
 
 ## 원칙
@@ -17,7 +17,7 @@
 | `agents/briefing/prompts.py` | 프롬프트·스키마 상수/빌더 12개 | ~700줄 | ⭐ 독립 |
 | `agents/briefing/data_layer.py` | DB 페칭 10 + 정규화 11 함수 | ~700줄 | ⭐⭐ |
 | `agents/strategic_insight/prompts.py` | LLM 프롬프트 상수 12개 (줄 128-591) | ~450줄 | ⭐ 독립 |
-| `agents/strategic_insight/fallback.py` | 폴백 15함수 (줄 8424-9050, 상호 호출 거의 없음) | ~650줄 | ⭐⭐ |
+| ~~`agents/strategic_insight/fallback.py`~~ | **1단계에서 제외 (2026-06-12 실측)** — AST 의존 분석 결과 폴백 17함수가 본체 정의 34개(event_based/profile_linked 텍스트 빌더 등)를 참조, "거의 독립" 평가는 코드 성장으로 무효화됨. 도메인 텍스트 빌더 군과 함께 2단계로 | ~650줄 | ⭐⭐⭐⭐ (재평가) |
 | `agents/strategic_insight/utils.py` | 텍스트/JSON/한글 유틸 19함수 | ~400줄 | ⭐ |
 
 → 1단계만으로 두 파일에서 **~2,900줄 감량**, 충돌 표면적 즉시 축소.
