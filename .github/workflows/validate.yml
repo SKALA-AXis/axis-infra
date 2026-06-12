@@ -172,8 +172,8 @@ jobs:
       - name: Check for API spec changes
         id: check-changes
         run: |
-          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
-          CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" -- 'api/openapi.yaml' 'api/ai-internal-api.yaml')
+          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+          CHANGED=$(git diff --name-only FETCH_HEAD HEAD -- 'api/openapi.yaml' 'api/ai-internal-api.yaml')
           if [ -n "$CHANGED" ]; then
             echo "changed=true" >> $GITHUB_OUTPUT
             echo "files=$CHANGED" >> $GITHUB_OUTPUT
