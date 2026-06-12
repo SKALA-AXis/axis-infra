@@ -31,11 +31,10 @@
   - `src/types/`(or `contracts/`) 신설 → State·공용 Pydantic 모델 이동 (이동만, 로직 무변경)
   - 의존 방향 규칙: `types ← {agents, pipeline, api, services}` 단방향
   - [ ] `import-linter` 도입, CI에 layers 계약 추가
-- [x] **2-A2. `briefing_generation_agent.py` 분해 — 1단계 완료 (2026-06-12, PR #152)**
-  - `agents/briefing/` 패키지: support(185) / prompts(641) / data_layer(969) — 본체 7,300→5,651줄, re-export 호환 유지
-  - 2단계(basis_builder ~900줄)는 [agent-split-design.md](agent-split-design.md) §2 — 1단계 안정화 후
-- [x] **2-A3. `strategic_insight_agent.py` 분해 — 1단계 완료 (2026-06-12, PR #151 머지)**
-  - `agents/strategic_insight/` 패키지: prompts(468) / utils(110) — 본체 9,215→8,675줄. fallback은 결합도 재평가로 2단계 이관
+- [x] **2-A2. `briefing_generation_agent.py` 분해 — 1·2단계 완료 (2026-06-12, PR #152/#154)**
+  - `agents/briefing/` 패키지: support(185) / prompts(641) / data_layer(969) / basis_builder(889) / display_copy(938) — 본체 7,300→4,154줄(-43%), re-export 호환 유지
+- [x] **2-A3. `strategic_insight_agent.py` 분해 — 1·2단계 완료 (2026-06-12, PR #151/#155)**
+  - `agents/strategic_insight/` 패키지: prompts(468) / utils(110) / profile_linkage(2,127) — 본체 9,215→6,658줄(-28%). fallback만 잔여(렌더 텍스트 빌더와 결합)
 - [ ] **2-A4. 크롤러 BaseCrawler 템플릿 메서드 통일** — fetch/parse/post_process 중복 제거, 소스 1개씩 이행
 - [ ] **2-A5. `api/router.py`(898줄) 엔드포인트 테스트** — mock agent로 happy-path 전수
 

@@ -24,12 +24,16 @@
 → 1단계 결과: strategic_insight 9,215→8,675줄(#151), briefing 7,300→**5,651줄**(#152) — 합계 **~2,200줄 감량**, 충돌 표면적 즉시 축소.
 → 교훈: 두 그룹이 공유하는 leaf 심볼은 별도 `support.py`를 먼저 추출해야 함 (briefing에서 `_json_dict` 등 3종이 양쪽 의존에 겹침). 테스트 monkeypatch는 re-export가 아닌 **실호출자 모듈**을 패치해야 효과 있음.
 
-## 2단계 — 고수익·중난이도 (1단계 안정화 후)
+## 2단계 — 고수익·중난이도 ✅ 완료 (2026-06-12, PR #154/#155 머지)
 
-| 신규 모듈 | 출처 | 규모 | 비고 |
+| 신규 모듈 | 출처 | 실측 결과 | 비고 |
 |---|---|---|---|
-| `agents/strategic_insight/profile_linkage.py` | 스코어링 엔진+컨텍스트 압축 (줄 3159-4345 등) | ~1,100줄 | 선형 파이프라인이라 절단 깔끔, **타 에이전트 재사용 가치** |
-| `agents/briefing/basis_builder.py` | 기초→병합→LLM 정제 (줄 1219-2849) | ~900줄 | 프롬프트 분리(1단계) 후에 진행해야 추적 가능 |
+| ✅ `agents/strategic_insight/profile_linkage.py` | 연계 평가 엔진(스코어 4종)+프로파일 압축+**신호 기반층**(토큰 정규화·역할 판별·노이즈 필터) | 2,127줄·75정의 (PR #155) | 설계 추정 ~1,100줄보다 큰 것은 신호 기반층이 설계 후 성장했기 때문 — AST 폐쇄로 경계 닫음. 본체 8,675→6,658줄 |
+| ✅ `agents/briefing/basis_builder.py` | 기초 합성→LLM 정제→synthesis 병합 + LLM 게터·프롬프트 버전 상수·공유 텍스트 유틸 | 889줄·36정의 (PR #154) | |
+| ✅ `agents/briefing/display_copy.py` | **설계에 없던 신규** — 화면 문구 검증·병합·수리 계층 (`_repair_sk_ax_view_descriptions` 폐쇄 21심볼 포함) | 938줄·44정의 (PR #154) | 본체 5,651→4,154줄 |
+
+→ 2단계 경계 판단 기록: `_refine_display_copy_with_llm`·`_display_copy_context`·`_refresh_contract_payload`·`_merge_display_copy`는 본체 유지 — `_display_copy_context`가 `_front_*` 렌더링 웹 105심볼을 통째로 끌고 옴 (아래 분리 금지 영역).
+→ 최종: 두 에이전트 합계 16,515줄(분해 전) → 본체 10,812줄 + 분리 모듈 9개. 남은 후보는 렌더링 웹의 `briefing/render/` 패키지화(검토만)와 strategic_insight fallback(2단계 이관분)뿐.
 
 ## 분리 금지 영역 (강결합 — 억지로 쪼개면 악화)
 
