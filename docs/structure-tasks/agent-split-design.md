@@ -1,6 +1,6 @@
 # 거대 에이전트 분해 설계서 (Phase 2-A2/A3 실행안)
 
-> 2026-06-11 실측 분석 기반 · **2026-06-12 1단계 실행 개시** (prompts/utils 분리 완료, fallback 재평가). 상위: [axis-ai.md](axis-ai.md) · [PROJECT_STRUCTURE_PLAN.md](../PROJECT_STRUCTURE_PLAN.md)
+> 2026-06-11 실측 분석 기반 · **2026-06-12 1단계 완료** — strategic_insight PR #151 머지(9,215→8,675줄), briefing PR #152 오픈(7,300→5,651줄). 상위: [axis-ai.md](axis-ai.md) · [PROJECT_STRUCTURE_PLAN.md](../PROJECT_STRUCTURE_PLAN.md)
 > 대상: `briefing_generation_agent.py` **7,292줄**(~310 정의) / `strategic_insight_agent.py` **9,215줄**(~298 정의) — 후자는 6/10 측정(6,071줄) 후 하루 만에 +3,000줄. **분해 전까지 계속 자란다.**
 
 ## 원칙
@@ -12,15 +12,17 @@
 
 ## 1단계 — 저결합 분리 (즉시 가능, 낮은 위험)
 
-| 신규 모듈 | 출처 | 규모 | 결합도 |
+| 신규 모듈 | 출처 | 실측 결과 | 결합도 |
 |---|---|---|---|
-| `agents/briefing/prompts.py` | 프롬프트·스키마 상수/빌더 12개 | ~700줄 | ⭐ 독립 |
-| `agents/briefing/data_layer.py` | DB 페칭 10 + 정규화 11 함수 | ~700줄 | ⭐⭐ |
-| `agents/strategic_insight/prompts.py` | LLM 프롬프트 상수 12개 (줄 128-591) | ~450줄 | ⭐ 독립 |
+| ✅ `agents/briefing/support.py` | **설계에 없던 신규 (2026-06-12)** — prompts/data_layer 양쪽이 의존하는 공유 leaf 18종 (`_json_dict`, `_analysis_package*`, `KST` 등). 순환 의존 없이 양쪽을 분리하려면 공유 계층이 선행돼야 함 | 185줄 (PR #152) | ⭐ leaf |
+| ✅ `agents/briefing/prompts.py` | 프롬프트·스키마 빌더 9개 | 641줄 (PR #152) | ⭐ 독립 |
+| ✅ `agents/briefing/data_layer.py` | DB 페칭·정규화 30 정의 (자체 `log` 로거) | 969줄 (PR #152) | ⭐⭐ |
+| ✅ `agents/strategic_insight/prompts.py` | LLM 프롬프트 상수 12개 | 468줄 (PR #151 머지) | ⭐ 독립 |
 | ~~`agents/strategic_insight/fallback.py`~~ | **1단계에서 제외 (2026-06-12 실측)** — AST 의존 분석 결과 폴백 17함수가 본체 정의 34개(event_based/profile_linked 텍스트 빌더 등)를 참조, "거의 독립" 평가는 코드 성장으로 무효화됨. 도메인 텍스트 빌더 군과 함께 2단계로 | ~650줄 | ⭐⭐⭐⭐ (재평가) |
-| `agents/strategic_insight/utils.py` | 텍스트/JSON/한글 유틸 19함수 | ~400줄 | ⭐ |
+| ✅ `agents/strategic_insight/utils.py` | 텍스트/JSON/한글 유틸 | 110줄 (PR #151 머지) | ⭐ |
 
-→ 1단계만으로 두 파일에서 **~2,900줄 감량**, 충돌 표면적 즉시 축소.
+→ 1단계 결과: strategic_insight 9,215→8,675줄(#151), briefing 7,300→**5,651줄**(#152) — 합계 **~2,200줄 감량**, 충돌 표면적 즉시 축소.
+→ 교훈: 두 그룹이 공유하는 leaf 심볼은 별도 `support.py`를 먼저 추출해야 함 (briefing에서 `_json_dict` 등 3종이 양쪽 의존에 겹침). 테스트 monkeypatch는 re-export가 아닌 **실호출자 모듈**을 패치해야 효과 있음.
 
 ## 2단계 — 고수익·중난이도 (1단계 안정화 후)
 
