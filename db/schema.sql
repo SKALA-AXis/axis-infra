@@ -119,6 +119,7 @@ CREATE INDEX IF NOT EXISTS idx_raw_articles_published_at ON raw_articles(publish
 CREATE INDEX IF NOT EXISTS idx_raw_articles_processing_status ON raw_articles(processing_status);
 CREATE INDEX IF NOT EXISTS idx_raw_articles_company ON raw_articles USING GIN(company);
 CREATE INDEX IF NOT EXISTS idx_raw_articles_matched_companies ON raw_articles USING GIN(matched_companies);
+CREATE INDEX IF NOT EXISTS idx_raw_articles_qdrant_vector_id ON raw_articles(qdrant_vector_id);
 
 CREATE TABLE IF NOT EXISTS crawl_run_articles (
     id BIGSERIAL PRIMARY KEY,

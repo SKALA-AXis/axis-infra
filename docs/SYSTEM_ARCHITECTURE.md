@@ -220,7 +220,7 @@ ADR-0008 spec(CronJob → BE → axis-ai 본문빌더) 과 실 구현(BE @Schedu
 | Pipeline 노드 | crawl · credibility · dedup · classify · card_news · evidence | 6노드 LangGraph + 결정적 노출도 산식 | `axis-ai/src/pipeline/ingestion_graph.py` |
 | Evidence Payload | source_links · provenance · financial_refs · mbb_refs | 환각 방지 검증 첨부 4종 | `card_news.evidence_payload` |
 | RDB | PostgreSQL 16 (EKS PostgreSQL / Flyway 관리) | **12 앱 테이블 + 1 Flyway 관리 테이블 + 2 views (V30 기준)** — Product ERD는 Core Content · Card Output · Briefing · Mixer · Insight · Global Industry 중심. `raw_articles` 원문과 `market_price_ohlcv` 주가 row는 보존하고, 제거된 레거시 테이블은 `legacy_records`에 row 단위 archive. | namespace `skala3-finalproj-class3-team13`, service `postgres:5432` |
-| Vector DB | Qdrant 1.9 (Cloud) | Hybrid RRF (Dense + Sparse) | `axis_main` 3개월 · `axis_history` 12개월 TTL |
+| Vector DB | Qdrant 1.9.4 (in-cluster Deployment + 5Gi PVC) | Hybrid RRF (Dense 1024 + Sparse) | `axis_main` (카드) · `axis_documents` (DART 청크/지식). `axis_history`·TTL은 미구현으로 확정 (2026-06-12) |
 | LLM | OpenAI GPT-4o | 분류 · 카드 생성 · Generative Search | 일일 비용 목표 ≤ ₩5,000 |
 | 임베딩 / 재랭킹 | BGE-M3 + BGE-reranker-v2-m3 (FlagEmbedding 1.x, MIT) | AI Pod 내장 — 외부 호출 없음 | Dense+Sparse 원샷 추론 |
 | 스케줄러 | Spring `@Scheduled` (cron) — **`AXIS_SCHEDULER_ENABLED=true` 로 활성** | 매시 정각 수집 · 평일 08:30 KST 브리핑 (`zone="Asia/Seoul"`) · 월 09:00 약한신호 | `SchedulerConfig.java`. CronJob 4종 (`axis-cron-ingestion-a/b/c`, `axis-cron-delivery`) 과 트리거 중복 — 정리 항목 §1.4 참조 |
