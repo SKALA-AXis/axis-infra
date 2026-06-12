@@ -100,6 +100,7 @@ make pf-backend-stop
 **자동 보호장치** ([docker-compose.cluster-db.yml](docker-compose.cluster-db.yml)):
 
 - `SPRING_FLYWAY_ENABLED=false` — backend container 가 cluster DB 에 silent 자동 migrate 못 함 (PR #20 의 application-local.yml 와 별개의 환경변수 차원 이중 안전)
+- **DB 측 3중 가드 (2026-06-12)** — 운영 DB 에 `axis.environment='prod'` 마커 + backend `beforeMigrate__prod_guard.sql` 이 배포 경로 밖 migrate 를 RAISE EXCEPTION 으로 차단 (backend PR #79, [CONVENTION §15](docs/conventions/CONVENTION.md))
 - `host.docker.internal` 통해 host port-forward 로 cluster DB 접근
 - postgres / qdrant 컨테이너는 안 뜸 (Mode B 와 격리)
 
@@ -192,12 +193,15 @@ cd ../axis-frontend && npm run dev
 
 ## 문서 지도 (어디가 정본인가)
 
+> 전체 지도: **[docs/README.md](docs/README.md)** (2026-06-12 디렉토리 정리와 함께 신설 — 제출물은 `docs/deliverables/`, 탐색 산출물은 `docs/_archived/`)
+
 | 주제 | 정본 |
 |---|---|
 | 프로젝트 마스터 컨텍스트 | [CLAUDE.md](CLAUDE.md) (AGENTS.md 는 포인터) |
-| 팀 개발 컨벤션 | [docs/conventions/CONVENTION.md](docs/conventions/CONVENTION.md) (구버전은 `_archived/`) |
+| 팀 개발 컨벤션 | [docs/conventions/CONVENTION.md](docs/conventions/CONVENTION.md) — **DB 마이그레이션 안전 규칙 §15 포함** |
 | API 계약 | [api/openapi.yaml](api/openapi.yaml) · [api/ai-internal-api.yaml](api/ai-internal-api.yaml) |
-| DB 스키마 | V40까지 [db/schema.sql](db/schema.sql) 스냅샷, **V41+는 backend Flyway** ([규칙](docs/DB_METADATA.md)) |
+| DB 스키마 | V40까지 [db/schema.sql](db/schema.sql) 스냅샷 + 이후 동기화, **V41+ 진실은 backend Flyway** ([규칙](docs/DB_METADATA.md)) |
+| 노출도 산식 | axis-ai `src/preprocessing/classification.py` — **코드가 정본** (2026-06-12 팀 확정) |
 | 아키텍처 결정 | [docs/adr/](docs/adr/) |
 | 구조 관리 계획 | [docs/PROJECT_STRUCTURE_PLAN.md](docs/PROJECT_STRUCTURE_PLAN.md) + [structure-tasks/](docs/structure-tasks/) |
 | CI/CD·운영 | [docs/ci-cd-plan.md](docs/ci-cd-plan.md) · [docs/HANDOVER.md](docs/HANDOVER.md) |

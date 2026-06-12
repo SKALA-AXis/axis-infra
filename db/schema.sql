@@ -1,5 +1,6 @@
--- AXIS crawler/parser-aware product schema, V40 target
--- Snapshot date: 2026-05-29 KST
+-- AXIS crawler/parser-aware product schema snapshot
+-- Snapshot date: 2026-06-11 KST
+-- Migration baseline: backend Flyway V44 (V40 integrated issue storage + V41~V44 read-model/seed additions).
 --
 -- Physical app tables after V32:
 --   peer_companies, raw_articles, raw_article_parse_results,
@@ -535,7 +536,7 @@ CREATE TABLE IF NOT EXISTS briefing_reports (
     CONSTRAINT briefing_reports_status_check
         CHECK (status IN ('queued', 'running', 'completed', 'completed_partial', 'failed')),
     CONSTRAINT briefing_reports_type_check
-        CHECK (briefing_type IN ('daily', 'weekly', 'custom')),
+        CHECK (briefing_type IN ('daily', 'weekly', 'monthly', 'custom')),
     CONSTRAINT briefing_reports_date_order CHECK (date_from <= date_to),
     CONSTRAINT chk_briefing_reports_primary_card_in_related
         CHECK (
@@ -938,3 +939,108 @@ COMMENT ON TABLE integrated_issue_evidence_references IS
     'Deduplicated evidence.references text store. Facts and frames can point here by evidence_ref_id.';
 COMMENT ON COLUMN card_news.integrated_issue_id IS
     'IntegratedIssue payload used as the factual input for CardNewsAgent.';
+
+-- ============================================================
+-- Peer+ LLM 분석 스냅샷 (backend V43 + V45 최종 상태 동기화, 2026-06-12)
+-- 갱신은 UPDATE 가 아니라 append + 승격(promoted_at) — active 1건만 노출.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS peer_llm_analysis_runs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    analysis_type VARCHAR(80) NOT NULL DEFAULT 'peer_swot_comparison',
+    prompt_version VARCHAR(80) NOT NULL,
+    model_name VARCHAR(80),
+    generation_params JSONB NOT NULL DEFAULT '{}'::jsonb,
+    status VARCHAR(30) NOT NULL DEFAULT 'running',
+    memo TEXT,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT chk_peer_llm_analysis_runs_params_object
+        CHECK (jsonb_typeof(generation_params) = 'object'),
+    CONSTRAINT chk_peer_llm_analysis_runs_status
+        CHECK (status IN ('running', 'completed', 'failed'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_peer_llm_analysis_runs_latest
+    ON peer_llm_analysis_runs (analysis_type, prompt_version, started_at DESC, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS peer_llm_analysis_snapshots (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    analysis_type VARCHAR(80) NOT NULL DEFAULT 'peer_swot_comparison',
+    scope VARCHAR(30) NOT NULL,
+    peer_id TEXT NOT NULL,
+    reference_peer_id TEXT NOT NULL DEFAULT 'sk_ax',
+    comparison_mode VARCHAR(80) NOT NULL,
+    schema_version VARCHAR(40) NOT NULL DEFAULT 'peer_swot_comparison_v1',
+    prompt_version VARCHAR(80) NOT NULL,
+    model_name VARCHAR(80),
+    status VARCHAR(30) NOT NULL DEFAULT 'active',
+    evidence_hash VARCHAR(80) NOT NULL,
+    input_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+    output_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    analysis_trace JSONB NOT NULL DEFAULT '[]'::jsonb,
+    provenance JSONB NOT NULL DEFAULT '{}'::jsonb,
+    confidence DOUBLE PRECISION,
+    source_raw_article_ids BIGINT[] NOT NULL DEFAULT '{}',
+    source_signal_ids BIGINT[] NOT NULL DEFAULT '{}',
+    source_metric_ids BIGINT[] NOT NULL DEFAULT '{}',
+    peer_ids TEXT[] NOT NULL DEFAULT '{}',
+    generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    run_id UUID REFERENCES peer_llm_analysis_runs(id),
+    promoted_at TIMESTAMPTZ,
+    review_note TEXT,
+
+    CONSTRAINT chk_peer_llm_analysis_snapshots_scope
+        CHECK (scope IN ('all', 'company')),
+    CONSTRAINT chk_peer_llm_analysis_snapshots_status
+        CHECK (status IN ('candidate', 'review', 'active', 'archived', 'failed', 'rejected')),
+    CONSTRAINT chk_peer_llm_analysis_snapshots_confidence
+        CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
+    CONSTRAINT chk_peer_llm_analysis_snapshots_payload_object
+        CHECK (jsonb_typeof(output_payload) = 'object'),
+    CONSTRAINT chk_peer_llm_analysis_snapshots_trace_array
+        CHECK (jsonb_typeof(analysis_trace) = 'array')
+);
+
+CREATE INDEX IF NOT EXISTS idx_peer_llm_analysis_snapshots_latest
+    ON peer_llm_analysis_snapshots (
+        analysis_type, scope, peer_id, comparison_mode, generated_at DESC, created_at DESC
+    ) WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS idx_peer_llm_analysis_snapshots_expires_at
+    ON peer_llm_analysis_snapshots (expires_at)
+    WHERE status = 'active' AND expires_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_peer_llm_analysis_snapshots_peer_ids
+    ON peer_llm_analysis_snapshots USING GIN (peer_ids);
+CREATE INDEX IF NOT EXISTS idx_peer_llm_analysis_snapshots_raw_articles
+    ON peer_llm_analysis_snapshots USING GIN (source_raw_article_ids);
+CREATE INDEX IF NOT EXISTS idx_peer_llm_analysis_snapshots_signals
+    ON peer_llm_analysis_snapshots USING GIN (source_signal_ids);
+CREATE INDEX IF NOT EXISTS idx_peer_llm_analysis_snapshots_metrics
+    ON peer_llm_analysis_snapshots USING GIN (source_metric_ids);
+CREATE INDEX IF NOT EXISTS idx_peer_llm_analysis_snapshots_output_payload
+    ON peer_llm_analysis_snapshots USING GIN (output_payload);
+CREATE INDEX IF NOT EXISTS idx_peer_llm_analysis_snapshots_input_snapshot
+    ON peer_llm_analysis_snapshots USING GIN (input_snapshot);
+CREATE INDEX IF NOT EXISTS idx_peer_llm_analysis_snapshots_analysis_trace
+    ON peer_llm_analysis_snapshots USING GIN (analysis_trace);
+CREATE INDEX IF NOT EXISTS idx_peer_llm_analysis_snapshots_evidence_lookup
+    ON peer_llm_analysis_snapshots (
+        analysis_type, peer_id, comparison_mode, evidence_hash, prompt_version,
+        COALESCE(model_name, '')
+    );
+CREATE UNIQUE INDEX IF NOT EXISTS uq_peer_llm_analysis_snapshots_active
+    ON peer_llm_analysis_snapshots (analysis_type, peer_id, comparison_mode)
+    WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS idx_peer_llm_analysis_snapshots_run_id
+    ON peer_llm_analysis_snapshots (run_id);
+
+COMMENT ON TABLE peer_llm_analysis_runs IS
+    'Peer+ LLM 분석 생성 시도(run) 이력. snapshot 들이 run_id 로 묶인다.';
+COMMENT ON TABLE peer_llm_analysis_snapshots IS
+    'Peer+ LLM comparison/SWOT analysis snapshots. Append-only — active 는 부분 unique 로 1건.';

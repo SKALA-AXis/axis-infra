@@ -50,6 +50,7 @@ resources:
   # 가용성 — drain 시 최소 replica 유지
   - pdb-backend.yaml
   - pdb-frontend.yaml
+  - pdb-ai.yaml
   # 스케줄러
   - cronjob-ingestion-a.yaml
   - cronjob-ingestion-b.yaml

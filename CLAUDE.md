@@ -258,9 +258,8 @@ exposure_score = 0.70·cluster_size_score + 0.30·company_mention_score
 high ≥ 0.65   (axis-ai src/preprocessing/classification.py 구현 실측, 2026-06-11)
 ```
 
-> ⚠️ 위는 **코드 구현 기준**. 1차 미팅 확정 스펙(0.50/0.30/0.20 3항)과 다름 —
-> "코드가 맞다(문서 갱신)" vs "스펙 이탈(코드 수정)" 팀 결정 필요
-> (PROJECT_STRUCTURE_PLAN §2.6). 결정 전까지 분석·발표 자료는 구현값 기준.
+> ✅ **확정 (2026-06-12 팀 결정): 코드가 정본.** 1차 미팅 스펙(0.50/0.30/0.20 3항)은
+> 폐기 — 분석·발표 자료 모두 위 구현값 기준.
 
 > v1의 urgent/notable/reference는 폐기 (deprecated). 호환을 위해 API 스키마에서만 표시 유지.
 

@@ -17,7 +17,8 @@ spec:
   # 새 포드가 Ready 를 90초 유지해야 available 로 인정 → 그 전까지 구포드 유지.
   # minReadySeconds 없이는 '순간 Ready' 직후 구포드가 죽고, 새 포드가 초기 부하로
   # readiness 플랩하면 단일 replica 엔드포인트가 비어 AI 전면 순단 (2026-06-11 실측 4분31초).
-  minReadySeconds: 90
+  # 180s: 실측 플랩 시작이 첫 Ready +84초였음 — 90s 는 마진이 한 장 차이라 2배수로.
+  minReadySeconds: 180
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -56,7 +57,9 @@ spec:
               print("warmup: done", flush=True)
           resources:
             requests:
-              cpu: 250m
+              # 200m — main 컨테이너 request 와 정렬 (pod 유효 CPU request = max(init, main)
+              # 이라 init 이 더 크면 그 값이 스케줄링 바인딩이 됨).
+              cpu: 200m
               memory: 512Mi
             limits:
               cpu: 1000m
@@ -82,12 +85,13 @@ spec:
                 name: axis-secrets
           resources:
             requests:
-              # 400m — 공용 클러스터 노드별 request 여유가 300~500m 수준(타 팀 과예약)이라
-              # 1500m 보장 요구는 스케줄 불가를 유발 (2026-06-11 Pending 다운 실측).
-              # 실사용은 노드 CPU 5~11% 로 한가해 경합 위험 낮고, burst 는 limit 2000m 로 보장.
-              cpu: 400m
-              # BGE-M3 fp16 (~1.2Gi) + Python heap + DB/Qdrant pool 의 baseline.
-              memory: 5Gi
+              # 200m — 노드별 request 여유가 40~260m 까지 떨어진 포화 상태(2026-06-12 실측,
+              # ns 합산 26.3/23 cores 오버커밋)에서 400m surge 포드가 25분+ Pending.
+              # 실사용 한 자릿수 m (idle 2m) 로 경합 위험 낮고, burst 는 limit 2000m 로 보장.
+              # 시동기 모델 로드가 경합으로 느려져도 startupProbe(failureThreshold 150)가 흡수.
+              cpu: 200m
+              # 4Gi — 모델 로드 후 실측 2.2Gi + 1.8Gi 마진 (BGE-M3 fp16 ~1.2Gi + heap + pool).
+              memory: 4Gi
             limits:
               cpu: 2000m
               # ingestion cycle 중 BGE-M3 encode (max_length=2048, batch=8) 의

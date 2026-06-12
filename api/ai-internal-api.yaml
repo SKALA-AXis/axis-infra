@@ -103,8 +103,8 @@ paths:
       tags: [pipeline]
       summary: 전달 파이프라인 실행
       description: |
-        PostgreSQL 동향 카드 조회 → EvidenceAgent 검증 첨부 확인 → 이메일 본문 구성 → 발송
-        실행 주기: 매일 오전 8:30 (SpringBoot Scheduler에서 호출)
+        Backend가 조회한 카드뉴스 배열을 받아 이메일 subject/html/text 본문을 구성한다.
+        SES 발송은 backend `BriefingService`/`SesMailService`가 담당한다.
 
         v3 변경: SC 검증·Slack → 검증 첨부·이메일.
       operationId: runDeliveryPipeline
@@ -114,21 +114,21 @@ paths:
           application/json:
             schema:
               type: object
+              required: [cards]
               properties:
-                target_date:
-                  type: string
-                  format: date
-                  description: 브리핑 대상 날짜 (미입력 시 오늘)
-                  example: "2026-04-20"
+                cards:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/BriefingCard'
       responses:
-        '202':
-          description: 전달 파이프라인 비동기 실행 시작
+        '200':
+          description: 전달 본문 생성 완료
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PipelineRunResponse'
-        '409':
-          description: 이미 실행 중
+                $ref: '#/components/schemas/BriefingContent'
+        '502':
+          description: 본문 생성 실패
           content:
             application/json:
               schema:
@@ -151,12 +151,14 @@ paths:
                 query:
                   type: string
                   example: LG CNS 팔란티어 파트너십
-                peer_id:
+                company:
                   type: string
                   nullable: true
                   example: lg_cns
-                filters:
-                  $ref: '#/components/schemas/SearchFilters'
+                event_type:
+                  type: string
+                  nullable: true
+                  example: partnership
                 top_k:
                   type: integer
                   default: 10
@@ -168,7 +170,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SearchResult'
+                $ref: '#/components/schemas/SearchResponse'
+        '502':
+          description: embedding/Qdrant/rerank 장애
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /gen-search:
     post:
@@ -204,6 +212,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GenSearchResult'
+        '502':
+          description: 검색 인덱스 또는 생성 단계 장애
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /weak-signal/run:
     post:
@@ -233,12 +247,12 @@ paths:
                   format: date
                   description: 분석 기준 주 (미입력 시 이번 주)
       responses:
-        '200':
-          description: 약한 신호 탐지 결과
+        '501':
+          description: WeakSignalAgent 미구현
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/WeakSignalResult'
+                $ref: '#/components/schemas/ErrorResponse'
 
 components:
   schemas:
@@ -267,21 +281,70 @@ components:
       required: [detail]
       properties:
         detail:
-          type: string
+          oneOf:
+            - type: string
+            - type: object
+              additionalProperties: true
 
     # ── 파이프라인 ─────────────────────────────────────────
     PipelineRunResponse:
       type: object
-      required: [run_id, status]
+      required: [task_id, status, message]
       properties:
-        run_id:
+        task_id:
           type: string
           description: 비동기 실행 ID (로그 추적용)
         status:
           type: string
-          enum: [started, queued]
+          example: accepted
         message:
           type: string
+
+    BriefingCard:
+      type: object
+      required: [title]
+      properties:
+        id:
+          type: string
+          nullable: true
+        peerId:
+          type: string
+          nullable: true
+        clusterId:
+          type: integer
+          nullable: true
+        title:
+          type: string
+        eventType:
+          type: string
+          nullable: true
+        importance:
+          type: string
+          nullable: true
+        importanceScore:
+          type: number
+          format: float
+          nullable: true
+        createdAt:
+          type: string
+          nullable: true
+
+    BriefingContent:
+      type: object
+      required: [subject, recipients]
+      properties:
+        subject:
+          type: string
+        html:
+          type: string
+          nullable: true
+        text:
+          type: string
+          nullable: true
+        recipients:
+          type: array
+          items:
+            type: string
 
     # ── 검색 ──────────────────────────────────────────────
     SearchFilters:
@@ -320,47 +383,28 @@ components:
 
     SearchHit:
       type: object
-      required: [rdb_id, title, score]
+      required: [rdb_id, company, title, summary, importance, event_type, pub_date, rerank_score]
       properties:
         rdb_id:
           type: integer
           description: raw_articles.id FK
-        qdrant_id:
+        company:
           type: string
-          format: uuid
         title:
           type: string
         summary:
           type: string
-        peer_id:
-          type: string
         event_type:
           type: string
-        sector:
-          type: string
-          description: v3 트렌드 섹터
-          enum: [ax, security, infra, deal, other]
-        exposure_score:
-          type: number
-          format: float
-          description: v3 결정적 노출도 산식 (0~1)
-        exposure_band:
-          type: string
-          enum: [high, medium, low]
         importance:
           type: string
-          deprecated: true
-          description: v1 호환 (v3에서는 exposure_band 사용)
-        published_at:
+        pub_date:
           type: string
-          format: date-time
-        score:
-          type: number
-          format: float
-          description: RRF 결합 점수
         rerank_score:
           type: number
           format: float
+        source_url:
+          type: string
           nullable: true
 
     # ── 검증 체인 (v3 §3.2, §5.6) ─────────────────────────
@@ -427,7 +471,7 @@ components:
               type: object
               nullable: true
 
-    SearchResult:
+    SearchResponse:
       type: object
       required: [hits, total]
       properties:
@@ -436,12 +480,6 @@ components:
           items:
             $ref: '#/components/schemas/SearchHit'
         total:
-          type: integer
-        query_embedding_ms:
-          type: integer
-        search_ms:
-          type: integer
-        rerank_ms:
           type: integer
 
     ChatMessage:
@@ -456,27 +494,14 @@ components:
 
     GenSearchResult:
       type: object
-      required: [answer, citations, session_id]
+      required: [answer, sources, sc_passed, sc_score]
       properties:
         answer:
-          type: object
-          properties:
-            summary:
-              type: string
-            detail:
-              type: string
-            implication:
-              type: string
-            follow_up_questions:
-              type: array
-              items:
-                type: string
-        citations:
+          type: string
+        sources:
           type: array
           items:
-            $ref: '#/components/schemas/SearchHit'
-        session_id:
-          type: string
+            type: object
         sc_passed:
           type: boolean
           description: Self-Consistency 검증 통과 여부

@@ -1,7 +1,8 @@
 # API Surface — Frontend ↔ Backend ↔ axis-ai 매핑
 
-> **버전**: v1 (2026-05-13)
+> **버전**: v2 (2026-06-11)
 > **목적**: 각 frontend view 가 호출하는 BE endpoint, BE 가 다시 호출해야 할 axis-ai endpoint, 담당 agent 의 일관 매핑. 디자인 디렉토리 의 agent 들이 *어디서 어떻게 노출되는지* 명시.
+> **상태 기준**: 코드 기준 운영 가능 범위와 stub/degraded 범위를 분리한다. 화면 이름만으로 완료 상태를 판단하지 않는다.
 
 ## 1. 현재 통합 상태 요약
 
@@ -9,31 +10,34 @@
 |---|---|---|---|
 | Pipeline trigger | `PipelineController.trigger` | ✅ `POST /pipeline/run` | 실 동작 |
 | Daily briefing email | `BriefingService.generateAndSend` | ✅ `POST /pipeline/delivery` | 실 동작 (W6 SES 검증 완료) |
-| Card list / today / detail | `CardController` | ❌ (fixture) — 실은 axis-ai `GET /api/cards` 가 동작 중 | BE 우회 — frontend 가 직접 axis-ai 호출 안 함 |
-| Search | `SearchController` | ❌ (fixture) — axis-ai `POST /search` 는 stub | 양쪽 stub |
-| Generative search | `SearchController` | ❌ (fixture) — axis-ai `POST /gen-search` 는 stub | 양쪽 stub |
-| Chat (assistant) | `AssistantController` | ❌ (fixture) — axis-ai endpoint 자체 미존재 | 미연결 |
-| Insight | `InsightController` | ❌ (fixture) — axis-ai endpoint 미존재 | 미연결 |
-| Mixer | `MixerController` | ❌ (fixture) — axis-ai endpoint 미존재 | 미연결 |
-| Briefing (user-triggered) | `BriefingController` | ❌ (fixture) — axis-ai endpoint 미존재 | 미연결 |
-| Monitoring strategy | `MonitoringController.getPeerStrategy` | ❌ (fixture) — axis-ai endpoint 미존재 | 미연결 |
-| Card verify-link | `CardController.verifyCardLinks` | ❌ (fixture) — axis-ai endpoint 미존재 | 미연결 |
-| Weak signal | (BE 호출 없음) | axis-ai `POST /weak-signal/run` — orphan stub | 양쪽 미연결 |
-| Keyword graph | `KeywordGraphController` | ❌ (fixture) — axis-ai endpoint 미존재 | 미연결 |
-| Alert / Bookmark / Auth / Settings / Admin | 각 controller | ❌ (전부 fixture, 대부분 axis-ai 불필요 — pure BE/DB) | BE-only TBD |
+| Card list / today / detail | `CardController` | BE-only DB read model | ✅ 실 DB 조회 |
+| Search | `SearchController` | BE-only `GlobalSearchService`; axis-ai `POST /search`도 RAG 검색 가능 | ✅ BE 검색 실동작 / ✅ AI 내부 검색 실동작 |
+| Generative search | public BE endpoint 없음 | ✅ `POST /gen-search` | 🟡 RAG + LLM optional, LLM 실패 시 deterministic fallback + `sc_passed=false` |
+| Chat (assistant) | `AssistantController` | ✅ `POST /chat`, `POST /chat/pdf` | ✅ 위임. axis-ai 장애 시 `result_kind=assistant_unavailable` degraded payload |
+| Today Insight | `DashboardController` | ✅ `POST /today-insight/generate` | ✅ 위임. fallback result는 guard에서 실패로 취급 |
+| Insight | `InsightController` | ✅ `POST /insight/generate` | ✅ 위임 |
+| Mixer | `MixerController` | ✅ `POST /mixer/analyze`, `POST /mixer/analyze/stream` | ✅ 분석 위임. share는 payload-only |
+| Briefing (user-triggered) | `BriefingController` | ✅ `POST /briefing/generate` | ✅ 생성 위임. share store는 미구현 |
+| Global Trends | `GlobalTrendsController` | ✅ `POST /global/trends/run` | ✅ 위임 |
+| Monitoring strategy | `MonitoringController.getPeerStrategy` | ✅ `POST /peer/compare` | ✅ 위임 |
+| Card verify-link | `CardController.verifyCardLinks` | ✅ `POST /link/verify` | ✅ 위임 |
+| Weak signal | BE public trigger 없음 | `POST /weak-signal/run` | 🔴 미구현. axis-ai는 501 `WEAK_SIGNAL_NOT_IMPLEMENTED` 반환 |
+| Dashboard summary | `DashboardController.getDashboardSummary` | 없음 | 🟡 부분 구현. stock chart 중심 + `dataStatus.result_kind=partial_dashboard_summary` |
+| Keyword graph | `KeywordGraphController` | BE-only read model | 🟡 저장 데이터 기반 |
+| Alert / Bookmark / Auth / Settings / Admin | 각 controller | 대부분 axis-ai 불필요 | 🟡 영역별 DB 구현/스텁 혼재 |
 
-**결론**: 디자인된 35개 agent 중 *실제로 production 경로로 호출되는 것은* CardComposer / Crawler / Parser / Credibility / Relevance / Dedup / Classification / Evidence (Ingestion 8개) + EmbedIndex + EmailAgent (Delivery 2개) = **10개**. 나머지 25개는 endpoint 가 미존재하거나 양쪽 (BE+axis-ai) stub.
+**결론**: 현재 운영 가능 경로는 ingestion/delivery/card/search/chat/insight/mixer/briefing/global/link/peer 일부까지 넓어졌다. 다만 weak signal, share token 발급, dashboard summary 전체 위젯, 일부 admin/alert 영역은 아직 prototype 또는 stub/degraded 상태이므로 발표·인수인계 시 별도 구분해야 한다.
 
 ## 2. Frontend View → BE → axis-ai → Agent 매핑표
 
-> 표 기호: ✅ 실 동작 / 🟡 BE 만 fixture, axis-ai 미연결 / 🔴 양쪽 미존재 / ⬜ AI 불필요 (BE-only)
+> 표 기호: ✅ 실 동작 / 🟡 부분 구현·degraded·저장 결과 의존 / 🔴 미구현·stub / ⬜ AI 불필요 (BE-only)
 
 ### 2.1 Home / Today
 
 | Frontend route | BE endpoint | axis-ai endpoint | 담당 agent | 상태 |
 |---|---|---|---|---|
-| `/` (TodayView 카드 carousel) | `GET /api/cards/today` | `GET /api/cards/today` (axis-ai 직접 — 실 동작) | CardComposerAgent chain | 🟡 (BE 는 fixture, FE 가 직접 axis-ai 호출하는 임시 경로) |
-| `/` (TodayView 요약 배지) | `GET /api/dashboard/summary` | `GET /metrics/top-insights` (신규) | DerivedMetricsAgent (mode=top_insight) | 🔴 |
+| `/` (TodayView 카드 carousel) | `GET /api/cards/today` | 없음 | BE `card_news` read model | ✅ 실 DB 조회 |
+| `/` (TodayView 요약 배지) | `GET /api/dashboard/summary` | 없음 | BE read model | 🟡 partial — stock chart 중심, `dataStatus` 포함 |
 | `/` (recent_cards 영역) | `GET /api/monitoring/overview` | `GET /metrics/monitoring-overview` (신규) | DerivedMetricsAgent (mode=monitoring_overview) | 🔴 |
 
 ### 2.2 Monitoring (peer 모니터링)
@@ -53,8 +57,8 @@
 
 | Frontend route | BE endpoint | axis-ai endpoint | 담당 agent | 상태 |
 |---|---|---|---|---|
-| `/search` 결과 list | `POST /api/search` | `POST /search` (HybridSearch RRF) | HybridSearchAgent + RerankAgent | 🟡 (양쪽 stub) |
-| `/search` (LLM 답변 모드) | `POST /api/search?gen=true` (or 별도) | `POST /gen-search` | HybridSearch + Rerank + AnswerAgent | 🟡 (양쪽 stub) |
+| `/search` 결과 list | `POST /api/search` | 없음 (BE DB 검색) / 내부 `POST /search` 별도 | `GlobalSearchService`, HybridSearchAgent + RerankAgent | ✅ BE 검색 실동작, AI 내부 RAG 검색 실동작 |
+| `/search` (LLM 답변 모드) | public BE endpoint 없음 | `POST /gen-search` | HybridSearch + Rerank + AnswerAgent | 🟡 AI 내부 API만 존재. LLM optional, fallback은 `sc_passed=false` |
 | `/search` (자동완성) | `GET /api/search/suggestions` | `GET /enrichment/keywords/suggest` (신규) | SearchSuggestAgent | 🔴 |
 
 ### 2.4 Briefings (user-triggered)
@@ -63,40 +67,40 @@
 |---|---|---|---|---|
 | `/briefings` 리스트 | `GET /api/briefings` | (BE-only — briefing_reports SELECT) | — | ⬜ |
 | `/briefings/today` | `GET /api/briefings/today` | (BE-only — 가장 최근 briefing 조회) | — | ⬜ |
-| `/briefings/new` (생성) | `POST /api/briefings/generate` | `POST /briefings/generate` (신규) | **BriefingGenerationAgent** (V12) | 🔴 (양쪽 fixture) |
-| `/briefings/new` polling | `GET /api/briefings/{id}/status` | `GET /briefings/{id}/status` (신규) | BriefingGenerationAgent | 🔴 |
-| `/briefings/{id}` | `GET /api/briefings/{id}` | `GET /briefings/{id}` (신규) | BriefingGenerationAgent | 🔴 |
-| `/briefings/{id}/share` | `POST /api/briefings/{id}/share` | (BE-only — share token 발급) | — | ⬜ |
+| `/briefings/new` (생성) | `POST /api/briefings/generate` | `POST /briefing/generate` | **BriefingGenerationAgent** | ✅ 위임 |
+| `/briefings/new` polling | `GET /api/briefings/{id}/status` | 없음 | `briefing_reports` read model | 🟡 저장된 결과만 조회 |
+| `/briefings/{id}` | `GET /api/briefings/{id}` | 없음 | `briefing_reports` read model | 🟡 저장된 결과만 조회 |
+| `/briefings/{id}/share` | `POST /api/briefings/{id}/share` | 없음 | — | 🔴 `briefing_share_store_unavailable` |
 
 ### 2.5 Cards
 
 | Frontend route | BE endpoint | axis-ai endpoint | 담당 agent | 상태 |
 |---|---|---|---|---|
-| `/cards` 리스트 | `GET /api/cards` | (BE-only — card_news SELECT + filter) | — | 🟡 (BE 가 fixture, axis-ai `/api/cards` 가 실 동작 중) |
-| `/cards/{id}` | `GET /api/cards/{id}` | (BE-only — card_news WHERE id=) | — | 🟡 |
-| `/cards/{id}/verify-link` | `POST /api/cards/{id}/verify-link` | `POST /cards/{id}/verify-link` (신규) | **LinkVerificationAgent** | 🔴 |
-| `/cards/{id}/share` | `POST /api/cards/{id}/share` | (BE-only — share token) | — | ⬜ |
+| `/cards` 리스트 | `GET /api/cards` | (BE-only — card_news SELECT + filter) | — | ✅ 실 DB 조회 |
+| `/cards/{id}` | `GET /api/cards/{id}` | (BE-only — card_news WHERE id=) | — | ✅ 실 DB 조회, 미존재 시 `no_saved_card` |
+| `/cards/{id}/verify-link` | `POST /api/cards/{id}/verify-link` | `POST /link/verify` | **LinkVerificationAgent** | ✅ 위임 |
+| `/cards/{id}/share` | `POST /api/cards/{id}/share` | 없음 | — | 🔴 `card_share_store_unavailable` |
 
 ### 2.6 Mixer (synthesis)
 
 | Frontend route | BE endpoint | axis-ai endpoint | 담당 agent | 상태 |
 |---|---|---|---|---|
 | `/mixer` (options) | `GET /api/mixer/options` | (BE-only — meta sectors / event_types) | — | ⬜ |
-| `/mixer` (run) | `POST /api/mixer` | `POST /mixer` (신규) | **MixerAnalysisAgent** | 🔴 (양쪽 fixture) |
-| `/mixer/{id}/share` | `POST /api/mixer/{id}/share` | (BE-only — share token) | — | ⬜ |
+| `/mixer` (run) | `POST /api/mixer` / `POST /api/mixer/stream` | `POST /mixer/analyze` / `/mixer/analyze/stream` | **MixerAnalysisAgent** | ✅ 위임 |
+| `/mixer/{id}/share` | `POST /api/mixer/{id}/share` | 없음 | `mixer_results` read model | 🟡 저장 결과 payload 반환. 별도 token store 없음 |
 
 ### 2.7 Insight
 
 | Frontend route | BE endpoint | axis-ai endpoint | 담당 agent | 상태 |
 |---|---|---|---|---|
-| `/insights/latest` | `GET /api/insights/latest` | (BE-only — insight_results SELECT 가장 최근) | — | 🟡 (storage 자체 없음, fixture만) |
-| `/insights/generate` | `POST /api/insights/generate` | `POST /insights/generate` (신규) | **InsightCascadeAgent** | 🔴 |
+| `/insights/latest` | `GET /api/insights/latest` | (BE-only — insight_results SELECT 가장 최근) | — | 🟡 저장 read model 미구현, `no_saved_insight` |
+| `/insights/generate` | `POST /api/insights/generate` | `POST /insight/generate` | **InsightCascadeAgent** | ✅ 위임 |
 
 ### 2.8 Chat (FloatingAiChat)
 
 | Frontend widget | BE endpoint | axis-ai endpoint | 담당 agent | 상태 |
 |---|---|---|---|---|
-| FloatingAiChat 메시지 | `POST /api/assistant/chat` | `POST /chat` (신규) | **ChatOrchestratorAgent** (routes to Search/Insight/Mixer/Peer) | 🔴 (BE fixture, axis-ai 미존재) |
+| FloatingAiChat 메시지 | `POST /api/assistant/chat` | `POST /chat` | **ChatOrchestratorAgent** (routes to Search/Insight/Mixer/Peer) | ✅ 위임. 장애 시 degraded system response |
 
 ### 2.9 Alerts (Weak Signal + 사용자 rule)
 
@@ -106,7 +110,7 @@
 | `/alerts/{id}/read` | `POST /api/alerts/{id}/read` | (BE-only — UPDATE) | — | ⬜ |
 | `/alerts/rules` CRUD | `GET/POST/PUT/DELETE /api/alerts/rules` | (BE-only — alert_rules CRUD) | — | ⬜ |
 | `/alerts/settings` | `GET/PUT /api/alerts/settings` | (BE-only — notification_settings) | — | ⬜ |
-| (background) | (Spring @Scheduled Mon 09:00) | `POST /weak-signal/run` | **WeakSignalAgent** (legacy table 제거, 새 read model 필요 시 `card_news` 기반) | 🔴 (axis-ai stub, BE 호출 미연결) |
+| (background) | BE public trigger 없음 | `POST /weak-signal/run` | **WeakSignalAgent** | 🔴 미구현. axis-ai 501 반환 |
 | `/alerts/dispatched/weak-signals` | `GET /api/weak-signals?since=&peer=` | (BE-only — active table 없음, V30 archive는 `legacy_records`) | — | 🔴 |
 
 ### 2.10 Enrichment (Keyword graph / WordCloud)
@@ -147,7 +151,7 @@
 | Settings (alert rules / notifications / profile / password / view prefs / access logs) | `/api/settings/*` | ⬜ N/A | ⬜ |
 | Notification list | `/api/notifications` | ⬜ N/A | ⬜ |
 
-### 2.14 Admin Observability (admin_page.md 정합 — 신규 P9)
+### 2.14 Admin Observability (admin/admin_page.md 정합 — 신규 P9)
 
 | Frontend | BE endpoint | axis-ai | 담당 | 상태 |
 |---|---|---|---|---|
@@ -176,23 +180,33 @@
 | `POST /pipeline/delivery` | ✅ 실 | `BriefingService.generateAndSend` |
 | `GET /api/cards` | ✅ 실 (Classification + Summary + Analysis + CardNews chain) | (frontend 우회 직접 호출 — BE bypass) |
 | `GET /api/cards/today` | ✅ 실 | (frontend 우회) |
-| `POST /search` | 🟡 stub | (없음 — BE SearchController 도 fixture) |
-| `POST /gen-search` | 🟡 stub | (없음) |
-| `POST /weak-signal/run` | 🟡 stub | (orphan — BE 가 호출 안 함) |
+| `POST /search` | ✅ 실 (BGE-M3 dense+sparse RRF + rerank, 장애 시 502) | 내부 API / diagnostics |
+| `POST /gen-search` | 🟡 실험적 (검색 근거 + LLM optional, fallback 시 `sc_passed=false`) | 내부 API |
+| `POST /chat` | ✅ 실 | `AssistantController` |
+| `POST /chat/pdf` | ✅ 실 | `AssistantController` |
+| `POST /today-insight/generate` | ✅ 실 | `DashboardController` |
+| `POST /insight/generate` | ✅ 실 | `InsightController` |
+| `POST /mixer/analyze` | ✅ 실 | `MixerController` |
+| `POST /mixer/analyze/stream` | ✅ 실 | `MixerController` |
+| `POST /briefing/generate` | ✅ 실 | `BriefingController` |
+| `POST /global/trends/run` | ✅ 실 | `GlobalTrendsController` |
+| `POST /peer/compare` | ✅ 실 | `MonitoringController.getPeerStrategy` |
+| `POST /link/verify` | ✅ 실 | `CardController.verifyCardLinks` |
+| `POST /weak-signal/run` | 🔴 501 `WEAK_SIGNAL_NOT_IMPLEMENTED` | diagnostics only |
 
-### 3.2 신규 추가 필요 endpoint (디자인 기반)
+### 3.2 남은 후보 endpoint (디자인 기반)
 
 | Endpoint | 담당 agent | 우선순위 | BE 호출자 |
 |---|---|---|---|
-| `POST /chat` | ChatOrchestratorAgent | P8 | `AssistantController.sendAssistantChatMessage` |
-| `POST /insights/generate` | InsightCascadeAgent | P7 | `InsightController.generateInsight` |
-| `POST /mixer` | MixerAnalysisAgent | P7 | `MixerController.runMixer` |
+| `POST /chat` | ChatOrchestratorAgent | 완료 | `AssistantController.sendAssistantChatMessage` |
+| `POST /insight/generate` | InsightCascadeAgent | 완료 | `InsightController.generateInsight` |
+| `POST /mixer/analyze` | MixerAnalysisAgent | 완료 | `MixerController.runMixer` |
 | `GET /monitoring/{peer}/strategy` | PeerComparisonAgent | P7 | `MonitoringController.getPeerStrategy` |
 | `GET /monitoring/{peer}/profile` | PeerComparisonAgent (profile mode) | P7 | `MonitoringController.getPeerDetail` (현재 fixture) |
-| `POST /cards/{id}/verify-link` | LinkVerificationAgent | P7 | `CardController.verifyCardLinks` |
-| `POST /briefings/generate` | **BriefingGenerationAgent** | P7+ | `BriefingController.generateBriefing` |
-| `GET /briefings/{id}/status` | BriefingGenerationAgent | P7+ | `BriefingController.getBriefingGenerationStatus` |
-| `GET /briefings/{id}` | BriefingGenerationAgent | P7+ | `BriefingController.getBriefingById` |
+| `POST /link/verify` | LinkVerificationAgent | 완료 | `CardController.verifyCardLinks` |
+| `POST /briefing/generate` | **BriefingGenerationAgent** | 완료 | `BriefingController.generateBriefing` |
+| `GET /briefings/{id}/status` | BE read model | 완료(저장 결과 조회) | `BriefingController.getBriefingGenerationStatus` |
+| `GET /briefings/{id}` | BE read model | 완료(저장 결과 조회) | `BriefingController.getBriefingById` |
 | `GET /enrichment/keyword-graph` | KeywordGraphBuilderAgent | P6 | `KeywordGraphController.getKeywordGraph` |
 | `GET /enrichment/wordcloud` | PeerWordCloudAgent | P6 | `MonitoringController` (nested 응답) |
 | `GET /enrichment/keywords/suggest` | SearchSuggestAgent | P6 | `SearchController.suggestions` |
@@ -202,59 +216,43 @@
 | `GET /admin/usage` | TokenBudgetMiddleware | P9 | `AdminController.adminGetUsage` |
 | `PUT /admin/usage/limits` | TokenBudgetMiddleware | P9 | `AdminController.adminSetUsageLimits` |
 
-총 신규 **17 endpoint** (모두 backend 가 호출 — frontend 가 axis-ai 직접 호출하는 것은 보안상 금지).
+남은 신규 후보 endpoint는 profile/wordcloud/metrics/admin usage 계열이다. 분석·대화·브리핑·링크검증 핵심 위임은 이미 `AiClientService`에 존재한다.
 
-## 4. 위임 패턴 — Backend 의 `AiClientService` 확장
+## 4. 위임 패턴 — Backend 의 `AiClientService` 현황
 
-현재 (`AiClientService.java`):
-
-```java
-public Map<String, Object> triggerPipeline(String track, List<String> peerIds);
-public Map<String, Object> buildBriefing(List<Map<String, Object>> cards);
-```
-
-위 §3.2 의 신규 endpoint 마다 method 추가 필요:
+현재 구현된 axis-ai 위임 method:
 
 ```java
-// Analysis supervisor
-public InsightCascadeResult generateInsight(InsightRequest req);
-public MixerResult runMixer(List<String> cardIds);
-public PeerStrategy getPeerStrategy(String peerId);
-public LinkVerifyResult verifyCardLinks(String cardId);
-
-// UserQuery supervisor
-public SearchResult search(SearchRequest req);                  // POST /search
-public GenSearchResult genSearch(SearchRequest req);            // POST /gen-search
-public ChatResponse chat(ChatRequest req);                      // POST /chat
-
-// Briefing supervisor
-public BriefingAccepted generateBriefingAsync(BriefingRequest req);
-public BriefingStatus getBriefingStatus(String briefingId);
-public BriefingReport getBriefing(String briefingId);
-
-// Enrichment supervisor
-public KeywordGraph getKeywordGraph();
-public WordCloudResult getWordCloud(String peerId);
-public List<String> suggestKeywords(String prefix);
-
-// Metrics
-public TopInsight getTopInsight();
-public MonitoringOverview getMonitoringOverview();
-
-// Admin
-public UsageStats getUsageStats(LocalDate from, LocalDate to);
-public ApiResponse updateUsageLimits(UsageLimits limits);
+public Mono<SearchResponse> search(SearchRequest request);       // POST /search (내부/레거시 DTO)
+public Mono<Void> triggerPipeline(String track, List<String> peerIds);
+public Mono<BriefingContent> buildBriefing(List<CardNewsResponse> cards);
+public Mono<Map<String, Object>> generateInsight(List<String> cardIds, Map<String, Object> context);
+public Mono<Map<String, Object>> runMixer(List<String> cardIds, Map<String, Object> ratios, String userContext, String analysisMode);
+public Flux<String> runMixerStream(List<String> cardIds, Map<String, Object> ratios, String userContext, String analysisMode);
+public Mono<Map<String, Object>> generateTodayInsight(Map<String, Object> request);
+public Mono<Map<String, Object>> generateBriefing(Map<String, Object> request);
+public Mono<Map<String, Object>> comparePeer(String peerId, Integer windowDays, String focusSector);
+public Mono<Map<String, Object>> runGlobalTrends(List<String> companyIds, List<String> focusThemes, Integer windowDays, List<String> skAxBusinessLines);
+public Mono<Map<String, Object>> verifyLink(String cardId);
+public Mono<Map<String, Object>> chat(Map<String, Object> request);
+public Mono<Map<String, Object>> chatPdf(Map<String, Object> request, MultipartFile file);
+public Mono<Void> triggerWeakSignal();                           // axis-ai 501, 운영 미활성
 ```
 
 ## 5. DB 마이그레이션 현황
 
-최신 기준은 V30이다. V10~V28에서 늘어난 운영/관계/로그 테이블은 V30에서 `legacy_records`로 보존 archive되고, 프론트 화면에 필요한 값만 최소 read model로 흡수된다.
+최신 migration 기준은 `axis-backend/src/main/resources/db/migration`의 V44이다. V30에서 legacy 테이블을 `legacy_records`로 보존 archive했고, 이후 V31~V44에서 crawler/parser fact schema, card anchor FK, context engine, auth/personalization, notification, global search index, today insight, assistant conversation, peer LLM snapshot, baseline seed가 추가됐다.
 
 | 버전 | 파일명 | 역할 |
 |---|---|---|
 | V28 | `V28__consolidate_raw_article_metadata_and_stock_prices.sql` | source별 raw article metadata를 `raw_article_source_metadata`로 통합 |
 | V29 | `V29__front_product_read_models_and_analysis_tables.sql` | Peer+ 컬럼, 카드 키워드 컬럼, Mixer/Insight/Global read model 추가 |
 | V30 | `V30__collapse_legacy_tables_into_minimal_product_schema.sql` | 레거시 테이블 row archive 후 12개 앱 테이블 중심으로 축소 |
+| V36 | `V36__global_search_indexes.sql` | DB 기반 `/api/search`용 global search text/index |
+| V41 | `V41__add_today_insight_reports.sql` | Today Insight 저장 read model |
+| V42 | `V42__assistant_conversations.sql` | Assistant conversation 저장 |
+| V43 | `V43__add_peer_llm_analysis_snapshots.sql` | Peer LLM analysis snapshot |
+| V44 | `V44__seed_2026_06_11_baseline_reports.sql` | 2026-06-11 baseline reports seed |
 
 V30 이후 active 앱 테이블:
 

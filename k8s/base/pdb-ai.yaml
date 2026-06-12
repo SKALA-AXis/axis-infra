@@ -1,0 +1,19 @@
+# PodDisruptionBudget — AI 는 현재 1 replica 이므로 자발적 eviction 을 차단해
+# 노드 drain/업그레이드 중 갑작스러운 중단을 피한다.
+#
+# 주의: axis-ai 는 /data/images 쓰기 경로와 모델 캐시 비용 때문에 아직 HPA/replicas:2
+# 를 켜지 않는다. 멀티 replica 전환 전에는 이미지 쓰기 경로를 RWX-safe/object storage
+# 또는 writer 단일화 구조로 분리해야 한다.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: axis-ai-pdb
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app: axis-ai
+    app.kubernetes.io/part-of: axis
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: axis-ai

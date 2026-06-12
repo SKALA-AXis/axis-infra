@@ -230,7 +230,7 @@ state 무관. middleware 가 부수적으로 DB INSERT.
   - audit_logs INSERT 실패율 ≤ 0.1%
   - login fail 비율 (sliding 1h) — 5% 초과 시 alert (credential stuffing 의심)
   - admin action 누락 0% (sampling 검증)
-- **Alert 채널**: **이메일 + in_app 알림만** (Slack 폐기 2026-05-10, project_slack_deprecation 정책). admin_page.md §6 의 "Slack #ops / #security" 참조는 본 프로젝트에서 이메일 + in_app 으로 매핑됨
+- **Alert 채널**: **이메일 + in_app 알림만** (Slack 폐기 2026-05-10, project_slack_deprecation 정책). admin/admin_page.md §6 의 "Slack #ops / #security" 참조는 본 프로젝트에서 이메일 + in_app 으로 매핑됨
 - Grafana panel (admin_page §5 Folder E System & Security):
   - 일일 audit row 수 (분당 평균)
   - top action_type

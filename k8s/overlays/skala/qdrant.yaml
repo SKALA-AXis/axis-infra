@@ -80,7 +80,8 @@ spec:
               containerPort: 6334
           resources:
             requests:
-              cpu: 200m
+              # 100m — 실사용 1~3m (2026-06-12). burst 는 limit 으로 보장.
+              cpu: 100m
               memory: 512Mi
             limits:
               cpu: 1500m
