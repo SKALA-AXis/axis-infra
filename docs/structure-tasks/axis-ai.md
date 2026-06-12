@@ -31,11 +31,11 @@
   - `src/types/`(or `contracts/`) 신설 → State·공용 Pydantic 모델 이동 (이동만, 로직 무변경)
   - 의존 방향 규칙: `types ← {agents, pipeline, api, services}` 단방향
   - [ ] `import-linter` 도입, CI에 layers 계약 추가
-- [ ] **2-A2. `briefing_generation_agent.py` 분해** (7,028줄, 메서드 ~296개)
-  - [ ] 선행: 현 동작 스냅샷 테스트 작성 — **LLM 호출은 mock으로 고정 필수** (실 LLM 출력은 비결정적이라 스냅샷 비교 불가). 검증 대상 = 프롬프트 조립 결과·분기 로직·출력 dict 구조
-  - [ ] `agents/briefing/` 패키지: generation / context / display_copy / synthesis — 공개 인터페이스 불변
-  - [ ] 시작 전 팀 채널 선언 (이 파일 건드리는 브랜치 모두 머지 후 조용한 창에서)
-- [ ] **2-A3. `strategic_insight_agent.py` 분해** (6,071줄) — 2-A2와 동일 절차
+- [x] **2-A2. `briefing_generation_agent.py` 분해 — 1단계 완료 (2026-06-12, PR #152)**
+  - `agents/briefing/` 패키지: support(185) / prompts(641) / data_layer(969) — 본체 7,300→5,651줄, re-export 호환 유지
+  - 2단계(basis_builder ~900줄)는 [agent-split-design.md](agent-split-design.md) §2 — 1단계 안정화 후
+- [x] **2-A3. `strategic_insight_agent.py` 분해 — 1단계 완료 (2026-06-12, PR #151 머지)**
+  - `agents/strategic_insight/` 패키지: prompts(468) / utils(110) — 본체 9,215→8,675줄. fallback은 결합도 재평가로 2단계 이관
 - [ ] **2-A4. 크롤러 BaseCrawler 템플릿 메서드 통일** — fetch/parse/post_process 중복 제거, 소스 1개씩 이행
 - [ ] **2-A5. `api/router.py`(898줄) 엔드포인트 테스트** — mock agent로 happy-path 전수
 
