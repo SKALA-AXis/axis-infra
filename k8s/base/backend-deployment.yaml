@@ -51,7 +51,8 @@ spec:
               value: "-XX:MaxRAMPercentage=75 -XX:+UseG1GC"
           resources:
             requests:
-              cpu: 500m
+              # 300m — 실사용 2~20m (2026-06-12 실측). JVM 시동 burst 는 limit 1000m 로 보장.
+              cpu: 300m
               memory: 1Gi
             limits:
               cpu: 1000m
