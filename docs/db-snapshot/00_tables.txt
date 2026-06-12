@@ -1,0 +1,18 @@
+table_name
+briefing_reports
+card_news
+crawl_cursors
+crawl_run_articles
+crawl_runs
+flyway_schema_history
+global_industry_trends
+insight_reports
+legacy_records
+market_price_ohlcv
+mixer_results
+peer_companies
+raw_article_business_signals
+raw_article_financial_metrics
+raw_article_parse_results
+raw_articles
+(16 rows)

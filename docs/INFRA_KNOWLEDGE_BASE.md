@@ -92,6 +92,8 @@ ENTRYPOINT ["java","-XX:MaxRAMPercentage=75","-jar","app.jar"]
    → ArgoCD 가 develop 변경 감지(3분 polling) → cluster sync
 ```
 
+> **신규 이미지 추가 시**: `kustomization.yaml` 에 `axis-ai-cron` 등 **Harbor에 push된 태그**만 참조. infra 머지가 axis-ai Build and Push 보다 앞서면 `ImagePullBackOff` → CronJob `DeadlineExceeded` 발생 (2026-06-08 card-evaluator).
+
 ### ArgoCD Application (`k8s/argocd/axis-application.yaml`)
 | 설정 | 값 | 의미 |
 |---|---|---|
@@ -116,7 +118,8 @@ ENTRYPOINT ["java","-XX:MaxRAMPercentage=75","-jar","app.jar"]
 ### 워크로드 / 네트워크
 - **Deployment 3종** + **Service 3종**(ClusterIP). 프론트 2, 백엔드 2, AI 1 replica.
 - **HPA**: `axis-backend`, `axis-frontend` (replicas 는 ArgoCD ignoreDifferences 로 제외).
-- **PVC `axis-images`**: 카드뉴스 이미지 저장용 RWX(EFS `efs-sc-shared`). backend·ai·pg-dump 가 공유.
+- **PVC `axis-images`**: 카드뉴스 이미지 저장용 RWX(EFS `efs-sc-shared`). backend·ai 가 공유.
+- **PVC `axis-backup-pvc`**: pg_dump 전용 RWX(EFS). `axis-images` 와 분리해 백업 I/O 경합 제거.
 - **Ingress**: §6 참조.
 
 ### Probe 설계 (axis-ai 안정화 교훈)
@@ -186,15 +189,14 @@ k8s/
 | ingestion-a | 매시 | curl backend `/api/pipeline/trigger?track=A` | 수집 |
 | ingestion-b / b-midday / b-close | 평일 09:30 / 13:00 / 18:00 | backend 트리거 | 장중/마감 |
 | ingestion-c | 08:30, 17:30 | backend 트리거 | |
-| ingestion-d | 03:30 | backend 트리거 track=D | |
+| ingestion-d | **04:25** | backend 트리거 track=D | ingestion-a 03:00/04:00 파이프라인과 겹침 회피 |
 | delivery | 평일 08:30 | 일일 브리핑 메일 발송 | |
 | card-evaluator | 5분마다 | `axis-ai-cron` 이미지로 LLM-as-Judge | Playwright/torch 제외 |
-| global-trend | 월 02:30 | curl axis-ai `/global/trends/run` (retry-connrefused) | LLM |
+| global-trend | 매일 02:30 KST | curl axis-ai `/global/trends/run` (retry-connrefused) | LLM |
 | profile-refresh | 분기 1/4/7/10 03:00 | axis-ai `refresh_peer_profile_snapshots.py` | PYTHONPATH=/app |
 | sector-pulse | 월 02:00 | psql REFRESH MV (retry + CONCURRENTLY 폴백) | |
-| capability-evolution | 매월 1일 03:00 | **suspend: true** (스크립트 미구현) | 수동 `diag-*` Job 금지 |
 | weak-signal | 월 09:00 | suspend: true | |
-| **pg-dump** | 매일 **05:40 KST** (UTC 20:40) | DB 백업 → `axis-images` PVC | §11 백업 |
+| **pg-dump** | 매일 **02:10 KST** | DB 백업 → 전용 PVC `axis-backup-pvc` + S3 `axis-team13-backups/pg/` | §11 백업; dump 단계 EFS 미마운트 |
 
 > **호출형 cron resilience (2026-06)**: ingestion/global-trend/delivery/weak-signal 은 curl `--retry-connrefused` + `CRON_INTERNAL_TOKEN optional:true`. sector-pulse 는 psql 재시도 루프.
 
@@ -226,6 +228,7 @@ k8s/
 ### ServiceAccount / IRSA
 - 워크로드별 SA: `axis-frontend-sa`, `axis-backend-sa`, `axis-ai-sa`, `axis-cron-sa`.
 - 이메일: **AWS SES V2 + IRSA** (`ses-mailer-sa`) — SMTP 없이 API 직접 호출.
+- 백업: **S3 pg dump + IRSA** (`axis-backup-sa`) — `s3://axis-team13-backups/pg/`. `scripts/provision-backup-s3.sh` 1회.
 
 ### axis-ai replicas=1 (×2 금지)
 - `axis-images` PVC(RWX)에 **동시 write race** — ai-deployment.yaml 주석으로 ×2 명시 금지.
@@ -256,7 +259,7 @@ k8s/
 - **CI 검증 (2단)**: ① `axis-infra` CI — `db/schema.sql` 적용 가능 여부. ② `axis-backend` CI `PostgreSqlSchemaValidationIT` — Flyway migrate 후 Hibernate `validate` 부팅. skala overlay 에 `update/create` 금지 grep.
 - **선언적 스키마**: `axis-infra/db/schema.sql` + `schema.dbml` 을 진실원으로 두고 CI 가 검증. (마이그레이션과 선언 스키마 정합성 유지 필요 — 예: CHECK 제약)
 - ⚠ **버전 충돌 주의**: 기능 브랜치가 오래 분기되면 같은 `Vnn` 번호가 둘이 되어 Flyway 가 기동 실패(`more than one migration with version`). 머지 전 배포된 최고 버전 위로 재넘버링 필요.
-- **백업**: `axis-pg-dump` CronJob — **KST 05:40**(UTC 20:40), `axis-images` PVC `/data/backups`. per-pod deadline 600s + backoff 3(2026-06 구조 개선). S3 export 는 미구현(추후).
+- **백업**: `axis-pg-dump` CronJob — **KST 02:10**, 전용 PVC `axis-backup-pvc` `/data/backups` + **S3** `s3://axis-team13-backups/pg/` (IRSA `axis-backup-sa`, 14일 lifecycle). 3단계: ① pg_dump(emptyDir, EFS 미마운트) ② efs-persist ③ s3-publish. pod deadline 900s, job 3600s, backoff 3.
 
 ---
 
@@ -267,18 +270,21 @@ k8s/
 | 증상 | 근본 원인 | 해결 |
 |---|---|---|
 | axis-ai 잦은 재시작(exit 137 의심) | OOM 이 아니라 **동기 CPU 작업이 이벤트 루프 차단 → liveness 타임아웃** | 경량 `/healthz` + `asyncio.to_thread()`, 프로브 완화, BGE-M3 배치/`max_length`/프리로드 튜닝 |
-| pg-dump degraded(`DeadlineExceeded`) | 공유 EFS PVC I/O 경합(피크 시간) | 스케줄 한산 시간대 이동 + `activeDeadlineSeconds` 상향 |
+| pg-dump degraded(`DeadlineExceeded`) | EFS CSI mount stall(ContainerCreating) + 공유 PVC I/O 경합 | 전용 PVC 분리 + dump 단계 EFS 미마운트 + 스케줄 02:10 KST |
+| ingestion-d 실패 | ingestion-a 03:00 파이프라인과 03:30 스케줄 겹침 | 스케줄 04:25 KST + curl retry |
 | 새로고침 시 로그인 풀림 | HTTP-only ALB 에서 `Secure` refresh 쿠키 거부 | HTTPS 전환(공용 nginx + cert-manager) — §6 |
 | sector-pulse 한 번도 성공 못함 | `secretKeyRef: axis-secrets/POSTGRES_URL` **키 부재** → 파드 기동 실패 | 실재하는 `DATABASE_URL`(libpq) 키로 교체 |
 | profile-refresh 한 번도 성공 못함 | `python scripts/x.py` 에서 `import src` 실패(PYTHONPATH 부재) | 크론에 `PYTHONPATH=/app` 추가 |
 | global-trend / ingestion Degraded | axis-ai 콜드스타트·단일 replica 다운타임 / cron curl 재시도 없음 | PR #44: curl `--retry-connrefused`, ingestion optional secret |
 | sector-pulse 실패 | psql 일시 연결거부 / MV edge | PR #45: psql 재시도 + CONCURRENTLY→blocking 폴백 |
-| capability-evolution Degraded | `refresh_capability_evolution.py` **미구현** | PR #46: CronJob suspend |
 | CRON 토큰 우회 | backend fail-open(빈 토큰=허용) | prod `cron-auth-required=true` fail-closed (2026-06) |
 | JWT 키 이름 혼동 | 예시 `JWT_SECRET` vs backend `AXIS_AUTH_JWT_SECRET` | 예시/스크립트 통일 + legacy 키 클러스터 제거 |
 | card-evaluator 6GB pull | full axis-ai 이미지(Playwright/torch) 재사용 | `axis-ai-cron` 슬림 이미지 + 리소스 하향 |
 | gitleaks 미적용 | CI secret scan 없음 | OSS gitleaks CLI (`--no-git`) |
 | diag-cap Degraded | suspend CronJob 에서 수동 `kubectl create job` | Job 삭제 + notifier가 `diag-*` 제외 |
+| card-evaluator DeadlineExceeded | infra가 `axis-ai-cron:f02ce52` 참조했으나 Harbor 미push | axis-ai #105 merge → `543283c` push; deploy 순서 주의 |
+| qdrant CrashLoopBackOff | **v1.9.4 PVC** 를 **v1.18.0** 으로 무중단 업그레이드 → segment `on_disk` 역직렬화 panic | 이미지 **v1.9.4 pin** 복구. major bump 는 snapshot export/import 후만 |
+| 아침 7시 Cron·Pod 알림 폭주 | ① Qdrant 다운 → ingestion 실패 ② ArgoCD 롤아웃 중 **구 RS** `ErrImagePull` ③ 의존 서비스 불능 시 Cron이 deadline 까지 hang | 근본 원인(벡터 DB·이미지 태그) 먼저 해결. notifier deadline 300s |
 | ArgoCD UI RS 10개씩 | `revisionHistoryLimit: 10` 의 0-replica 히스토리 | 정상. 필요 시 limit 하향 |
 
 ### GitOps 디버깅 체크리스트
@@ -291,7 +297,7 @@ k8s/
 
 ## 13. 비용 관점
 
-- LLM 호출 크론(global-trend, profile-refresh, capability-evolution, 카드뉴스 생성)이 비용 주요인.
+- LLM 호출 크론(global-trend, profile-refresh, 카드뉴스 생성)이 비용 주요인.
 - 카드뉴스 생성 파이프라인은 비용 이슈로 상시 자동화 대신 **주기적 수동 트리거** 운용 중(가변).
 - 관련 가드: ConfigMap 의 `ENABLE_RELEVANCE_LLM`, 배치 상한, 일부 크론 `suspend`.
 

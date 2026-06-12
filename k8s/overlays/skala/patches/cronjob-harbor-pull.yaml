@@ -1,0 +1,12 @@
+# Harbor private 이미지(axis-ai / axis-ai-cron) CronJob — cold node ImagePullBackOff 방지.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: placeholder
+spec:
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          imagePullSecrets:
+            - name: harbor-creds

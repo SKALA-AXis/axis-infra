@@ -35,6 +35,7 @@ patches:
 
   # ── PVC: RWO + local-path
   - path: patches/pvc-local.yaml
+  - path: patches/pvc-models-local.yaml
 
   # ── Service: frontend/backend NodePort (Ingress 대체)
   # JSON 6902 patch — strategic merge 가 ports list 안의 nodePort 를 누락시켜서 직접 path 지정.

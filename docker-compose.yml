@@ -29,7 +29,7 @@ services:
       retries: 10
 
   qdrant:
-    image: qdrant/qdrant:v1.18.0
+    image: qdrant/qdrant:v1.9.4
     profiles: ["local"]
     container_name: axis-qdrant
     restart: unless-stopped

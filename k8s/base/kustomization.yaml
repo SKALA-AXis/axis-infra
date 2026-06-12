@@ -33,6 +33,7 @@ resources:
   # 즉 secret.example.yaml 은 템플릿일 뿐, 직접 적용되지 않는다.
   # 스토리지
   - axis-images-pvc.yaml
+  - axis-models-pvc.yaml
   # 워크로드
   - frontend-deployment.yaml
   - frontend-service.yaml
@@ -56,12 +57,14 @@ resources:
   - cronjob-ingestion-c.yaml
   - cronjob-ingestion-d.yaml
   - cronjob-delivery.yaml
+  - cronjob-today-insight.yaml
   - cronjob-weak-signal.yaml
-  # axis-ai 1단계 분석 supervisor 의 context layer + evaluation layer CronJob (W2-2 / W4-3 / W4-4 / W5-2).
+  # axis-ai 1단계 분석 supervisor 의 context layer + evaluation layer CronJob.
   - cronjob-profile-refresh.yaml
-  - cronjob-capability-evolution.yaml
+  - cronjob-weekly-digest.yaml
   - cronjob-sector-pulse.yaml
   - cronjob-card-evaluator.yaml
+  - cronjob-news-cluster-postprocess.yaml
   # 글로벌 IT 트렌드 + peer alignment (design: axis-ai/design/30-analysis/global-trends.md).
   - cronjob-global-trend.yaml
   # CronJob 실패 → Slack 알림 (watcher + RBAC).

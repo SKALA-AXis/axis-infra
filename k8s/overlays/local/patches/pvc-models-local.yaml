@@ -1,0 +1,14 @@
+# 로컬 single-node 가정 — RWO + local-path StorageClass (pvc-local.yaml 과 동일 원칙).
+# 모델 캐시는 ai 단독 mount 라 RWO 로 충분.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: axis-models
+  namespace: skala3-finalproj-class3-team13
+spec:
+  accessModes:
+    - ReadWriteOnce  # RWX 에서 RWO 로 격하 (로컬 환경 대부분 RWX 미지원)
+  storageClassName: standard  # kind/minikube/docker-desktop 의 default SC
+  resources:
+    requests:
+      storage: 5Gi  # bge-m3 ~2.3GB + reranker ~1.2GB

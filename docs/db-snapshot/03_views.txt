@@ -1,0 +1,9 @@
+table_name|view_definition
+raw_article_metadata_unified| SELECT id AS raw_article_id,
+    source_type,
+    source_name,
+    metadata AS common_metadata,
+    '{}'::jsonb AS source_metadata,
+    metadata
+   FROM raw_articles ra;
+(1 row)

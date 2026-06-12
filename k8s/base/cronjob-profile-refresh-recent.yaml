@@ -1,24 +1,16 @@
-# W4-3 · 월 1회 (1일 03:00 KST) peer capability_evolution narrative 갱신.
-#   · raw_article_business_signals 4분기 분 → SQL pre-aggregation (top-5/group) → LLM 합성.
-#   · 결과: peer_companies.peer_plus_payload['capability_evolution'] JSONB.
-#   · 비용: 5 peer × $0.15 ≈ $0.75/월.
+# Peer profile refresh after DART/IR ingestion.
+#   · Track D가 DART/IR 문서를 적재한 뒤 최근 26시간 내 변경 회사만 갱신.
+#   · 분기 1회 전체 갱신(axis-cron-profile-refresh)은 그대로 유지한다.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: axis-cron-capability-evolution
+  name: axis-cron-profile-refresh-recent
   namespace: skala3-finalproj-class3-team13
   labels:
     app.kubernetes.io/component: cron
     app.kubernetes.io/part-of: axis
 spec:
-  # scripts/refresh_capability_evolution.py 미구현 — 매월 Job Failed → Degraded.
-  # profile-refresh(분기)가 profile_snapshot.capability_evolution 을 이미 채움.
-  # W4-3 구현 전까지 suspend. (design: axis-ai/design/01-analysis-pipeline-implementation-plan.md §3.4.6)
-  # ⚠ 수동 디버그: kubectl create job --from=cronjob/... 는 스크립트 없어 실패 → ArgoCD Degraded.
-  #    필요 시 scripts/cleanup-diag-jobs.sh 로 diag-* Job 삭제. 라벨 axis.skala/diagnostic=true 권장.
-  suspend: true
-  # 월 1회 (1일 03:00 KST). peer 5 사 × LLM 1 회 ≈ $0.75/월.
-  schedule: "0 3 1 * *"
+  schedule: "0 8 * * *"
   timeZone: "Asia/Seoul"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
@@ -26,20 +18,27 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 1
-      activeDeadlineSeconds: 5400  # 90 분
+      activeDeadlineSeconds: 3600
       ttlSecondsAfterFinished: 7200
       template:
         metadata:
           labels:
             app.kubernetes.io/component: cron
-            cron: capability-evolution
+            cron: profile-refresh-recent
         spec:
           restartPolicy: OnFailure
           serviceAccountName: axis-ai-sa
           containers:
             - name: refresh
               image: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-ai:REPLACE_TAG
-              command: ["python", "scripts/refresh_capability_evolution.py"]
+              command:
+                - python
+                - scripts/refresh_peer_profile_snapshots.py
+                - --changed-since-hours
+                - "26"
+              env:
+                - name: PYTHONPATH
+                  value: /app
               envFrom:
                 - configMapRef:
                     name: axis-config

@@ -1,0 +1,18 @@
+table_name|row_count
+briefing_reports|0
+card_news|191
+crawl_cursors|12
+crawl_run_articles|30406
+crawl_runs|1270
+flyway_schema_history|32
+global_industry_trends|1
+insight_reports|10
+legacy_records|95321
+market_price_ohlcv|3609
+mixer_results|12
+peer_companies|5
+raw_article_business_signals|27377
+raw_article_financial_metrics|3449
+raw_article_parse_results|476
+raw_articles|15299
+(16 rows)

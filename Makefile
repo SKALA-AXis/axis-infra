@@ -153,10 +153,14 @@ clean:  ## 임시 파일 정리
 SKALA_NS         := skala3-finalproj-class3-team13
 HARBOR_HOST      := amdp-registry.skala-ai.com
 HARBOR_PROJECT   := skala26a-ai3
-SKALA_TAG        ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
-SKALA_FRONTEND   := $(HARBOR_HOST)/$(HARBOR_PROJECT)/axis-frontend:$(SKALA_TAG)
-SKALA_BACKEND    := $(HARBOR_HOST)/$(HARBOR_PROJECT)/axis-backend:$(SKALA_TAG)
-SKALA_AI         := $(HARBOR_HOST)/$(HARBOR_PROJECT)/axis-ai:$(SKALA_TAG)
+# 각 서비스 repo SHA — CI build-and-push 와 동일 규칙 (axis-infra SHA 사용 금지).
+SKALA_FRONTEND_TAG ?= $(shell git -C $(FRONTEND_DIR) rev-parse --short HEAD 2>/dev/null || echo "dev")
+SKALA_BACKEND_TAG  ?= $(shell git -C $(BACKEND_DIR) rev-parse --short HEAD 2>/dev/null || echo "dev")
+SKALA_AI_TAG       ?= $(shell git -C $(AI_DIR) rev-parse --short HEAD 2>/dev/null || echo "dev")
+SKALA_FRONTEND     := $(HARBOR_HOST)/$(HARBOR_PROJECT)/axis-frontend:$(SKALA_FRONTEND_TAG)
+SKALA_BACKEND      := $(HARBOR_HOST)/$(HARBOR_PROJECT)/axis-backend:$(SKALA_BACKEND_TAG)
+SKALA_AI           := $(HARBOR_HOST)/$(HARBOR_PROJECT)/axis-ai:$(SKALA_AI_TAG)
+SKALA_AI_CRON      := $(HARBOR_HOST)/$(HARBOR_PROJECT)/axis-ai-cron:$(SKALA_AI_TAG)
 
 # 복구(restore) 파라미터 — make skala-restore 가 job-pg-restore.yaml 에 주입.
 #   BACKUP_FILE        : 복구할 백업 파일명/절대경로 (비우면 /data/backups 최신 자동 선택)
@@ -187,21 +191,27 @@ skala-build:  ## 3 이미지 SKALA 태그로 빌드 (Harbor 경로 + linux/amd64
 	docker build --platform=linux/amd64 -t $(SKALA_FRONTEND) $(FRONTEND_DIR)
 	docker build --platform=linux/amd64 -t $(SKALA_BACKEND)  $(BACKEND_DIR)
 	docker build --platform=linux/amd64 -t $(SKALA_AI)       $(AI_DIR)
-	@echo "✓ build done — tag=$(SKALA_TAG) (linux/amd64)"
+	docker build --platform=linux/amd64 -f $(AI_DIR)/Dockerfile.cron -t $(SKALA_AI_CRON) $(AI_DIR)
+	@echo "✓ build done — frontend=$(SKALA_FRONTEND_TAG) backend=$(SKALA_BACKEND_TAG) ai=$(SKALA_AI_TAG) (linux/amd64)"
 
-skala-push:  ## 3 이미지 Harbor push (사전 docker login 필요)
+skala-push:  ## 4 이미지 Harbor push (사전 docker login 필요)
 	docker push $(SKALA_FRONTEND)
 	docker push $(SKALA_BACKEND)
 	docker push $(SKALA_AI)
-	@echo "✓ push done — tag=$(SKALA_TAG)"
+	docker push $(SKALA_AI_CRON)
+	@echo "✓ push done — frontend=$(SKALA_FRONTEND_TAG) backend=$(SKALA_BACKEND_TAG) ai=$(SKALA_AI_TAG)"
 
-skala-tag:  ## kustomization.yaml 의 newTag 를 현재 git SHA 로 치환
-	@if ! grep -q 'newTag: REPLACE_TAG' k8s/overlays/skala/kustomization.yaml; then \
-		echo "⚠ kustomization.yaml 에 'newTag: REPLACE_TAG' 가 없음 — 이미 다른 태그로 치환됐거나 형식 변경"; \
-	fi
-	sed -i.bak 's|newTag: REPLACE_TAG|newTag: $(SKALA_TAG)|g' k8s/overlays/skala/kustomization.yaml
-	rm -f k8s/overlays/skala/kustomization.yaml.bak
-	@echo "✓ kustomization.yaml newTag → $(SKALA_TAG)  (git checkout 으로 되돌릴 수 있음)"
+skala-tag:  ## kustomization.yaml 이미지 태그를 각 서비스 repo SHA 로 갱신 (CI 와 동일)
+	cd k8s/overlays/skala && \
+	kustomize edit set image \
+	  "REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-ai=$(HARBOR_HOST)/$(HARBOR_PROJECT)/axis-ai:$(SKALA_AI_TAG)" && \
+	kustomize edit set image \
+	  "REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-ai-cron=$(HARBOR_HOST)/$(HARBOR_PROJECT)/axis-ai-cron:$(SKALA_AI_TAG)" && \
+	kustomize edit set image \
+	  "REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-backend=$(HARBOR_HOST)/$(HARBOR_PROJECT)/axis-backend:$(SKALA_BACKEND_TAG)" && \
+	kustomize edit set image \
+	  "REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-frontend=$(HARBOR_HOST)/$(HARBOR_PROJECT)/axis-frontend:$(SKALA_FRONTEND_TAG)"
+	@echo "✓ kustomization.yaml → frontend=$(SKALA_FRONTEND_TAG) backend=$(SKALA_BACKEND_TAG) ai/cron=$(SKALA_AI_TAG)"
 
 skala-pull-secret:  ## Harbor imagePullSecret 생성 (1회) — HARBOR_USER / HARBOR_PASS 환경변수 필요
 	@if [ -z "$$HARBOR_USER" ] || [ -z "$$HARBOR_PASS" ]; then \

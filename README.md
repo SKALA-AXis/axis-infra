@@ -190,6 +190,18 @@ cd ../axis-frontend && npm run dev
 
 ---
 
+## 문서 지도 (어디가 정본인가)
+
+| 주제 | 정본 |
+|---|---|
+| 프로젝트 마스터 컨텍스트 | [CLAUDE.md](CLAUDE.md) (AGENTS.md 는 포인터) |
+| 팀 개발 컨벤션 | [docs/conventions/CONVENTION.md](docs/conventions/CONVENTION.md) (구버전은 `_archived/`) |
+| API 계약 | [api/openapi.yaml](api/openapi.yaml) · [api/ai-internal-api.yaml](api/ai-internal-api.yaml) |
+| DB 스키마 | V40까지 [db/schema.sql](db/schema.sql) 스냅샷, **V41+는 backend Flyway** ([규칙](docs/DB_METADATA.md)) |
+| 아키텍처 결정 | [docs/adr/](docs/adr/) |
+| 구조 관리 계획 | [docs/PROJECT_STRUCTURE_PLAN.md](docs/PROJECT_STRUCTURE_PLAN.md) + [structure-tasks/](docs/structure-tasks/) |
+| CI/CD·운영 | [docs/ci-cd-plan.md](docs/ci-cd-plan.md) · [docs/HANDOVER.md](docs/HANDOVER.md) |
+
 ## 레포 링크
 
 | 레포 | 기술 스택 | 담당 |

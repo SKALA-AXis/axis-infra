@@ -1,0 +1,309 @@
+table_name|column_name|data_type|udt_name|is_nullable|column_default
+briefing_reports|id|character varying|varchar|NO|
+briefing_reports|title|character varying|varchar|NO|
+briefing_reports|briefing_type|character varying|varchar|NO|
+briefing_reports|date_from|date|date|NO|
+briefing_reports|date_to|date|date|NO|
+briefing_reports|requested_by_user_id|bigint|int8|YES|
+briefing_reports|status|character varying|varchar|NO|'queued'::character varying
+briefing_reports|progress|numeric|numeric|NO|0.0
+briefing_reports|payload|jsonb|jsonb|YES|
+briefing_reports|error_message|text|text|YES|
+briefing_reports|confidence|numeric|numeric|YES|
+briefing_reports|provenance|jsonb|jsonb|YES|
+briefing_reports|created_at|timestamp with time zone|timestamptz|NO|now()
+briefing_reports|completed_at|timestamp with time zone|timestamptz|YES|
+briefing_reports|report_date|date|date|YES|
+briefing_reports|period_label|text|text|YES|
+briefing_reports|key_summary|text|text|YES|
+briefing_reports|sk_implication|text|text|YES|
+briefing_reports|related_card_ids|ARRAY|_text|NO|'{}'::text[]
+briefing_reports|related_raw_article_ids|ARRAY|_int8|NO|'{}'::bigint[]
+briefing_reports|recipients|jsonb|jsonb|NO|'[]'::jsonb
+briefing_reports|delivery_history|jsonb|jsonb|NO|'[]'::jsonb
+briefing_reports|legacy_payload|jsonb|jsonb|NO|'{}'::jsonb
+briefing_reports|primary_card_news_id|character varying|varchar|YES|
+briefing_reports|primary_peer_company_id|character varying|varchar|YES|
+card_news|id|character varying|varchar|NO|
+card_news|cluster_id|bigint|int8|YES|
+card_news|title|character varying|varchar|NO|
+card_news|summary_lines|ARRAY|_text|NO|'{}'::text[]
+card_news|event_type|character varying|varchar|NO|'tech'::character varying
+card_news|importance|character varying|varchar|NO|'low'::character varying
+card_news|importance_score|double precision|float8|NO|0.0
+card_news|implication|jsonb|jsonb|NO|'{}'::jsonb
+card_news|sources|jsonb|jsonb|NO|'[]'::jsonb
+card_news|validation_pass|boolean|bool|NO|false
+card_news|validation_sc_score|double precision|float8|NO|0.0
+card_news|is_human_reviewed|boolean|bool|YES|false
+card_news|created_at|timestamp with time zone|timestamptz|YES|now()
+card_news|company|character varying|varchar|NO|
+card_news|peer_company_id|character varying|varchar|YES|
+card_news|primary_keyword_category|character varying|varchar|YES|
+card_news|keyword_categories|jsonb|jsonb|NO|'[]'::jsonb
+card_news|keywords|ARRAY|_text|NO|'{}'::text[]
+card_news|keyword_frequency|jsonb|jsonb|NO|'{}'::jsonb
+card_news|source_raw_article_ids|ARRAY|_int8|NO|'{}'::bigint[]
+card_news|source_articles|jsonb|jsonb|NO|'[]'::jsonb
+card_news|evidence_payload|jsonb|jsonb|NO|'{}'::jsonb
+card_news|image_assets|jsonb|jsonb|NO|'[]'::jsonb
+card_news|legacy_payload|jsonb|jsonb|NO|'{}'::jsonb
+card_news|primary_raw_article_id|bigint|int8|YES|
+crawl_cursors|source_name|character varying|varchar|NO|
+crawl_cursors|cursor_date|date|date|NO|
+crawl_cursors|until_date|date|date|NO|
+crawl_cursors|window_days|integer|int4|NO|
+crawl_cursors|max_windows_per_run|integer|int4|NO|1
+crawl_cursors|enabled|boolean|bool|NO|true
+crawl_cursors|updated_at|timestamp with time zone|timestamptz|NO|now()
+crawl_run_articles|id|bigint|int8|NO|nextval('crawl_run_articles_id_seq'::regclass)
+crawl_run_articles|crawl_run_id|uuid|uuid|NO|
+crawl_run_articles|raw_article_id|bigint|int8|YES|
+crawl_run_articles|url|text|text|NO|
+crawl_run_articles|url_hash|character varying|varchar|NO|
+crawl_run_articles|discovered_at|timestamp with time zone|timestamptz|NO|now()
+crawl_run_articles|action|character varying|varchar|NO|
+crawl_run_articles|fetch_status|character varying|varchar|YES|
+crawl_run_articles|error_message|text|text|YES|
+crawl_run_articles|source_rank|integer|int4|YES|
+crawl_run_articles|raw_payload|jsonb|jsonb|NO|'{}'::jsonb
+crawl_run_articles|created_at|timestamp with time zone|timestamptz|NO|now()
+crawl_runs|id|uuid|uuid|NO|
+crawl_runs|run_type|character varying|varchar|NO|
+crawl_runs|source_name|character varying|varchar|NO|
+crawl_runs|window_start|date|date|NO|
+crawl_runs|window_end|date|date|NO|
+crawl_runs|status|character varying|varchar|NO|
+crawl_runs|inserted_count|integer|int4|NO|0
+crawl_runs|skipped_count|integer|int4|NO|0
+crawl_runs|error_message|text|text|YES|
+crawl_runs|started_at|timestamp with time zone|timestamptz|NO|now()
+crawl_runs|finished_at|timestamp with time zone|timestamptz|YES|
+flyway_schema_history|installed_rank|integer|int4|NO|
+flyway_schema_history|version|character varying|varchar|YES|
+flyway_schema_history|description|character varying|varchar|NO|
+flyway_schema_history|type|character varying|varchar|NO|
+flyway_schema_history|script|character varying|varchar|NO|
+flyway_schema_history|checksum|integer|int4|YES|
+flyway_schema_history|installed_by|character varying|varchar|NO|
+flyway_schema_history|installed_on|timestamp without time zone|timestamp|NO|now()
+flyway_schema_history|execution_time|integer|int4|NO|
+flyway_schema_history|success|boolean|bool|NO|
+global_industry_trends|id|uuid|uuid|NO|uuid_generate_v4()
+global_industry_trends|trend_date|date|date|NO|CURRENT_DATE
+global_industry_trends|industry|character varying|varchar|NO|
+global_industry_trends|region|character varying|varchar|NO|'global'::character varying
+global_industry_trends|keyword|character varying|varchar|NO|
+global_industry_trends|keyword_category|character varying|varchar|YES|
+global_industry_trends|title|character varying|varchar|YES|
+global_industry_trends|summary|text|text|YES|
+global_industry_trends|mention_count|integer|int4|NO|0
+global_industry_trends|impact_score|numeric|numeric|YES|
+global_industry_trends|confidence|numeric|numeric|YES|
+global_industry_trends|related_peer_ids|ARRAY|_text|NO|'{}'::text[]
+global_industry_trends|related_card_ids|ARRAY|_text|NO|'{}'::text[]
+global_industry_trends|source_raw_article_ids|ARRAY|_int8|NO|'{}'::bigint[]
+global_industry_trends|sk_ax_implication|text|text|YES|
+global_industry_trends|payload|jsonb|jsonb|NO|'{}'::jsonb
+global_industry_trends|created_at|timestamp with time zone|timestamptz|NO|now()
+global_industry_trends|updated_at|timestamp with time zone|timestamptz|NO|now()
+global_industry_trends|source_analysis_id|character varying|varchar|YES|
+insight_reports|id|uuid|uuid|NO|uuid_generate_v4()
+insight_reports|title|character varying|varchar|YES|
+insight_reports|insight_type|character varying|varchar|NO|'cascade'::character varying
+insight_reports|status|character varying|varchar|NO|'completed'::character varying
+insight_reports|requested_by_user_id|bigint|int8|YES|
+insight_reports|focus_peer_ids|ARRAY|_text|NO|'{}'::text[]
+insight_reports|focus_card_ids|ARRAY|_text|NO|'{}'::text[]
+insight_reports|focus_keywords|ARRAY|_text|NO|'{}'::text[]
+insight_reports|date_from|date|date|YES|
+insight_reports|date_to|date|date|YES|
+insight_reports|summary|text|text|YES|
+insight_reports|final_one_liner|text|text|YES|
+insight_reports|sk_ax_implication|text|text|YES|
+insight_reports|reasoning_steps|jsonb|jsonb|NO|'[]'::jsonb
+insight_reports|evidence|jsonb|jsonb|NO|'[]'::jsonb
+insight_reports|source_card_ids|ARRAY|_text|NO|'{}'::text[]
+insight_reports|confidence|numeric|numeric|YES|
+insight_reports|payload|jsonb|jsonb|NO|'{}'::jsonb
+insight_reports|created_at|timestamp with time zone|timestamptz|NO|now()
+insight_reports|updated_at|timestamp with time zone|timestamptz|NO|now()
+insight_reports|source_analysis_id|character varying|varchar|YES|
+insight_reports|primary_card_news_id|character varying|varchar|YES|
+insight_reports|primary_peer_company_id|character varying|varchar|YES|
+legacy_records|id|bigint|int8|NO|nextval('legacy_records_id_seq'::regclass)
+legacy_records|source_table|character varying|varchar|NO|
+legacy_records|source_pk|text|text|YES|
+legacy_records|owner_table|character varying|varchar|YES|
+legacy_records|owner_id|text|text|YES|
+legacy_records|payload|jsonb|jsonb|NO|
+legacy_records|archived_at|timestamp with time zone|timestamptz|NO|now()
+market_price_ohlcv|id|bigint|int8|NO|nextval('market_price_ohlcv_id_seq'::regclass)
+market_price_ohlcv|raw_article_id|bigint|int8|YES|
+market_price_ohlcv|peer_id|text|text|YES|
+market_price_ohlcv|ticker|text|text|NO|
+market_price_ohlcv|trade_date|date|date|NO|
+market_price_ohlcv|open|numeric|numeric|YES|
+market_price_ohlcv|high|numeric|numeric|YES|
+market_price_ohlcv|low|numeric|numeric|YES|
+market_price_ohlcv|close|numeric|numeric|YES|
+market_price_ohlcv|volume|bigint|int8|YES|
+market_price_ohlcv|change_pct|numeric|numeric|YES|
+market_price_ohlcv|currency|text|text|YES|'KRW'::text
+market_price_ohlcv|source_type|text|text|NO|'market_data'::text
+market_price_ohlcv|source_name|text|text|YES|
+market_price_ohlcv|publisher|text|text|YES|
+market_price_ohlcv|collected_at|timestamp with time zone|timestamptz|YES|
+market_price_ohlcv|payload|jsonb|jsonb|NO|'{}'::jsonb
+market_price_ohlcv|created_at|timestamp with time zone|timestamptz|NO|now()
+market_price_ohlcv|updated_at|timestamp with time zone|timestamptz|NO|now()
+market_price_ohlcv|instrument_id|bigint|int8|YES|
+market_price_ohlcv|peer_company_id|character varying|varchar|YES|
+market_price_ohlcv|exchange|character varying|varchar|NO|'KRX'::character varying
+market_price_ohlcv|instrument_name|character varying|varchar|YES|
+market_price_ohlcv|instrument_payload|jsonb|jsonb|NO|'{}'::jsonb
+mixer_results|id|uuid|uuid|NO|uuid_generate_v4()
+mixer_results|title|character varying|varchar|YES|
+mixer_results|requested_by_user_id|bigint|int8|YES|
+mixer_results|input_card_ids|ARRAY|_text|NO|'{}'::text[]
+mixer_results|input_peer_ids|ARRAY|_text|NO|'{}'::text[]
+mixer_results|input_keywords|ARRAY|_text|NO|'{}'::text[]
+mixer_results|ratios|jsonb|jsonb|NO|'{}'::jsonb
+mixer_results|generated_implication|jsonb|jsonb|NO|'{}'::jsonb
+mixer_results|insight_brief|jsonb|jsonb|NO|'[]'::jsonb
+mixer_results|radar_axes|jsonb|jsonb|NO|'[]'::jsonb
+mixer_results|connections|jsonb|jsonb|NO|'[]'::jsonb
+mixer_results|sk_ax_implication|text|text|YES|
+mixer_results|final_one_liner|text|text|YES|
+mixer_results|confidence|numeric|numeric|YES|
+mixer_results|payload|jsonb|jsonb|NO|'{}'::jsonb
+mixer_results|created_at|timestamp with time zone|timestamptz|NO|now()
+mixer_results|updated_at|timestamp with time zone|timestamptz|NO|now()
+mixer_results|source_analysis_id|character varying|varchar|YES|
+mixer_results|primary_card_news_id|character varying|varchar|YES|
+mixer_results|primary_peer_company_id|character varying|varchar|YES|
+peer_companies|id|character varying|varchar|NO|
+peer_companies|name|character varying|varchar|NO|
+peer_companies|tier|character varying|varchar|NO|'domestic'::character varying
+peer_companies|keywords|ARRAY|_text|YES|'{}'::text[]
+peer_companies|is_active|boolean|bool|YES|true
+peer_companies|created_at|timestamp with time zone|timestamptz|YES|now()
+peer_companies|dart_period|text|text|YES|
+peer_companies|dart_revenue_krwbn|numeric|numeric|YES|
+peer_companies|dart_operating_profit_krwbn|numeric|numeric|YES|
+peer_companies|dart_operating_margin_pct|numeric|numeric|YES|
+peer_companies|dart_revenue_growth_pct|numeric|numeric|YES|
+peer_companies|dart_operating_profit_growth_pct|numeric|numeric|YES|
+peer_companies|ax_revenue_share_pct|numeric|numeric|YES|
+peer_companies|contract_count|integer|int4|NO|0
+peer_companies|core_keywords|ARRAY|_text|NO|'{}'::text[]
+peer_companies|peer_plus_payload|jsonb|jsonb|NO|'{}'::jsonb
+peer_companies|financial_updated_at|timestamp with time zone|timestamptz|YES|
+peer_companies|financial_history|jsonb|jsonb|NO|'[]'::jsonb
+peer_companies|job_posting_history|jsonb|jsonb|NO|'[]'::jsonb
+peer_companies|legacy_payload|jsonb|jsonb|NO|'{}'::jsonb
+raw_article_business_signals|id|bigint|int8|NO|nextval('raw_article_business_signals_id_seq'::regclass)
+raw_article_business_signals|raw_article_id|bigint|int8|NO|
+raw_article_business_signals|signal_uid|text|text|NO|
+raw_article_business_signals|source_type|character varying|varchar|NO|
+raw_article_business_signals|source_name|character varying|varchar|YES|
+raw_article_business_signals|peer_id|character varying|varchar|YES|
+raw_article_business_signals|period|text|text|YES|
+raw_article_business_signals|period_year|integer|int4|YES|
+raw_article_business_signals|period_quarter|integer|int4|YES|
+raw_article_business_signals|period_type|text|text|YES|
+raw_article_business_signals|business_area|text|text|NO|
+raw_article_business_signals|signal_type|text|text|NO|
+raw_article_business_signals|sentiment|text|text|YES|
+raw_article_business_signals|summary|text|text|NO|
+raw_article_business_signals|evidence_text|text|text|YES|
+raw_article_business_signals|source_page|integer|int4|YES|
+raw_article_business_signals|source_chunk_uid|text|text|YES|
+raw_article_business_signals|confidence|double precision|float8|YES|
+raw_article_business_signals|extraction_method|text|text|YES|
+raw_article_business_signals|payload|jsonb|jsonb|NO|'{}'::jsonb
+raw_article_business_signals|created_at|timestamp with time zone|timestamptz|NO|now()
+raw_article_business_signals|updated_at|timestamp with time zone|timestamptz|NO|now()
+raw_article_financial_metrics|id|bigint|int8|NO|nextval('raw_article_financial_metrics_id_seq'::regclass)
+raw_article_financial_metrics|raw_article_id|bigint|int8|NO|
+raw_article_financial_metrics|metric_uid|text|text|NO|
+raw_article_financial_metrics|source_type|character varying|varchar|NO|
+raw_article_financial_metrics|source_name|character varying|varchar|YES|
+raw_article_financial_metrics|peer_id|character varying|varchar|YES|
+raw_article_financial_metrics|period|text|text|YES|
+raw_article_financial_metrics|period_year|integer|int4|YES|
+raw_article_financial_metrics|period_quarter|integer|int4|YES|
+raw_article_financial_metrics|period_type|text|text|YES|
+raw_article_financial_metrics|metric_name|text|text|NO|
+raw_article_financial_metrics|metric_label|text|text|YES|
+raw_article_financial_metrics|metric_scope|text|text|YES|
+raw_article_financial_metrics|business_area|text|text|YES|
+raw_article_financial_metrics|value_numeric|numeric|numeric|YES|
+raw_article_financial_metrics|value_krwbn|double precision|float8|YES|
+raw_article_financial_metrics|value_krw|numeric|numeric|YES|
+raw_article_financial_metrics|unit|text|text|YES|
+raw_article_financial_metrics|currency|character varying|varchar|YES|'KRW'::character varying
+raw_article_financial_metrics|source_page|integer|int4|YES|
+raw_article_financial_metrics|source_table_uid|text|text|YES|
+raw_article_financial_metrics|source_chunk_uid|text|text|YES|
+raw_article_financial_metrics|confidence|double precision|float8|YES|
+raw_article_financial_metrics|extraction_method|text|text|YES|
+raw_article_financial_metrics|evidence_text|text|text|YES|
+raw_article_financial_metrics|payload|jsonb|jsonb|NO|'{}'::jsonb
+raw_article_financial_metrics|created_at|timestamp with time zone|timestamptz|NO|now()
+raw_article_financial_metrics|updated_at|timestamp with time zone|timestamptz|NO|now()
+raw_article_metadata_unified|raw_article_id|bigint|int8|YES|
+raw_article_metadata_unified|source_type|character varying|varchar|YES|
+raw_article_metadata_unified|source_name|character varying|varchar|YES|
+raw_article_metadata_unified|common_metadata|jsonb|jsonb|YES|
+raw_article_metadata_unified|source_metadata|jsonb|jsonb|YES|
+raw_article_metadata_unified|metadata|jsonb|jsonb|YES|
+raw_article_parse_results|raw_article_id|bigint|int8|NO|
+raw_article_parse_results|source_type|character varying|varchar|NO|
+raw_article_parse_results|parser|text|text|YES|
+raw_article_parse_results|parser_ok|boolean|bool|YES|
+raw_article_parse_results|period|text|text|YES|
+raw_article_parse_results|period_year|integer|int4|YES|
+raw_article_parse_results|period_quarter|integer|int4|YES|
+raw_article_parse_results|period_type|text|text|YES|
+raw_article_parse_results|published_at|text|text|YES|
+raw_article_parse_results|parser_quality_score|double precision|float8|YES|
+raw_article_parse_results|parser_quality_label|text|text|YES|
+raw_article_parse_results|parser_quality_reason|text|text|YES|
+raw_article_parse_results|financial_record|jsonb|jsonb|NO|'{}'::jsonb
+raw_article_parse_results|result_metadata|jsonb|jsonb|NO|'{}'::jsonb
+raw_article_parse_results|warnings|jsonb|jsonb|NO|'[]'::jsonb
+raw_article_parse_results|raw_result|jsonb|jsonb|NO|'{}'::jsonb
+raw_article_parse_results|created_at|timestamp with time zone|timestamptz|NO|now()
+raw_article_parse_results|updated_at|timestamp with time zone|timestamptz|NO|now()
+raw_articles|id|bigint|int8|NO|nextval('raw_articles_id_seq'::regclass)
+raw_articles|source_name|character varying|varchar|NO|
+raw_articles|title|character varying|varchar|NO|
+raw_articles|content|text|text|YES|
+raw_articles|url|text|text|NO|
+raw_articles|published_at|timestamp with time zone|timestamptz|YES|
+raw_articles|collected_at|timestamp with time zone|timestamptz|NO|now()
+raw_articles|cluster_id|bigint|int8|YES|
+raw_articles|is_representative|boolean|bool|YES|
+raw_articles|processing_status|character varying|varchar|NO|'RAW'::character varying
+raw_articles|importance_score|double precision|float8|YES|
+raw_articles|metadata|jsonb|jsonb|NO|'{}'::jsonb
+raw_articles|created_at|timestamp with time zone|timestamptz|YES|now()
+raw_articles|source_type|character varying|varchar|NO|
+raw_articles|publisher|character varying|varchar|YES|
+raw_articles|url_hash|character varying|varchar|NO|
+raw_articles|company|jsonb|jsonb|NO|'[]'::jsonb
+raw_articles|language|character varying|varchar|NO|'ko'::character varying
+raw_articles|content_type|character varying|varchar|NO|'news'::character varying
+raw_articles|crawl_status|character varying|varchar|NO|'success'::character varying
+raw_articles|error_message|text|text|YES|
+raw_articles|relevance_score|double precision|float8|YES|
+raw_articles|relevance_label|character varying|varchar|YES|
+raw_articles|relevance_reason|text|text|YES|
+raw_articles|matched_companies|jsonb|jsonb|NO|'[]'::jsonb
+raw_articles|matched_sectors|jsonb|jsonb|NO|'[]'::jsonb
+raw_articles|importance_level|character varying|varchar|YES|
+raw_articles|qdrant_vector_id|uuid|uuid|YES|
+raw_articles|crawl_run_id|uuid|uuid|YES|
+raw_articles|matched_sector_details|jsonb|jsonb|NO|'[]'::jsonb
+(307 rows)

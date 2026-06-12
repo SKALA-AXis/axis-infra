@@ -1,0 +1,56 @@
+# K2 · 주 1회 (일요일 23:55 KST) peer weekly_digest narrative 갱신.
+#   · card_news 최근 7일 → LLM weekly narrative + delta_vs_prev.
+#   · 결과: peer_companies.peer_plus_payload['weekly_digest'] JSONB.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: axis-cron-weekly-digest
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app.kubernetes.io/component: cron
+    app.kubernetes.io/part-of: axis
+spec:
+  suspend: false
+  schedule: "55 21 * * 0"  # 노드 야간 셧다운(23:00-07:00 KST) 회피 — docs/adr/0007 참조
+  timeZone: "Asia/Seoul"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 3600
+      ttlSecondsAfterFinished: 7200
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: cron
+            cron: weekly-digest
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: axis-ai-sa
+          containers:
+            - name: refresh
+              image: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-ai:REPLACE_TAG
+              command: ["python", "scripts/refresh_weekly_digest.py"]
+              envFrom:
+                - configMapRef:
+                    name: axis-config
+                - secretRef:
+                    name: axis-secrets
+              env:
+                - name: PYTHONPATH
+                  value: /app
+              resources:
+                requests:
+                  cpu: 500m
+                  memory: 1Gi
+                limits:
+                  cpu: 1500m
+                  memory: 3Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+                runAsNonRoot: true
+                runAsUser: 65534

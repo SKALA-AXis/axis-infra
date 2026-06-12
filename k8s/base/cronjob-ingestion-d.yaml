@@ -9,15 +9,16 @@ metadata:
     app.kubernetes.io/component: cron
     app.kubernetes.io/part-of: axis
 spec:
-  schedule: "30 3 * * *"
+  # 04:25 KST — ingestion-a 03:00/04:00 파이프라인과 03:30 겹침 회피(Track D DeadlineExceeded 이력).
+  schedule: "15 7 * * *"  # 노드 야간 셧다운(23:00-07:00 KST) 회피 — docs/adr/0007 참조
   timeZone: "Asia/Seoul"
   concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
       backoffLimit: 2
-      # curl --max-time 60 self-bound → 재시도 포함 ~4분. 멈춤 backstop 5분 통일.
       activeDeadlineSeconds: 300
       ttlSecondsAfterFinished: 3600
       template:
@@ -26,7 +27,7 @@ spec:
             app.kubernetes.io/component: cron
             cron: ingestion-d
         spec:
-          restartPolicy: OnFailure
+          restartPolicy: Never
           serviceAccountName: axis-cron-sa
           containers:
             - name: trigger
