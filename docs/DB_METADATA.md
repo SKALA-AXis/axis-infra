@@ -2,7 +2,7 @@
 
 > 프론트 화면이 실제로 읽는 데이터에서 출발해 DB를 설명한다.
 > DDL 기준: [`axis-infra/db/schema.sql`](../db/schema.sql) / ERD 기준: [`axis-infra/db/schema.dbml`](../db/schema.dbml)
-> Flyway 기준: `axis-backend/src/main/resources/db/migration` (2026-06-11 현재 V1..V43 + V32_5)
+> Flyway 기준: `axis-backend/src/main/resources/db/migration` (2026-06-12 현재 V1..V45 + V32_5 — V44 seed, V45 peer-llm append-only. 마이그레이션 안전 규칙: conventions/CONVENTION.md §15)
 >
 > **SSoT 규칙 (2026-06-11 확정)**: V40까지는 `db/schema.sql` 스냅샷이 기준 문서,
 > **V41 이후의 진실은 backend Flyway 마이그레이션**이다. schema.sql 은 마일스톤마다

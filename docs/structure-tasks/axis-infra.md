@@ -5,19 +5,19 @@
 
 ## Phase 0 — 위생 (즉시, ~6/12)
 
-- [ ] `api/openapi copy.yaml` 삭제 (131KB, 5/18 시점 사본 — 정본은 openapi.yaml)
-- [ ] 로컬 잔존물 삭제: `k8s/overlays/skala/secret.skala 2.yaml`, `.env.skala.tmp.bak` (※ 둘 다 **git 미추적** — 보안 사고 아님, 로컬 위생)
-- [ ] `.gitignore`에 macOS 복사본 패턴 보강: `* [0-9].yaml`, `* [0-9].md`
-- [ ] untracked 문서 처분: `docs/AI_AGENT_DESIGN.md`, `docs/AXIS_DIFFERENTIATION_FEASIBILITY.md`, `docs/admin_page.md`, 한글명 PDF → 커밋 or `docs/_archived/`
+- [x] `api/openapi copy.yaml` 삭제 — 완료 확인 (2026-06-12, api/ 에 정본 2종만 잔존)
+- [x] 로컬 잔존물 삭제 (2026-06-12 확인 — 현재 untracked 는 langfuse/helm 팀원 WIP 뿐)
+- [x] `.gitignore`에 macOS 복사본 패턴 보강 (2026-06-12, chore PR)
+- [x] 문서 처분 완료 (2026-06-12): AI_AGENT_DESIGN·AXIS_DIFFERENTIATION_FEASIBILITY → `_archived/`, admin_page.md → `admin/`, 제출물 xlsx·PDF → `deliverables/`
 - [ ] (경미) `cronjob-failure-notifier.yaml` 내부 보조 리소스(Role/RoleBinding/SA/ConfigMap = `axis-cron-notifier`)와 CronJob(`axis-cron-failure-notifier`) 네이밍 통일 — k8s 변경이므로 PR (※ CronJob명은 파일명과 일치, 1차 분석의 "파일명 불일치" 주장은 오류)
 
 ## Phase 1 — 문서 거버넌스 (~6/20)
 
-- [ ] **문서 SSoT 선언**:
-  - [ ] `docs/conventions/CONVENTION.md` = 컨벤션 단일 정본 선언
-  - [ ] `AXIS_개발표준정의서_infra_v1.0.md`(80% 중복), `AXIS_개발계획2.md`, `AXIS_개발계획_v3.md`, `*.docx` → `docs/conventions/_archived/` 이동
+- [x] **문서 SSoT 선언** — `docs/README.md` 문서 지도 신설 (2026-06-12):
+  - [x] CONVENTION.md 정본 선언 (docs/README.md)
+  - [x] 중복 구판 → `conventions/_archived/` (잔여분 docx 포함, 2026-06-12)
   - [ ] `AGENTS.md` → "CLAUDE.md 참조" 3줄 포인터로 축소
-  - [ ] README에 "문서 지도" 절 추가 (무엇이 어디의 정본인지)
+  - [x] 문서 지도 — `docs/README.md` 신설 + 루트 README 링크 (2026-06-12)
 - [ ] **CLAUDE.md 현행화**: 노출도 산식·섹터 taxonomy 정본 확정(ai 코드 구현값 대조 + 팀 확인) 후 ai CLAUDE.md와 통일, LangGraph 버전 표기 정리
 - [ ] **schema.sql ↔ Flyway 동기화 프로세스 문서화** (`docs/DB_METADATA.md`): V40까지 스냅샷, V41+는 backend Flyway가 진실, 마일스톤마다 `pg_dump --schema-only` 재덤프
 - [ ] PR 템플릿에 문서 갱신 체크박스

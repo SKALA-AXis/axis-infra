@@ -151,7 +151,7 @@
 | Settings (alert rules / notifications / profile / password / view prefs / access logs) | `/api/settings/*` | ⬜ N/A | ⬜ |
 | Notification list | `/api/notifications` | ⬜ N/A | ⬜ |
 
-### 2.14 Admin Observability (admin_page.md 정합 — 신규 P9)
+### 2.14 Admin Observability (admin/admin_page.md 정합 — 신규 P9)
 
 | Frontend | BE endpoint | axis-ai | 담당 | 상태 |
 |---|---|---|---|---|

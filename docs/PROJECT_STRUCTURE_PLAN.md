@@ -130,7 +130,7 @@ src/  (172 .py, ~96,500줄)
 | infra placeholder 잔존 | "발표 전 치환 필요" | **기각** — `kubectl kustomize overlays/skala` 렌더에 REPLACE 0건, overlay가 전부 치환 |
 | failure-notifier 네이밍 | "파일명 vs 리소스명 불일치" | CronJob명은 파일명과 일치. 불일치는 보조 리소스(Role/SA 등 `axis-cron-notifier`)와의 사이 |
 | 섹터 taxonomy 정본 | infra판 추정 | **확정** — 코드 `src/config/sectors.py` = `ax/security/infra/deal(+other)` |
-| 노출도 산식 정본 | infra판 추정 | **양쪽 문서 모두 코드와 다름** — 구현은 `0.70·cluster + 0.30·mention, high≥0.65` (`preprocessing/classification.py:92`). 팀 의사결정 필요 |
+| 노출도 산식 정본 | infra판 추정 | **확정(2026-06-12 팀 결정): 코드가 정본** — `0.70·cluster + 0.30·mention, high≥0.65` (`preprocessing/classification.py:92`). 1차 미팅 스펙(0.50/0.30/0.20 3항)은 폐기, 문서가 코드를 따른다 |
 | backend Flyway | "V1~V43 연속" | V1~V43 + **V32_5**(분수 버전) 44개, 중복 없음 — 연속성 문제는 아니나 표기 정정 |
 | frontend api.ts 신선도 | "재생성 필요 가능성" | **확정 필요** — openapi.yaml 6/9 변경(`GET /api/global/trends` 추가, #51)이 api.ts(5/18)에 미반영 |
 | 검증 통과(이상 없음 재확인) | — | _deprecated import 0건, ingestion_graph.py 부재, api↔agents 순환 실재(2파일), 인라인 style 85건, untracked 47건, bin/ 38파일 추적, FE에 router/zustand/react-query/vitest 부재 — 전부 1차 기재와 일치 |
@@ -159,7 +159,7 @@ src/  (172 .py, ~96,500줄)
 | 0-2 | axis-ai | `src/agents/_deprecated/` 3파일 삭제 (import 0건 확인됨 — git 히스토리가 보존하므로 폴더 보관 불필요) | 김가은 |
 | 0-3 | axis-backend | `.gitignore`에 `bin/` 추가 + `git rm -r --cached bin/` (소스 영향 0) | 박지원 |
 | 0-4 | axis-infra | `api/openapi copy.yaml` 삭제, 로컬 `secret.skala 2.yaml`·`.env.skala.tmp.bak` 삭제, `.gitignore`에 macOS 복사본 패턴(`* [0-9].yaml`) 보강 | 본인 |
-| 0-5 | axis-infra | untracked 문서(AI_AGENT_DESIGN.md 등) 커밋 or docs/_archived 이동 결정 | 본인 |
+| 0-5 | axis-infra | untracked 문서(_archived/AI_AGENT_DESIGN.md 등) 커밋 or docs/_archived 이동 결정 | 본인 |
 | 0-6 | axis-frontend | untracked 47건 — **팀원에게 목록 전달만** (처분은 그들 결정) | 안가은·최종민 |
 
 **완료 기준**: 4개 레포 모두 `git status` 가 깨끗하거나, 남은 untracked가 "왜 남겼는지" 한 줄 설명 가능.
@@ -168,7 +168,7 @@ src/  (172 .py, ~96,500줄)
 
 | 항목 | 작업 | 비고 |
 |---|---|---|
-| 1-1 | **4개 레포 CLAUDE.md 현행화** — ai: analysis_flow 7노드·신규 에이전트·디렉토리 실제 구조 반영. frontend: 이중 구조/커스텀 라우팅/Repository 패턴이라는 *실제*를 기술 (이상향 말고). backend: fixture-fallback 패턴 명문화. infra: 노출도 산식·섹터 taxonomy를 **infra CLAUDE.md 값으로 통일**하고 ai CLAUDE.md가 따르게 (v3 1차 미팅 확정값: `0.50/0.30/0.20, high≥0.65`, 섹터 `ax/security/infra/deal/other`) — 팀 확인 후 반영 | 문서 PR, 레포별 1건 |
+| 1-1 | **4개 레포 CLAUDE.md 현행화** — ai: analysis_flow 7노드·신규 에이전트·디렉토리 실제 구조 반영. frontend: 이중 구조/커스텀 라우팅/Repository 패턴이라는 *실제*를 기술 (이상향 말고). backend: fixture-fallback 패턴 명문화. infra: 노출도 산식·섹터 taxonomy 정본 통일 — **완료 (2026-06-12)**: 산식은 코드 정본(`0.70/0.30, high≥0.65`)으로 팀 확정, 양 레포 CLAUDE.md 반영 | 문서 PR, 레포별 1건 |
 | 1-2 | **문서 단일 소스 선언**: CONVENTION.md = 컨벤션 SSoT. `AXIS_개발표준정의서_infra_v1.0.md`·개발계획 v2/v3 → `docs/conventions/_archived/`. AGENTS.md는 "CLAUDE.md를 봐라" 3줄 포인터로 축소(Codex 호환용 잔존). README에 문서 지도 1절 추가 | infra docs-only |
 | 1-3 | **schema.sql ↔ Flyway 관계 문서화**: "V40까지는 schema.sql 스냅샷 = 진실, V41+는 backend Flyway가 진실, 스냅샷은 마일스톤마다 재덤프" 프로세스를 docs/DB_METADATA.md에 명시 | 박지원과 합의 |
 | 1-4 | **frontend 타입 신선도 확인**: openapi.yaml(6/9) 대비 api.ts(5/18) — 팀원에게 `openapi-typescript` 재생성 요청, diff 없으면 무변경 확인만 | 충돌 위험 0 |
