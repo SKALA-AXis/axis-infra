@@ -26,6 +26,14 @@ data:
   ENABLE_RELEVANCE_LLM: "true"
   POSTPROCESS_TITLE_LLM_JUDGE_ENABLED: "true"
 
+  # ── 브리핑 본문 LLM 모델 상향 (2026-06-13).
+  # 브리핑은 메일 본문으로 사용자에 직접 노출되는 핵심 출력이고 호출 빈도가 낮아
+  # (주 ~15회) 상위 모델 비용 부담이 작다. on-demand /briefing/generate 와
+  # cronjob-briefing-generate(curl→동일 API) 모두 ai-deployment 포드에서 실행되므로
+  # 본 ConfigMap 하나로 양쪽 적용. 코드 기본은 gpt-4o 유지(로컬 비용 보호) — 여기서만 상향.
+  # gpt-5 계열은 basis_builder._get_llm 이 reasoning_effort(low)+토큰캡(8000) 자동 적용.
+  BRIEFING_LLM_MODEL: "gpt-5.5"
+
   # ── 카드 뉴스 이미지 공유 볼륨
   IMAGE_STORAGE_PATH: "/data/images"
 
