@@ -1,16 +1,18 @@
 // ============================================================
-// AXIS - DBML after V40 integrated issue storage updates
-// Snapshot date: 2026-05-29
+// AXIS - DBML after V43 assistant memory and Peer+ LLM snapshots
+// Snapshot date: 2026-06-12
 // Scope: app/operational tables + flyway_schema_history. Views noted below.
 // ============================================================
 
 Project axis {
   database_type: 'PostgreSQL'
   Note: '''
-    V40 crawler/parser-aware product schema with integrated issue storage,
+    V43 crawler/parser-aware product schema with integrated issue storage,
     card_news anchor FKs, card_news status soft-delete, admin audit logs,
     context-engineering columns/views, auth users, personalization,
-    notifications, password reset tokens, and global search support.
+    notifications, password reset tokens, global search support,
+    Today Insight report memory, assistant conversation memory, and
+    Peer+ LLM analysis snapshots.
     V30 legacy archive remains in legacy_records, while crawler runs and
     parser fact tables are restored as first-class operational data.
 
@@ -630,7 +632,7 @@ Table users {
   failed_login_count int [not null, default: 0]
   locked_until timestamptz
   last_login_at timestamptz
-  notification_preferences jsonb [not null, default: `'{ "enabled": true, "importantEnabled": true, "keywords": [] }'::jsonb`, note: 'User notification preferences: enabled, importantEnabled, keywords.']
+  notification_preferences jsonb [not null, default: `'{ "enabled": true, "importantEnabled": true, "importantKeywords": ["수주", "계약", "실적", "투자"], "keywords": [] }'::jsonb`, note: 'User notification preferences: enabled, importantEnabled, importantKeywords, keywords.']
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
   deleted_at timestamptz
@@ -757,6 +759,134 @@ Table user_access_logs {
   Note: 'Security access history for signup/login/logout/refresh/password events. Auto-login is based on refresh tokens, not browsing history.'
 }
 
+Table today_insight_reports {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  report_date date [not null]
+  schema_version varchar(40) [not null, default: 'today_insight_v1']
+  prompt_version varchar(80)
+  status varchar(30) [not null, default: 'active', note: 'active, archived, failed, review.']
+  headline text
+  executive_summary text
+  executive_implication text
+  source_integrated_issue_ids "uuid[]" [not null, default: `'{}'`]
+  source_card_ids "text[]" [not null, default: `'{}'`]
+  source_raw_article_ids "bigint[]" [not null, default: `'{}'`]
+  peer_ids "text[]" [not null, default: `'{}'`]
+  sectors "text[]" [not null, default: `'{}'`]
+  input_snapshot jsonb [not null, default: `'{}'::jsonb`, note: 'Exact DB/profile/ledger context sent to TodayInsightAgent.']
+  output_payload jsonb [not null, default: `'{}'::jsonb`, note: 'UI-ready TodayInsightGenerateResponse payload.']
+  provenance jsonb [not null, default: `'{}'::jsonb`]
+  confidence double
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (report_date, created_at) [name: 'idx_today_insight_reports_latest', note: "Partial: status = 'active'."]
+    source_integrated_issue_ids [name: 'idx_today_insight_reports_integrated_issues', type: gin]
+    source_card_ids [name: 'idx_today_insight_reports_cards', type: gin]
+    peer_ids [name: 'idx_today_insight_reports_peers', type: gin]
+    sectors [name: 'idx_today_insight_reports_sectors', type: gin]
+    output_payload [name: 'idx_today_insight_reports_output_payload', type: gin]
+    input_snapshot [name: 'idx_today_insight_reports_input_snapshot', type: gin]
+  }
+
+  Note: 'Daily home dashboard insight memory. Stores TodayInsightAgent input_snapshot and output_payload JSONB for durable context.'
+}
+
+Table assistant_conversations {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  user_id uuid [ref: > users.id, note: 'ON DELETE SET NULL']
+  device_id_hash varchar(128)
+  title varchar(200)
+  summary text
+  status varchar(20) [not null, default: 'active', note: 'active, ended, archived, deleted.']
+  last_message_at timestamptz
+  message_count int [not null, default: 0]
+  metadata jsonb [not null, default: `'{}'::jsonb`]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (user_id, last_message_at, created_at) [name: 'idx_assistant_conversations_user_latest', note: "Partial: user_id IS NOT NULL AND status <> 'deleted'."]
+    (device_id_hash, last_message_at, created_at) [name: 'idx_assistant_conversations_device_latest', note: "Partial: device_id_hash IS NOT NULL AND status <> 'deleted'."]
+  }
+
+  Note: 'Floating assistant conversation thread. Owned by users.id when logged in, otherwise by hashed HttpOnly device id.'
+}
+
+Table assistant_messages {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  conversation_id uuid [not null, ref: > assistant_conversations.id, note: 'ON DELETE CASCADE']
+  turn_idx int [not null]
+  role varchar(20) [not null, note: 'user, assistant, system.']
+  content text [not null]
+  intent varchar(60)
+  scope varchar(60)
+  entities jsonb [not null, default: `'{}'::jsonb`]
+  answer_payload jsonb [not null, default: `'{}'::jsonb`]
+  sources jsonb [not null, default: `'[]'::jsonb`, note: 'Grounding sources used in the assistant answer.']
+  retrieval_trace jsonb [not null, default: `'{}'::jsonb`]
+  handoff jsonb [not null, default: `'{}'::jsonb`, note: 'Navigation handoff payload.']
+  safety jsonb [not null, default: `'{}'::jsonb`]
+  confidence double
+  langfuse_trace_id varchar(100)
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (conversation_id, turn_idx) [unique, name: 'uq_assistant_messages_turn']
+    (conversation_id, turn_idx) [name: 'idx_assistant_messages_conversation']
+    created_at [name: 'idx_assistant_messages_created_at']
+    (intent, created_at) [name: 'idx_assistant_messages_intent', note: 'Partial: intent IS NOT NULL.']
+    sources [name: 'idx_assistant_messages_sources_gin', type: gin]
+    handoff [name: 'idx_assistant_messages_handoff_gin', type: gin]
+    langfuse_trace_id [name: 'idx_assistant_messages_trace', note: 'Partial: langfuse_trace_id IS NOT NULL.']
+  }
+
+  Note: 'Assistant/user turns. Sources, retrieval trace, safety decisions, and page handoff payloads are kept in compact JSONB.'
+}
+
+Table peer_llm_analysis_snapshots {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  analysis_type varchar(80) [not null, default: 'peer_swot_comparison']
+  scope varchar(30) [not null, note: 'all or company.']
+  peer_id text [not null, note: 'all, samsung_sds, lg_cns, hyundai_autoever, posco_dx, etc.']
+  reference_peer_id text [not null, default: 'sk_ax']
+  comparison_mode varchar(80) [not null]
+  schema_version varchar(40) [not null, default: 'peer_swot_comparison_v1']
+  prompt_version varchar(80) [not null]
+  model_name varchar(80)
+  status varchar(30) [not null, default: 'active', note: 'active, archived, failed, review.']
+  evidence_hash varchar(80) [not null, note: 'Hash of the compact input evidence pack.']
+  input_snapshot jsonb [not null, default: `'{}'::jsonb`, note: 'Compact evidence pack sent to the LLM.']
+  output_payload jsonb [not null, default: `'{}'::jsonb`, note: 'Validated UI-ready JSON from Peer+ LLM analysis.']
+  analysis_trace jsonb [not null, default: `'[]'::jsonb`]
+  provenance jsonb [not null, default: `'{}'::jsonb`]
+  confidence double
+  source_raw_article_ids "bigint[]" [not null, default: `'{}'`]
+  source_signal_ids "bigint[]" [not null, default: `'{}'`]
+  source_metric_ids "bigint[]" [not null, default: `'{}'`]
+  peer_ids "text[]" [not null, default: `'{}'`]
+  generated_at timestamptz [not null, default: `now()`]
+  expires_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (analysis_type, scope, peer_id, comparison_mode, generated_at, created_at) [name: 'idx_peer_llm_analysis_snapshots_latest', note: "Partial: status = 'active'."]
+    expires_at [name: 'idx_peer_llm_analysis_snapshots_expires_at', note: "Partial: status = 'active' AND expires_at IS NOT NULL."]
+    peer_ids [name: 'idx_peer_llm_analysis_snapshots_peer_ids', type: gin]
+    source_raw_article_ids [name: 'idx_peer_llm_analysis_snapshots_raw_articles', type: gin]
+    source_signal_ids [name: 'idx_peer_llm_analysis_snapshots_signals', type: gin]
+    source_metric_ids [name: 'idx_peer_llm_analysis_snapshots_metrics', type: gin]
+    output_payload [name: 'idx_peer_llm_analysis_snapshots_output_payload', type: gin]
+    input_snapshot [name: 'idx_peer_llm_analysis_snapshots_input_snapshot', type: gin]
+    analysis_trace [name: 'idx_peer_llm_analysis_snapshots_analysis_trace', type: gin]
+    (analysis_type, peer_id, comparison_mode, evidence_hash, prompt_version, model_name) [unique, name: 'uq_peer_llm_analysis_snapshots_evidence', note: "Physical index uses COALESCE(model_name, '')."]
+  }
+
+  Note: 'Peer+ LLM comparison/SWOT analysis snapshots. Stores compact input evidence and UI-ready output JSON.'
+}
+
 Table legacy_records {
   id bigserial [pk]
   source_table varchar(100) [not null]
@@ -791,6 +921,8 @@ TableGroup "Minimal Product ERD" {
   mixer_results
   insight_reports
   global_industry_trends
+  today_insight_reports
+  peer_llm_analysis_snapshots
 }
 
 TableGroup "Auth / Personalization" {
@@ -800,6 +932,8 @@ TableGroup "Auth / Personalization" {
   user_card_news_bookmarks
   user_notifications
   user_access_logs
+  assistant_conversations
+  assistant_messages
   admin_audit_logs
 }
 
