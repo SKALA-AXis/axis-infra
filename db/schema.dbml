@@ -145,9 +145,11 @@ Table raw_articles {
   indexes {
     url_hash [name: 'idx_raw_articles_url_hash']
     source_type [name: 'idx_raw_articles_source_type']
+    published_at [name: 'idx_raw_articles_published_at']
     processing_status [name: 'idx_raw_articles_processing_status']
     company [name: 'idx_raw_articles_company', type: gin]
     matched_companies [name: 'idx_raw_articles_matched_companies', type: gin]
+    qdrant_vector_id [name: 'idx_raw_articles_qdrant_vector_id']
   }
 }
 
