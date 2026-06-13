@@ -180,8 +180,10 @@ service repo push (axis-ai/backend/frontend develop)
 | 저장소 | 책임 | 저장 대상 | 보존 기간 |
 |---|---|---|---|
 | PostgreSQL | 원문 보존·감사 추적·재처리 | 수집 원문 전량 + 메타데이터 | 6개월 |
-| Qdrant main | 최근 3개월 검색엔진 | 대표 기사 Dense+Sparse 벡터 | 3개월 TTL |
-| Qdrant history | 1년치 히스토리 분석 | 1년치 벡터 (시그널 히스토리 전용) | 12개월 TTL |
+| Qdrant `axis_main` | RAG 검색엔진 | 카드뉴스 대표 기사 Dense(1024)+Sparse 벡터 | 무기한 (TTL 미구현 — 정리 잡 필요 시 별도 결정) |
+| Qdrant `axis_documents` | 에이전트 문서 검색 | DART 공시 청크 + 어시스턴트 지식 벡터 | 무기한 |
+
+> `axis_history`(12개월 히스토리 컬렉션)는 v3 설계안 — **미구현으로 확정, 코드에서 제거됨 (2026-06-12)**.
 
 ### 핵심 원칙
 - **원문은 항상 PostgreSQL에 보관** (벡터 만료 후 재임베딩 가능)
@@ -216,7 +218,8 @@ service repo push (axis-ai/backend/frontend develop)
 ### 저장소 사용 원칙
 - 크롤링된 원문 → PostgreSQL 전량 저장 (Gate 통과 여부 무관)
 - Gate 1(품질) + Gate 2(신뢰도) + Gate 3(중복) 통과한 대표 기사만 → Qdrant
-- Qdrant 페이로드: rdb_id(FK), peer_id, event_type, sector, exposure_band, exposure_score, pub_date, cluster_id, title, summary
+- Qdrant `axis_main` 페이로드: rdb_id(FK), card_news_id, company(peer id 값), event_type, sector, exposure_band, exposure_score, published_at, cluster_id, source_name, title(≤500자), summary(≤1000자) — 원문 본문 저장 금지
+- 예외: `axis_documents`는 DART 공시 청크 텍스트(≤3500자/청크)를 페이로드에 포함 (에이전트 검색용, `rag/document_index.py`)
 - 동향 카드 검증 첨부 4종(source_links / provenance / financial_refs / mbb_refs)은 V30 이후 `card_news.evidence_payload`에 저장
 
 ---
