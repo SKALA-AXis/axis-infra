@@ -41,10 +41,10 @@ resources:
 images:
 - name: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-ai
   newName: amdp-registry.skala-ai.com/skala26a-ai3/axis-ai
-  newTag: "4345242"
+  newTag: 7e18d5c
 - name: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-ai-cron
   newName: amdp-registry.skala-ai.com/skala26a-ai3/axis-ai-cron
-  newTag: "4345242"
+  newTag: 7e18d5c
 - name: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-backend
   newName: amdp-registry.skala-ai.com/skala26a-ai3/axis-backend
   newTag: e6a49cd
