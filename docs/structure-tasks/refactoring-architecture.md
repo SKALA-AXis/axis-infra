@@ -46,8 +46,10 @@ db/ rag/ config/ contracts/ ── 리프 (부작용 격리)
 | # | 추출물 | 신규 위치 | 흡수 대상 | 효과 | 위험 |
 |---|---|---|---|---|---|
 | ✅ **R1** | **공용 LLM 클라이언트 팩토리 — 완료(2026-06-14, PR #177~#183)** | `src/llm/`(LLMSpec+build_chat_llm, leaf) | LLM 생성 21곳 중 20곳 | gpt-5 reasoning_effort(옵셔널)·json_object·토큰캡·timeout/retries 단일 출처화. import-linter `llm is a leaf` 계약. summarizer 1곳은 base+bind 패턴 의도적 예외 | 낮음 (각 배치 라이브 kwargs 동등성 검증, 동작 불변) |
-| **R2** | **JSON/텍스트 헬퍼** | `src/shared/json_helpers.py` `text_norm.py` | `_json_dict`/`_json_list`/`_safe_json_*` ~10곳 | 파싱 실패 처리·타입 강제 표준화 | 낮음 |
-| **R3** | **LLM 호출 격리 래퍼** | `src/llm/invoke.py` (`await ainvoke_json(...)`) | 각 에이전트의 `to_thread(sync invoke)` 반복 | event-loop 안전(probe 보호, #146 패턴)을 1곳에 | 중간 (async 경계) |
+| ✅ **R2** | **JSON 헬퍼 단일 출처화 — 완료(2026-06-14, PR #184)** | `src/shared/json_helpers.py`(leaf) | `_json_dict` 4곳 + `_json_dumps` 2곳 (구현 동일분만) | 통합. import-linter `shared is a leaf` 계약 | 낮음 |
+| ⚠️ **R3 (보류·재평가)** | ~~LLM 호출 격리 래퍼~~ | — | — | **2026-06-14 조사: 깨끗한 통합 아님.** `.invoke()` 가 전부 sync 헬퍼 내부에 박혀 있고(messages/prompt/config/override 제각각) `to_thread` 격리는 이미 에이전트 메서드 레벨에 구조적으로 적용됨. 공용화하려면 sync 헬퍼를 async 재구조화 → 동작 변경. 이득 대비 위험 높아 보류 | (제외) |
+
+> **R2 통합 제외분(구현 갈라짐)**: `_json_list` 3곳(non-list 파싱 결과 `[]`/`[parsed]`/`[value]` 상이), `_parse_json_loose` 2곳(any-type vs dict-only), today_insight `_json_dumps`(`_json_ready` 전처리), it_trend `_safe_json_object`, summarizer `_safe_json_loads` — 통합 시 회귀라 의도적 제외(json_helpers docstring 명시).
 | **R4** | **크롤러 fetch/parse 베이스** | `src/crawler/base/{fetchers,parsers}.py` | sources/* 의 httpx/Playwright/requests·날짜파싱 중복 | 신규 크롤러 보일러플레이트 ~50%↓ | 중간 (소스 1개씩 이행) |
 
 > R1 은 **이번 세션 briefing gpt-5 작업이 만든 중복**을 정리하는 것이기도 하다. 가장 먼저, 가장 안전하게(leaf) 착수 가능.
@@ -64,7 +66,7 @@ db/ rag/ config/ contracts/ ── 리프 (부작용 격리)
 
 ### 2.5 ai 실행 순서
 
-1. **R1 공용 LLM 팩토리** (leaf, 최고 ROI) → 2. **R2 JSON 헬퍼** → 3. **R3 격리 래퍼** → 4. preprocessing↔analysis 순환 절단(import-linter 계약 추가) → 5. summarizer/card_news_composer/article_store 분해 → 6. R4 크롤러 베이스(2-A4, 크롤러 팀 잠잠해진 후).
+1. ✅ **R1 공용 LLM 팩토리** (완료) → 2. ✅ **R2 JSON 헬퍼** (완료) → 3. ~~R3 격리 래퍼~~ (보류·재평가, 위 표) → 4. ~~preprocessing↔analysis 순환 절단~~ → **2026-06-14 실측: 순환 없음**(preprocessing→analysis 단방향 1건, 역방향 0건. 계획 시점 진단은 무효 — 이미 단방향) → 5. **(다음) summarizer/card_news_composer/article_store 분해** — characterization test 선행, 분리는 briefing/strategic_insight 와 동일한 AST 추출+re-export 패턴 → 6. R4 크롤러 베이스(2-A4, 크롤러 팀 잠잠해진 후).
 
 ---
 
