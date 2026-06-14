@@ -45,7 +45,7 @@ db/ rag/ config/ contracts/ ── 리프 (부작용 격리)
 
 | # | 추출물 | 신규 위치 | 흡수 대상 | 효과 | 위험 |
 |---|---|---|---|---|---|
-| **R1** | **공용 LLM 클라이언트 팩토리** | `src/llm/client.py` + `src/llm/config.py` | `_get_llm` 19곳 | gpt-5 분기·토큰캡·json_mode·reasoning_effort·캐싱을 1곳에. 모델 교체 1줄. 작업별 설정 dict(`TASK_CONFIG`) | 낮음 (leaf, 동작 불변 — 각 호출처는 `get_llm(task=...)` 로 치환) |
+| ✅ **R1** | **공용 LLM 클라이언트 팩토리 — 완료(2026-06-14, PR #177~#183)** | `src/llm/`(LLMSpec+build_chat_llm, leaf) | LLM 생성 21곳 중 20곳 | gpt-5 reasoning_effort(옵셔널)·json_object·토큰캡·timeout/retries 단일 출처화. import-linter `llm is a leaf` 계약. summarizer 1곳은 base+bind 패턴 의도적 예외 | 낮음 (각 배치 라이브 kwargs 동등성 검증, 동작 불변) |
 | **R2** | **JSON/텍스트 헬퍼** | `src/shared/json_helpers.py` `text_norm.py` | `_json_dict`/`_json_list`/`_safe_json_*` ~10곳 | 파싱 실패 처리·타입 강제 표준화 | 낮음 |
 | **R3** | **LLM 호출 격리 래퍼** | `src/llm/invoke.py` (`await ainvoke_json(...)`) | 각 에이전트의 `to_thread(sync invoke)` 반복 | event-loop 안전(probe 보호, #146 패턴)을 1곳에 | 중간 (async 경계) |
 | **R4** | **크롤러 fetch/parse 베이스** | `src/crawler/base/{fetchers,parsers}.py` | sources/* 의 httpx/Playwright/requests·날짜파싱 중복 | 신규 크롤러 보일러플레이트 ~50%↓ | 중간 (소스 1개씩 이행) |

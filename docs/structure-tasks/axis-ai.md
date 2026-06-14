@@ -39,7 +39,11 @@
 
 ## Phase 2+ — 계층화·재사용 (2026-06-14 전수 분석, 발표 후) → 상세: [refactoring-architecture.md](refactoring-architecture.md)
 
-- [ ] **2-A6. 공용 LLM 클라이언트 팩토리** `src/llm/` 신설 — `_get_llm` **19곳 중복** 흡수 (모델·temperature·토큰캡·`response_format`·gpt-5 `reasoning_effort`·`to_thread` 격리 1곳에). **최고 ROI·최저 위험(leaf)**. gpt-5 분기는 이미 mixer·today_insight·briefing 3곳 복붙 상태 — 더 자라기 전 정리
+- [x] **2-A6. 공용 LLM 클라이언트 팩토리 — 완료 (2026-06-14, PR #177~#183, 7배치)**
+  - `src/llm/`(leaf) `LLMSpec`+`build_chat_llm` 신설. gpt-5 `reasoning_effort`(옵셔널 None)·json_object 래핑·토큰캡 분기·timeout/max_retries 를 단일 출처화. import-linter `llm is a leaf` 계약 추가
+  - **LLM 생성 사이트 21곳 중 20곳 이행** (각 배치 라이브 ChatOpenAI 가로채기로 kwargs 동등성 검증 + env gpt-5 강제 케이스 reasoning 미전달 보존). summarizer 1곳은 base+bind 패턴이라 의도적 예외(주석), `_deprecated/` 3곳 폐기 제외
+  - 부가 수확: peer_swot 모듈레벨 ChatOpenAI import(무거운 임포트 규칙 위반) 해소, 1차 조사 누락 사이트(peer_swot·router gen-search) 발견·이행
+  - (선택 잔여) 캡 resolver 중복(`_llm_max_completion_tokens` 3곳)을 `LLMSpec(max_tokens_reasoning=)`로 흡수 — 가치 낮아 보류
 - [ ] **2-A7. JSON/텍스트 헬퍼** `src/shared/` 신설 — `_json_dict`/`_json_list`/`_safe_json_*` ~10곳 중복 흡수
 - [ ] **2-A8. preprocessing ↔ analysis 순환 의존 절단** + import-linter 계약 추가 (현재 relevance↔summarizer 등 순환)
 - [ ] **2-A9. 거대 파일 분해** (characterization test 선행): `analysis/summarizer.py`(3,632) fact/summary/validator 분리 · `composers/card_news_composer.py`(4,096) LLM호출→llm/ 이관 후 format/render 분리 · `db/article_store.py`(3,028) raw/card/evidence store 분리
