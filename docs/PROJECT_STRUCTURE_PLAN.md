@@ -8,6 +8,21 @@
 
 ---
 
+## 진행 현황 (2026-06-14 전수 재검증)
+
+발표 전 조치(위생·문서)는 대부분 완료됐고, **발표 후로 미뤘던 구조 리팩토링 일부를 선제 완료**했다(ai 에이전트 분해 2종, contracts 의존 절단, router 테스트). 동작 불변 원칙은 전부 준수.
+
+| 레포 | 완료 | 미완 / 잔여 |
+|---|---|---|
+| **axis-ai** | 거대 에이전트 2개 분해(2-A2/A3, 본체 -43%/-28%), contracts 의존 절단+import-linter(2-A1, #158), router 테스트 21종(2-A5, #157), CLAUDE.md·노출도 산식 확정 | Phase0 위생(팀 WIP 처분·`_deprecated` 삭제), 2-A4 크롤러, CLAUDE.md 섹터 예시 1건·LangGraph 버전 |
+| **axis-backend** | bin/ 추적해제, CLAUDE.md 현행화(fallback·컨트롤러·dev경로), schema↔Flyway 문서화, **계획 외: V44/V45+migrate 가드(#79)** | 2-B1 PeerOverview 분해(2,629줄), 2-B3 peer 상수, 2-B4 서비스 단위테스트 (전부 발표 후) |
+| **axis-frontend** | README 실측 동기화(#97) | ⚠️ **api.ts 드리프트(openapi 101 vs api.ts 73) 시급 재생성**, 정본 선언, 2-F1~F5(팀·발표 후) |
+| **axis-infra** | 문서 SSoT·지도·AGENTS 축소, docs/ 정리, 노출도 확정, DB_METADATA V45, Trivy 3레포, ns 리소스 적정화·무중단 롤링 검증 | LangGraph 버전 표기, PR템플릿 체크박스, 발표직전 체크리스트(6/21~), Phase3 가드 자동화 |
+
+> **가장 시급(발표 전)**: axis-frontend `api.ts` 재생성 — develop openapi가 101경로인데 api.ts는 73경로로 28개 어긋남.
+
+---
+
 ## 0. 요약 (TL;DR)
 
 | 레포 | 구조 등급 | 핵심 문제 | 발표 전 조치 | 발표 후 조치 |
