@@ -57,6 +57,8 @@ resources:
   - cronjob-ingestion-c.yaml
   - cronjob-ingestion-d.yaml
   - cronjob-delivery.yaml
+  # 화면용 Daily/Weekly/Monthly briefing 사전 생성 (briefing_reports 저장). delivery(이메일)와 별개.
+  - cronjob-briefing-generate.yaml
   - cronjob-today-insight.yaml
   - cronjob-weak-signal.yaml
   # axis-ai 1단계 분석 supervisor 의 context layer + evaluation layer CronJob.
