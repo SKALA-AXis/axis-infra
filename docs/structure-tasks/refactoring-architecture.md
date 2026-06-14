@@ -115,8 +115,8 @@ domain/
 ### 4.1 현황 진단 (2026-06-14 실측)
 
 - **이중 구조**: app/(28,753줄/106 TSX, 실사용) vs features/(10,759줄/25 feature). 동일 이름 뷰 6쌍 중복 — 렌더되는 건 전부 app/, features/ 동명본은 dead.
-- **검증된 dead code**: `app/components/AxisPlanningViews.tsx` **2,980줄 import 0건**, `app/shell/` 5파일(DashboardShell·Sidebar·TopNav·Footer·InAppGuideOverlay — FloatingAiChat만 사용 중).
-- 거대 컴포넌트: AxisPlanningViews 2,980 / MixerView 1,993 / HomeCardNewsView 1,113 / HomeDashboardView 1,103 / PeerPlusView 935 (fetch+상태+렌더+비즈로직+Three.js 혼재).
+- ⚠️ **(2026-06-14 정정) dead code 판정 오류**: AxisPlanningViews·app/shell 은 develop **미추적 로컬 파일**(git ls-files 0). 레포 dead code 아님 — 작업트리 오염 오판.
+- 거대 컴포넌트(tracked 실측): MixerView 1,993 / KeywordGraphView 1,169 / HomeDashboardView 1,103 / PeerPlusView 935 / BriefingsView 884 (fetch+상태+렌더+비즈로직 혼재).
 - Repository 패턴: 10 feature 우수 채택, 그러나 keyword-graph 는 `httpClient` 직접 호출 2건(우회), home·admin·keyword-graph feature 구조 미완.
 - 테스트 0개, 인라인 style ~120건. (any 타입 0 · 자동생성 api.ts 규칙 준수 — 양호)
 
@@ -133,7 +133,7 @@ feature 표준: features/<도메인>/{api(Repository)/hooks/model/components/map
 
 | 우선 | 항목 | 근거 |
 |---|---|---|
-| P0 | **dead code 제거 검증·삭제** — AxisPlanningViews(2,980, import 0) + app/shell 5파일 | 실측 import 0 확인 |
+| ~~P0~~ | ~~dead code 제거~~ — **취소(2026-06-14): 대상이 develop 미추적 로컬 파일, 레포에 없음** | git ls-files 0 |
 | P0 | **app↔features 수렴 방향 결정** (권장: features/ 로 통일) | 6쌍 중복의 근원 |
 | P1 | keyword-graph Repository 신설 → httpClient 직접 호출 2건 제거 | 패턴 일관성 |
 | P1 | home·admin feature 구조 정규화 | 표준 미완 3곳 |
@@ -162,7 +162,7 @@ feature 표준: features/<도메인>/{api(Repository)/hooks/model/components/map
 | ai 거대 파일(>2,500줄) | 9 | ≤4 |
 | backend 거대 서비스(>500줄) | 5 | 0 |
 | backend service 내 SQL 라인 | ~1,800 | ~200 |
-| frontend dead code(검증분) | ~6,000줄 | 0 |
+| frontend dead code | (해당 없음 — 오판 정정) | — |
 | frontend 컴포넌트(>1,000줄) | 5 | 0 |
 | frontend 테스트 | 0 | 스모크+핵심 단위 |
 
@@ -172,7 +172,7 @@ feature 표준: features/<도메인>/{api(Repository)/hooks/model/components/map
 
 병렬 가능하되 레포 내부는 순서 의존. **각 레포 "빠른 승리(leaf·저위험)" 먼저** → 동기 확보 후 대형 분해.
 
-1. **Week 1 (저위험 재사용 추출)**: ai R1 LLM 팩토리 + R2 JSON 헬퍼 · backend B-R1 PeerCompanyProvider · frontend dead code 제거(검증 후)
+1. **Week 1 (저위험 재사용 추출)**: ai R1 LLM 팩토리 + R2 JSON 헬퍼 · backend B-R1 PeerCompanyProvider · frontend: 로컬 untracked 47건 점검(작업자)
 2. **Week 2~3 (계층 분리)**: ai summarizer/article_store 분해 · backend PeerOverviewTableService 3분할 · frontend keyword-graph Repository + 수렴 방향 결정
 3. **Week 3~4 (테스트·강제)**: 거대 모듈 characterization/단위 테스트 · import-linter/ArchUnit/ESLint 계층 계약 CI 추가
 4. **지속**: ai 크롤러 베이스(2-A4) · frontend 거대 컴포넌트 분해 · backend fallback AOP
