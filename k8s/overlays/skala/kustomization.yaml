@@ -47,7 +47,7 @@ images:
   newTag: ea57757
 - name: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-backend
   newName: amdp-registry.skala-ai.com/skala26a-ai3/axis-backend
-  newTag: 1d238cb
+  newTag: 388333b
 - name: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-frontend
   newName: amdp-registry.skala-ai.com/skala26a-ai3/axis-frontend
   newTag: f2e218c
