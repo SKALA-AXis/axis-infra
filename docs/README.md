@@ -20,7 +20,7 @@
 | `adr/` | Architecture Decision Records |
 | `conventions/` | 컨벤션 정본 + 기능요구사항정의서 (`_archived/`: 구판 표준정의서 등) |
 | `meetings/` · `sprints/` | 회의록 · 스프린트/회고 |
-| `structure-tasks/` | 구조 개선 작업 추적 (레포별 + agent-split-design) |
+| `structure-tasks/` | 구조 개선 작업 추적 (레포별 + agent-split-design + **refactoring-architecture**: 현업 수준 계층화·재사용 설계) |
 | `design/` | 설계 문서 |
 | `admin/` | 관리자 대시보드 설계 (`admin_page.md`가 entry) |
 | `db-snapshot/` | DB 스냅샷 |

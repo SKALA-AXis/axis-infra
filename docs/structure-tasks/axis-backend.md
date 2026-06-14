@@ -22,11 +22,18 @@
 
 - [x] **V44/V45 마이그레이션 정식 수록 + 운영 DB migrate 가드** (PR #79): `beforeMigrate__prod_guard.sql` — `axis.environment='prod'` 마커 DB에 배포 경로 밖 migrate 차단. V45 append-only 스냅샷 멱등 수록. 운영 DB 라이브 적용·가드 작동 검증 완료
 
-## Phase 2 — 리팩토링 (발표 후 6/24~, 우선순위순) — 전체 미착수(의도대로 격리)
+## Phase 2 — 리팩토링 (발표 후 6/24~, 우선순위순) — 전체 미착수(의도대로 격리) → 계층 설계: [refactoring-architecture §3](refactoring-architecture.md)
 
-- [ ] **2-B1. `PeerOverviewTableService` 분해** (2026-06-14 실측 **2,629줄**, 더 커짐 — 조회+변환+캐싱+계산 혼재)
+> **타깃 계층**: controller(HTTP 경계) → service(오케스트레이션) → query(JDBC)/formatter(변환, 신설)/repository(JPA) → domain. service 안의 SQL·변환 직접 보유를 query/·formatter/ 로 이관. 계층은 ArchUnit 테스트로 CI 강제.
+
+- [ ] **2-B1. `PeerOverviewTableService` 분해** (2026-06-14 실측 **2,656줄** — JDBC ~850 + DTO변환 ~800 + 캐싱 ~200 + 계산 ~600 혼재)
   - [ ] 선행: 현 응답 고정하는 통합 테스트 1개
-  - [ ] 3분할: `PeerOverviewTableQuery`(JDBC) / `PeerOverviewTableFormatter` / `PeerOverviewTableCache`
+  - [ ] 3계층 분할: `query/PeerOverviewQuery`(JDBC ~600) / `formatter/PeerOverviewFormatter`(변환 ~700) / `PeerOverviewTableService`(오케스트레이션·캐싱 ~400)
+- [ ] **2-B0. `PeerCompanyProvider` 신설** (빠른 승리, 2~3일) — peer 5사 하드코딩 **4곳**(PeerOverviewTableService:30-44 등) → `peer_companies` 테이블 로드 1곳. 다른 거대 분해의 선행 정리
+- [ ] **2-B5. `formatter/` 패키지 신설** — CardNews(변환 680줄)·KeywordGraph·GlobalSearch 등 3개 서비스에 분산된 DTO↔Entity 변환 중앙화, 단위 테스트
+- [ ] **2-B6. `query/` 패키지로 service 내 SQL 이관** — DashboardKeywordTrendChartService(906)·KeywordGraphService(793)·GlobalSearchService(592)의 직접 SQL → query/ (service SQL ~1,800줄 → ~200줄)
+- [ ] **2-B7. AI fallback 공통화** — 컨트롤러 4곳(Dashboard·Assistant·Mixer + GlobalSearchService) try-catch 중복 → AOP/공통 래퍼
+- [ ] **2-B8. ArchUnit 계층 테스트 CI 추가** — controller→service→query/repository 단방향 강제
 - [x] ~~2-B2. ApiContractFixtureService 도메인 분리~~ — **자연 해소 확정(2026-06-14)**: `ApiContractFixtureService.java` 부재 = fixture 체계 제거 완료. 하위 항목(도메인별 Fixture 클래스 등) 전부 무효
 - [ ] **2-B3. 하드코딩 제거** — 부분
   - [ ] peer 5사 목록: 코드 상수 + 테이블 JOIN **혼합 상태** — 상수 제거 미완

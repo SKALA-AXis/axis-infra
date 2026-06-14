@@ -20,11 +20,17 @@
 - [ ] **untracked 47건 점검**: 작업 중인 것은 WIP 브랜치로 백업 커밋 (로컬 유실 방지)
 - [~] **"정본 선언"**: README 실측 동기화(#97)에서 이중구조 경고 + "신규 API는 Repository 경유" 규칙은 명시. **단 `app`/`features` 수렴 방향 자체는 여전히 팀 결정 대기**(2-F1)
 
-## 발표 후 의제 (협의용) — 전체 미착수(팀 소유, 발표 후)
+## 발표 후 의제 (협의용) — 전체 미착수(팀 소유, 발표 후) → 구조 제안: [refactoring-architecture §4](refactoring-architecture.md)
 
-- [ ] **2-F1. 이중 구조 단일화 로드맵**: 미사용 `features/` 중복 컴포넌트 삭제 or `app/` 뷰의 `features/` 이행 — 둘 중 하나로 (정본 방향 결정 선행)
-- [ ] **2-F2. `AxisPlanningViews.tsx`(2,980줄) 분해**
-- [ ] **2-F3. httpClient 직접 호출 2건 → Repository 일원화**
+> **2026-06-14 전수 분석 추가 발견** (인프라 측, 검증 완료):
+> - **검증된 dead code**: `app/components/AxisPlanningViews.tsx` **2,980줄 — import 0건**(실측), `app/shell/` 5파일(DashboardShell·Sidebar·TopNav·Footer·InAppGuideOverlay — FloatingAiChat만 features/peers/MonitoringView가 사용). 라이브 셸은 `app/components/layout/DashboardShell`.
+> - 동일 이름 뷰 **6쌍 중복** — 렌더되는 건 전부 `app/components/pages/`, `features/` 동명본은 미사용 추정.
+> - Repository 패턴: 10 feature 우수 채택. 단 keyword-graph `httpClient` 직접 호출 2건(KeywordGraphView.tsx:233,716), home·admin·keyword-graph feature 구조 미완.
+
+- [ ] **2-F0. dead code 제거 (P0, 빠른 승리)**: AxisPlanningViews.tsx(2,980, import 0) + app/shell 5파일 — **삭제 전 import 재확인** 후 제거 (~6,000줄)
+- [ ] **2-F1. 이중 구조 단일화 로드맵**: app↔features 수렴 방향 1개 선언(권장: features/) 후 중복 6쌍 정리
+- [ ] **2-F2. 거대 컴포넌트 분해**: AxisPlanningViews(2,980·dead라면 삭제로 갈음) / MixerView(1,993) / HomeDashboardView(1,103) — container(데이터·상태) + presentational(렌더) 분리
+- [ ] **2-F3. keyword-graph Repository 신설 → httpClient 직접 호출 2건 제거** + ESLint `no-restricted-imports` 로 직접 호출 차단
 - [ ] **2-F4. 최소 테스트**: 스모크 1개라도 추가하고 `"No tests yet"` 스크립트 제거
 - [ ] **2-F5. CLAUDE.md 실구조로 재작성** (구조 확정 후) — README는 #97에서 실측 동기화 완료, CLAUDE.md는 미반영
-- [ ] (선택) 인라인 style 85건 → Tailwind 치환 — 디자인 작업과 겹치므로 두 분 일정에 맞춰
+- [ ] (선택) 인라인 style ~120건 → Tailwind/CSS var 치환 — 디자인 작업과 겹치므로 두 분 일정에 맞춰

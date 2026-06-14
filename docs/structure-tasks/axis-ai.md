@@ -33,9 +33,17 @@
   - `agents/briefing/` 패키지: support(185) / prompts(641) / data_layer(969) / basis_builder(889) / display_copy(938) — 본체 7,300→4,154줄(-43%), re-export 호환 유지
 - [x] **2-A3. `strategic_insight_agent.py` 분해 — 1·2단계 완료 (2026-06-12, PR #151/#155)**
   - `agents/strategic_insight/` 패키지: prompts(468) / utils(110) / profile_linkage(2,127) — 본체 9,215→6,658줄(-28%). fallback만 잔여(렌더 텍스트 빌더와 결합)
-- [ ] **2-A4. 크롤러 BaseCrawler 템플릿 메서드 통일** — fetch/parse/post_process 중복 제거, 소스 1개씩 이행. **미착수(2026-06-14)** — base_crawler.py는 추상 베이스만, 구현체 패턴 통일 전. crawler-jw/yj 팀원 활성 영역이라 잠잠해진 후 진행
+- [ ] **2-A4. 크롤러 BaseCrawler 템플릿 메서드 통일** — fetch/parse/post_process 중복 제거, 소스 1개씩 이행. **미착수(2026-06-14)** — base_crawler.py는 추상 베이스만, 구현체 패턴 통일 전. crawler-jw/yj 팀원 활성 영역이라 잠잠해진 후 진행 (설계: [refactoring-architecture §2.3 R4](refactoring-architecture.md))
 - [x] **2-A5. `api/router.py` 엔드포인트 테스트 — 완료 (2026-06-12, PR #157)**
   - `tests/test_router_endpoints.py` 21종 (17개 엔드포인트 happy-path + 에러 매핑). SSE 스트림만 범위 제외
+
+## Phase 2+ — 계층화·재사용 (2026-06-14 전수 분석, 발표 후) → 상세: [refactoring-architecture.md](refactoring-architecture.md)
+
+- [ ] **2-A6. 공용 LLM 클라이언트 팩토리** `src/llm/` 신설 — `_get_llm` **19곳 중복** 흡수 (모델·temperature·토큰캡·`response_format`·gpt-5 `reasoning_effort`·`to_thread` 격리 1곳에). **최고 ROI·최저 위험(leaf)**. gpt-5 분기는 이미 mixer·today_insight·briefing 3곳 복붙 상태 — 더 자라기 전 정리
+- [ ] **2-A7. JSON/텍스트 헬퍼** `src/shared/` 신설 — `_json_dict`/`_json_list`/`_safe_json_*` ~10곳 중복 흡수
+- [ ] **2-A8. preprocessing ↔ analysis 순환 의존 절단** + import-linter 계약 추가 (현재 relevance↔summarizer 등 순환)
+- [ ] **2-A9. 거대 파일 분해** (characterization test 선행): `analysis/summarizer.py`(3,632) fact/summary/validator 분리 · `composers/card_news_composer.py`(4,096) LLM호출→llm/ 이관 후 format/render 분리 · `db/article_store.py`(3,028) raw/card/evidence store 분리
+- [ ] **2-A10. 거대 파일 추가 식별**: card_news_composer 4,096 · summarizer 3,632 · article_store 3,028 · today_insight 2,990 · peer_swot_llm_preview 2,558 — 1차 계획서엔 없던 실측 거대 파일들
 
 ## 참고 실측치
 

@@ -21,6 +21,8 @@
 
 > **가장 시급(발표 전)**: axis-frontend `api.ts` 재생성 — develop openapi가 101경로인데 api.ts는 73경로로 28개 어긋남.
 
+> **상세 리팩토링 설계**: 발표 후 Phase 2+ 의 현업 수준 리팩토링 설계는 **[refactoring-architecture.md](structure-tasks/refactoring-architecture.md)** 에 별도 정리 (2026-06-14 전수 코드 분석 기반 — 타깃 계층 모델·재사용 추출 카탈로그·품질 게이트·실행 순서).
+
 ---
 
 ## 0. 요약 (TL;DR)
