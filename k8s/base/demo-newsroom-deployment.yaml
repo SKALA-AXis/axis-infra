@@ -1,0 +1,92 @@
+# 데모 뉴스룸 — 시연용 정적 페이지(공개 nginx:alpine, ConfigMap 마운트).
+#   · 발표 시 "중요 뉴스 게시 → 이메일 알림" 을 시연하는 throwaway 표면.
+#   · 정적 HTML 1장만 서빙. API(/api/demo/**)는 페이지의 same-origin fetch 로 backend 가 처리.
+#   · 비루트(UID 101) — listen 8080, cache/run 은 emptyDir.
+#   · ConfigMap(demo-newsroom)은 base/kustomization 의 configMapGenerator 가 생성(hash 접미사).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-newsroom
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app: demo-newsroom
+    tier: presentation
+    app.kubernetes.io/part-of: axis
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: demo-newsroom
+  template:
+    metadata:
+      labels:
+        app: demo-newsroom
+        tier: presentation
+        app.kubernetes.io/part-of: axis
+    spec:
+      securityContext:
+        runAsUser: 101
+        runAsNonRoot: true
+        fsGroup: 101
+      containers:
+        - name: web
+          image: nginx:1.27-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: content
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+            - name: content
+              mountPath: /usr/share/nginx/html/index.html
+              subPath: index.html
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: false
+            runAsUser: 101
+            runAsNonRoot: true
+      volumes:
+        - name: content
+          configMap:
+            name: demo-newsroom
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}

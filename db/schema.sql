@@ -1045,3 +1045,39 @@ COMMENT ON TABLE peer_llm_analysis_runs IS
     'Peer+ LLM 분석 생성 시도(run) 이력. snapshot 들이 run_id 로 묶인다.';
 COMMENT ON TABLE peer_llm_analysis_snapshots IS
     'Peer+ LLM comparison/SWOT analysis snapshots. Append-only — active 는 부분 unique 로 1건.';
+
+-- ============================================================
+-- 대형 이벤트 1회성 이메일 알림 (V46, backend EventAlertService)
+-- ============================================================
+-- 진실은 axis-backend Flyway V46__sent_alerts.sql. 여기는 SSoT 동기화 사본.
+CREATE TABLE IF NOT EXISTS sent_alerts (
+    id               UUID PRIMARY KEY,
+    dedupe_key       VARCHAR(200) NOT NULL,
+    card_news_id     VARCHAR(50),
+    cluster_id       BIGINT,
+    peer_id          VARCHAR(50),
+    event_type       VARCHAR(50),
+    title            TEXT,
+    importance_score REAL,
+    recipients       TEXT NOT NULL,
+    subject          TEXT,
+    trigger_source   VARCHAR(30) NOT NULL DEFAULT 'auto',
+    ses_message_id   VARCHAR(200),
+    status           VARCHAR(20) NOT NULL DEFAULT 'sent',
+    sent_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT uk_sent_alerts_dedupe UNIQUE (dedupe_key),
+    CONSTRAINT chk_sent_alerts_trigger_source
+        CHECK (trigger_source IN ('auto', 'demo', 'manual')),
+    CONSTRAINT chk_sent_alerts_status
+        CHECK (status IN ('sent', 'failed', 'skipped'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_sent_alerts_peer_event_sent
+    ON sent_alerts (peer_id, event_type, sent_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sent_alerts_sent_at
+    ON sent_alerts (sent_at DESC);
+
+COMMENT ON TABLE sent_alerts IS
+    '대형 이벤트(수주/파트너십/M&A) 1회성 이메일 알림 발송 이력 + 중복 방지(dedupe_key UNIQUE)';
