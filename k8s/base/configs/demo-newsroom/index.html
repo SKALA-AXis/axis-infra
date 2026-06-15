@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AXIS 데모 뉴스룸 — 중요 이슈 게시</title>
+  <title>AXIS 데모 뉴스룸 — 기사 게시</title>
   <style>
     :root { --ink:#111827; --muted:#6b7280; --line:#e5e7eb; --accent:#1d4ed8; --danger:#b91c1c; --ok:#047857; --skip:#92400e; }
     * { box-sizing: border-box; }
@@ -16,25 +16,26 @@
     label { display:block; font-size:13px; font-weight:600; margin:14px 0 6px; }
     input, select, textarea { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px;
            font-size:14px; font-family:inherit; background:#fff; }
-    textarea { min-height:64px; resize:vertical; }
+    textarea { resize:vertical; }
+    #content { min-height:150px; }
     .hint { font-size:12px; color:var(--muted); margin-top:4px; }
     button { margin-top:20px; width:100%; padding:13px; border:0; border-radius:8px; background:var(--accent);
            color:#fff; font-size:15px; font-weight:600; cursor:pointer; }
     button:disabled { opacity:.6; cursor:default; }
-    .result { margin-top:18px; padding:14px 16px; border-radius:8px; font-size:14px; line-height:1.5; display:none; }
+    .result { margin-top:18px; padding:14px 16px; border-radius:8px; font-size:14px; line-height:1.55; display:none; }
     .result.show { display:block; }
     .result.ok { background:#ecfdf5; color:var(--ok); border:1px solid #a7f3d0; }
     .result.skip { background:#fffbeb; color:var(--skip); border:1px solid #fde68a; }
     .result.fail { background:#fef2f2; color:var(--danger); border:1px solid #fecaca; }
     .result.pending { background:#eff6ff; color:var(--accent); border:1px solid #bfdbfe; }
+    .result .cls { font-size:13px; opacity:.85; }
+    .result .verdict { font-weight:600; margin-top:6px; }
     h2 { font-size:15px; margin:0 0 12px; display:flex; justify-content:space-between; align-items:center; }
     .refresh { width:auto; margin:0; padding:6px 12px; font-size:12px; background:#f3f4f6; color:var(--ink); border:1px solid var(--line); }
     table { width:100%; border-collapse:collapse; font-size:13px; }
     th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
     th { color:var(--muted); font-weight:600; }
     .muted { color:var(--muted); }
-    .tokrow { display:flex; gap:10px; align-items:flex-end; }
-    .tokrow > div { flex:1; }
     .badge { display:inline-block; background:var(--danger); color:#fff; font-size:11px; font-weight:600;
            padding:3px 9px; border-radius:4px; }
   </style>
@@ -42,10 +43,11 @@
 <body>
   <header>
     <span class="badge">🚨 AXIS ALERT DEMO</span>
-    <h1 style="margin-top:10px;">데모 뉴스룸 — 중요 이슈 게시</h1>
+    <h1 style="margin-top:10px;">데모 뉴스룸 — 기사 게시</h1>
     <p class="sub">
-      여기에 뉴스를 게시하면 AXIS 가 평가합니다. <b>누가 봐도 큰 이벤트(수주·파트너십·M&amp;A)</b>로
-      판정될 때만 <b>이메일 알림이 1회</b> 발송됩니다. 인사·기술 발표 등은 게이트에서 걸러져 알림이 가지 않습니다(정밀도 보장).
+      기사(제목+본문)를 붙여넣으면 <b>AXIS가 직접 읽고 분류·중요도를 판정</b>합니다.
+      누가 봐도 큰 이벤트(수주·파트너십·M&amp;A)로 판정될 때만 <b>이메일 알림이 1회</b> 발송됩니다.
+      인사·기술 발표 등은 서비스가 스스로 걸러내 알림을 보내지 않습니다(정밀도 보장).
     </p>
   </header>
 
@@ -59,34 +61,18 @@
         <option value="posco_dx">포스코DX</option>
       </select>
 
-      <label for="eventType">이벤트 유형</label>
-      <select id="eventType">
-        <option value="contract">수주·계약 (알림 대상)</option>
-        <option value="ma">M&amp;A·인수 (알림 대상)</option>
-        <option value="partnership">파트너십·제휴 (알림 대상)</option>
-        <option value="personnel">인사·조직 (비대상 — 알림 안 감)</option>
-        <option value="tech_release">기술 발표 (비대상 — 알림 안 감)</option>
-      </select>
+      <label for="title">기사 제목 *</label>
+      <input id="title" type="text" placeholder="예: LG CNS, 삼송 데이터센터 약 1조원 규모 사업 수주" required />
 
-      <label for="title">제목 *</label>
-      <input id="title" type="text" placeholder="예: 삼성SDS, 1조원 규모 차세대 시스템 구축 사업 수주" required />
+      <label for="content">기사 본문</label>
+      <textarea id="content" placeholder="기사 본문을 붙여넣으세요. AXIS가 본문을 읽고 event_type·중요도를 스스로 판정합니다."></textarea>
+      <p class="hint">유형을 직접 고르지 않습니다 — 서비스가 분류합니다. 본문이 길수록 판정이 정확합니다.</p>
 
-      <label for="summary">요약</label>
-      <textarea id="summary" placeholder="핵심 내용 한두 줄"></textarea>
-
-      <label for="amount">계약/거래 금액 (선택)</label>
-      <input id="amount" type="text" placeholder="예: 1조 2,000억원 — 입력 시 '금액 근거'로 게이트 통과" />
-      <p class="hint">금액이 있으면 점수와 무관하게 '객관 근거 있음'으로 게이트를 통과합니다.</p>
-
-      <div class="tokrow">
-        <div>
-          <label for="token">CRON 토큰</label>
-          <input id="token" type="password" placeholder="CRON_INTERNAL_TOKEN (1회 입력 후 저장됨)" />
-        </div>
-      </div>
+      <label for="token">CRON 토큰</label>
+      <input id="token" type="password" placeholder="CRON_INTERNAL_TOKEN (1회 입력 후 저장됨)" />
       <p class="hint">backend 인증용. 브라우저에만 저장되며 페이지에 노출되지 않습니다.</p>
 
-      <button type="submit" id="submitBtn">게시 → 알림 평가</button>
+      <button type="submit" id="submitBtn">게시 → AXIS가 분류·판정</button>
     </form>
     <div id="result" class="result"></div>
   </div>
@@ -101,23 +87,43 @@
 
   <script>
     var TOKEN_KEY = 'axis_demo_token';
+    var EVENT_LABELS = {
+      contract: '수주·계약', ma: 'M&A·인수', partnership: '파트너십·제휴',
+      personnel: '인사·조직', tech_release: '기술 발표', regulation: '규제·정책',
+      financial: '실적·재무', expansion: '사업확장', company: '경영 일반'
+    };
+    var OUTCOME_MAP = {
+      SENT: ['📧 중요 신호로 판정 → 이메일 알림 발송 완료!', 'ok'],
+      SKIPPED_GATE: ['게이트 미통과 — 대형 이벤트(수주·파트너십·M&A) 기준 미달이라 알림 없음. (정밀도 보장)', 'skip'],
+      SKIPPED_DUPLICATE: ['이미 같은 사건으로 발송됨 — 중복 알림 차단(1회만).', 'skip'],
+      SKIPPED_NO_RECIPIENTS: ['수신자 미설정(BRIEFING_RECIPIENTS).', 'fail'],
+      SKIPPED_DISABLED: ['알림 비활성 상태(AXIS_ALERT_ENABLED=false).', 'skip'],
+      CLASSIFY_FAILED: ['분류 실패 — axis-ai /classify 응답 없음(배포/키 확인).', 'fail'],
+      FAILED: ['발송 실패 — 서버 로그를 확인하세요.', 'fail']
+    };
+
     function $(s){ return document.querySelector(s); }
     function token(){ return $('#token').value.trim(); }
     function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g, function(c){
       return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
-    function setResult(msg, cls){ var el=$('#result'); el.textContent=msg; el.className='result show '+cls; }
+    function setMsg(msg, cls){ var el=$('#result'); el.textContent=msg; el.className='result show '+cls; }
 
-    function renderOutcome(outcome){
-      var map = {
-        SENT: ['📧 중요 신호로 판정 → 이메일 알림 발송 완료!', 'ok'],
-        SKIPPED_GATE: ['게이트 미통과 — 대형 이벤트(수주·파트너십·M&A) 기준 미달이라 알림 없음. (정밀도 보장)', 'skip'],
-        SKIPPED_DUPLICATE: ['이미 같은 사건으로 발송됨 — 중복 알림 차단(1회만).', 'skip'],
-        SKIPPED_NO_RECIPIENTS: ['수신자 미설정(BRIEFING_RECIPIENTS).', 'fail'],
-        SKIPPED_DISABLED: ['알림 비활성 상태(AXIS_ALERT_ENABLED=false).', 'skip'],
-        FAILED: ['발송 실패 — 서버 로그를 확인하세요.', 'fail']
-      };
-      var hit = map[outcome] || [outcome, 'skip'];
-      setResult(hit[0], hit[1]);
+    function renderResult(data){
+      var outcome = data.outcome || 'UNKNOWN';
+      var verdict = OUTCOME_MAP[outcome] || [outcome, 'skip'];
+      var el = $('#result');
+      var html = '';
+      if (outcome !== 'CLASSIFY_FAILED') {
+        var c = data.classification || {};
+        var label = EVENT_LABELS[c.eventType] || c.eventType || '(미상)';
+        var score = (c.importanceScore != null) ? Number(c.importanceScore).toFixed(2) : '-';
+        html += '<div class="cls">📊 AXIS 분류: <b>' + esc(label) + '</b>'
+              + ' · 중요도 ' + esc(score) + (c.importance ? ' (' + esc(c.importance) + ')' : '')
+              + (c.reasoning ? '<br>↳ ' + esc(c.reasoning) : '') + '</div>';
+      }
+      html += '<div class="verdict">' + esc(verdict[0]) + '</div>';
+      el.innerHTML = html;
+      el.className = 'result show ' + verdict[1];
     }
 
     async function loadHistory(){
@@ -131,7 +137,7 @@
         if(!rows.length){ tbody.innerHTML = '<tr><td colspan="5" class="muted">아직 발송된 알림이 없습니다.</td></tr>'; return; }
         tbody.innerHTML = rows.map(function(r){
           var at = (r.sentAt||'').replace('T',' ').slice(0,19);
-          return '<tr><td>'+esc(r.eventType)+'</td><td>'+esc(r.title)+'</td><td>'+esc(r.peerId)+
+          return '<tr><td>'+esc(EVENT_LABELS[r.eventType]||r.eventType)+'</td><td>'+esc(r.title)+'</td><td>'+esc(r.peerId)+
                  '</td><td>'+esc(r.triggerSource)+'</td><td>'+esc(at)+'</td></tr>';
         }).join('');
       } catch(e){ /* noop */ }
@@ -141,13 +147,11 @@
       e.preventDefault();
       localStorage.setItem(TOKEN_KEY, token());
       var btn = $('#submitBtn'); btn.disabled = true;
-      setResult('평가 중…', 'pending');
+      setMsg('AXIS가 기사를 읽고 분류 중…', 'pending');
       var body = {
         peerId: $('#peerId').value,
-        eventType: $('#eventType').value,
         title: $('#title').value.trim(),
-        summary: $('#summary').value.trim(),
-        amount: $('#amount').value.trim()
+        content: $('#content').value.trim()
       };
       try {
         var res = await fetch('/api/demo/publish', {
@@ -155,13 +159,12 @@
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token() },
           body: JSON.stringify(body)
         });
-        if(res.status === 401){ setResult('인증 실패 — CRON 토큰을 확인하세요.', 'fail'); return; }
+        if(res.status === 401){ setMsg('인증 실패 — CRON 토큰을 확인하세요.', 'fail'); return; }
         var json = await res.json();
-        var outcome = (json && json.data && json.data.outcome) || 'UNKNOWN';
-        renderOutcome(outcome);
+        renderResult((json && json.data) || {});
         loadHistory();
       } catch(err){
-        setResult('요청 실패: ' + err.message, 'fail');
+        setMsg('요청 실패: ' + err.message, 'fail');
       } finally {
         btn.disabled = false;
       }
