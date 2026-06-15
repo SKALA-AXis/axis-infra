@@ -35,6 +35,8 @@
 → 2단계 경계 판단 기록: `_refine_display_copy_with_llm`·`_display_copy_context`·`_refresh_contract_payload`·`_merge_display_copy`는 본체 유지 — `_display_copy_context`가 `_front_*` 렌더링 웹 105심볼을 통째로 끌고 옴 (아래 분리 금지 영역).
 → 최종: 두 에이전트 합계 16,515줄(분해 전) → 본체 10,812줄 + 분리 모듈 9개. 남은 후보는 렌더링 웹의 `briefing/render/` 패키지화(검토만)와 strategic_insight fallback(2단계 이관분)뿐.
 
+> 🔥 **사후 추적 (2026-06-15): 핫 파일 재증식.** 분해 후 3일간 팀원 활성 커밋(industry-action·evidence·frontend-ready gate)으로 **strategic_insight 6,658→11,705**(분해 전 9,215보다도 큼), briefing 4,154→4,761. **분해 ROI 는 동결 없이는 며칠 만에 소멸**한다는 증거. → 재분해는 발표 후 + 해당 영역 **코딩 프리즈 합의 후**에만(실행 체크리스트 1번 "열린 브랜치 0" 이 핵심 전제). 발표 전엔 격리 유지. ([refactoring-architecture §2.4](refactoring-architecture.md))
+
 ## 분리 금지 영역 (강결합 — 억지로 쪼개면 악화)
 
 - briefing의 `_front_*` 렌더링 50함수 (줄 5525-6750): 도메인 로직 섬세 결합 ⭐⭐⭐⭐⭐ — 분해 대신 향후 `briefing/render/` 패키지화만 검토

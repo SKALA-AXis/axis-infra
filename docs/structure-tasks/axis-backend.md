@@ -26,25 +26,31 @@
 
 > **타깃 계층**: controller(HTTP 경계) → service(오케스트레이션) → query(JDBC)/formatter(변환, 신설)/repository(JPA) → domain. service 안의 SQL·변환 직접 보유를 query/·formatter/ 로 이관. 계층은 ArchUnit 테스트로 CI 강제.
 
-- [ ] **2-B1. `PeerOverviewTableService` 분해** (2026-06-14 실측 **2,656줄** — JDBC ~850 + DTO변환 ~800 + 캐싱 ~200 + 계산 ~600 혼재)
+- [ ] **2-B0a. `@Transactional(readOnly=true)` 명시 (발표 전 가능한 저위험·고가치)** — JdbcTemplate 주입 13서비스 중 **12개가 트랜잭션 경계 무**(AgentDiagnostics·ArticleImage·AssistantConversation·BriefingReport·DashboardKeywordTrendChart·DashboardStockChart·GlobalTrends·KeywordGraph·MixerResult·PeerOverviewTable·RawArticleQuery·TodayInsightReport). 다중 쿼리 읽기 일관성·커넥션 최적화. 어노테이션만 = 동작 영향 최소. ⚠️ 로컬 JDK 17 부재 → CI 검증 의존
+- [ ] **2-B1. `PeerOverviewTableService` 분해** (2026-06-15 재실측 **2,663줄** — JDBC ~850 + DTO변환 ~800 + 캐싱 ~200 + 계산 ~600 혼재)
   - [ ] 선행: 현 응답 고정하는 통합 테스트 1개
   - [ ] 3계층 분할: `query/PeerOverviewQuery`(JDBC ~600) / `formatter/PeerOverviewFormatter`(변환 ~700) / `PeerOverviewTableService`(오케스트레이션·캐싱 ~400)
-- [ ] **2-B0. `PeerCompanyProvider` 신설** (빠른 승리, 2~3일) — peer 5사 하드코딩 **4곳**(PeerOverviewTableService:30-44 등) → `peer_companies` 테이블 로드 1곳. 다른 거대 분해의 선행 정리
-- [ ] **2-B5. `formatter/` 패키지 신설** — CardNews(변환 680줄)·KeywordGraph·GlobalSearch 등 3개 서비스에 분산된 DTO↔Entity 변환 중앙화, 단위 테스트
-- [ ] **2-B6. `query/` 패키지로 service 내 SQL 이관** — DashboardKeywordTrendChartService(906)·KeywordGraphService(793)·GlobalSearchService(592)의 직접 SQL → query/ (service SQL ~1,800줄 → ~200줄)
+- [ ] **2-B0. `PeerCompanyProvider` 신설** (빠른 승리, 2~3일) — peer 5사 하드코딩 **8파일**(컨트롤러 3: AgentDiagnostics·FrontendCompatibility·IssueCard + 서비스 5: Briefing·DashboardStockChart·KeywordGraph·PeerOverviewTable·UserNotification) → `peer_companies` 테이블 로드 1곳. 다른 거대 분해의 선행 정리
+- [ ] **2-B5. `formatter/` 패키지 신설** — CardNews(변환 680줄)·KeywordGraph·PeerOverview 등에 분산된 DTO↔Entity 변환 중앙화, 단위 테스트
+- [ ] **2-B6. `query/` 패키지로 service 내 SQL 이관** — DashboardKeywordTrendChartService(924)·KeywordGraphService(793)·GlobalSearchService(601)의 직접 SQL → query/ (service SQL ~1,800줄 → ~200줄)
+- [ ] **2-B9. 캐싱 `@Cacheable` 통일** — volatile/AtomicReference/ConcurrentMap 혼재 → Spring Cache 추상화로 TTL 중앙 관리
 - [ ] **2-B7. AI fallback 공통화** — 컨트롤러 4곳(Dashboard·Assistant·Mixer + GlobalSearchService) try-catch 중복 → AOP/공통 래퍼
 - [ ] **2-B8. ArchUnit 계층 테스트 CI 추가** — controller→service→query/repository 단방향 강제
 - [x] ~~2-B2. ApiContractFixtureService 도메인 분리~~ — **자연 해소 확정(2026-06-14)**: `ApiContractFixtureService.java` 부재 = fixture 체계 제거 완료. 하위 항목(도메인별 Fixture 클래스 등) 전부 무효
 - [ ] **2-B3. 하드코딩 제거** — 부분
   - [ ] peer 5사 목록: 코드 상수 + 테이블 JOIN **혼합 상태** — 상수 제거 미완
   - [x] RequestMetadata IP 대역: 동적 파싱(CF/Vercel/AppEngine 헤더)으로 외부화됨
-- [ ] **2-B4. 거대 서비스 단위 테스트** — CardNewsService·GlobalSearchService 단위 테스트 **미존재(2026-06-14)**. 현 테스트 12파일(Service 5)
+- [ ] **2-B4. 거대 서비스 단위 테스트** — CardNewsService·GlobalSearchService 단위 테스트 **미존재(2026-06-15)**. 현 테스트 14파일
 
-## 참고 실측치
+## 참고 실측치 (2026-06-15, git-tracked)
 
 | 항목 | 값 |
 |---|---|
-| PeerOverviewTableService | 2,223줄 |
-| ApiContractFixtureService | 778줄 / 사용처 97 (실측) |
-| 테스트 | 10개 (스모크·통합 위주, 단위 4개) |
-| Flyway | V1~V43 + V32_5, 총 44개·중복 없음, validate-on-migrate 정상 |
+| PeerOverviewTableService | 2,663줄 |
+| DashboardKeywordTrendChartService | 924줄 |
+| CardNewsService / KeywordGraphService / GlobalSearchService | 838 / 793 / 601줄 |
+| 거대 서비스(>500줄) | 8개 (위 + BriefingReport 553·AuthService 536·AssistantConversation 517) |
+| JdbcTemplate 주입 / 그중 @Transactional 무 | 13 / **12** |
+| peer 하드코딩 파일 | 8 |
+| 테스트 | 14개 |
+| Flyway | V1~V45 (+V32_5), validate-on-migrate 정상, prod-guard 작동 |

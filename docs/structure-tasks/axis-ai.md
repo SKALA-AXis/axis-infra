@@ -33,6 +33,7 @@
   - `agents/briefing/` 패키지: support(185) / prompts(641) / data_layer(969) / basis_builder(889) / display_copy(938) — 본체 7,300→4,154줄(-43%), re-export 호환 유지
 - [x] **2-A3. `strategic_insight_agent.py` 분해 — 1·2단계 완료 (2026-06-12, PR #151/#155)**
   - `agents/strategic_insight/` 패키지: prompts(468) / utils(110) / profile_linkage(2,127) — 본체 9,215→6,658줄(-28%). fallback만 잔여(렌더 텍스트 빌더와 결합)
+  - 🔥 **(2026-06-15) 재증식 6,658→11,705** — 3일간 팀원 활성 커밋(industry-action·evidence·frontend-ready gate)으로 분해 전보다 커짐. **재분해는 발표 후 + 코딩 프리즈 합의 후 최우선** (교훈: 핫 파일 분해 ROI 는 동결 없이는 며칠 만에 소멸 — [refactoring-architecture §2.4](refactoring-architecture.md))
 - [ ] **2-A4. 크롤러 BaseCrawler 템플릿 메서드 통일** — fetch/parse/post_process 중복 제거, 소스 1개씩 이행. **미착수(2026-06-14)** — base_crawler.py는 추상 베이스만, 구현체 패턴 통일 전. crawler-jw/yj 팀원 활성 영역이라 잠잠해진 후 진행 (설계: [refactoring-architecture §2.3 R4](refactoring-architecture.md))
 - [x] **2-A5. `api/router.py` 엔드포인트 테스트 — 완료 (2026-06-12, PR #157)**
   - `tests/test_router_endpoints.py` 21종 (17개 엔드포인트 happy-path + 에러 매핑). SSE 스트림만 범위 제외
@@ -44,20 +45,25 @@
   - **LLM 생성 사이트 21곳 중 20곳 이행** (각 배치 라이브 ChatOpenAI 가로채기로 kwargs 동등성 검증 + env gpt-5 강제 케이스 reasoning 미전달 보존). summarizer 1곳은 base+bind 패턴이라 의도적 예외(주석), `_deprecated/` 3곳 폐기 제외
   - 부가 수확: peer_swot 모듈레벨 ChatOpenAI import(무거운 임포트 규칙 위반) 해소, 1차 조사 누락 사이트(peer_swot·router gen-search) 발견·이행
   - (선택 잔여) 캡 resolver 중복(`_llm_max_completion_tokens` 3곳)을 `LLMSpec(max_tokens_reasoning=)`로 흡수 — 가치 낮아 보류
-- [ ] **2-A7. JSON/텍스트 헬퍼** `src/shared/` 신설 — `_json_dict`/`_json_list`/`_safe_json_*` ~10곳 중복 흡수
-- [ ] **2-A8. preprocessing ↔ analysis 순환 의존 절단** + import-linter 계약 추가 (현재 relevance↔summarizer 등 순환)
-- [ ] **2-A9. 거대 파일 분해** (characterization test 선행): `analysis/summarizer.py`(3,632) fact/summary/validator 분리 · `composers/card_news_composer.py`(4,096) LLM호출→llm/ 이관 후 format/render 분리 · `db/article_store.py`(3,028) raw/card/evidence store 분리
-- [ ] **2-A10. 거대 파일 추가 식별**: card_news_composer 4,096 · summarizer 3,632 · article_store 3,028 · today_insight 2,990 · peer_swot_llm_preview 2,558 — 1차 계획서엔 없던 실측 거대 파일들
+- [x] **2-A7. JSON 헬퍼 `src/shared/` — 완료 (2026-06-14, PR #184)**
+  - `json_dict`(동일 4곳)·`json_dumps`(동일 2곳)만 흡수. `_json_list`(3곳 구현 갈라짐)·`_parse_json_loose`(2곳)·today_insight `_json_dumps`·`_safe_json_*` 는 회귀 위험으로 의도적 제외(docstring 명시). import-linter `shared is a leaf` 계약 추가
+- [ ] **2-A8. ~~preprocessing ↔ analysis 순환 절단~~ → 순환 없음 확인(2026-06-14)**. 대신 **import-linter allowlist 계약**으로 `services→db`(25)·`agents→db`(10) 신규 직접 호출 차단(기존 묵인)
+- [ ] **2-A9. 거대 파일 분해** (발표 후·동결 후, characterization test 선행): strategic_insight(11,705) **최우선** · briefing(4,761) 잔여 · summarizer(3,636) · card_news_composer(3,763, LLM호출→llm/ 이관 후 format/render) · article_store(3,071) raw/card/evidence store 분리
+- [ ] **2-A10. 발표 전 저위험 최적화**: to_thread 누락 3곳(router gen-search·classification·peer_swot) · article_store 건당→배치 upsert · LLM 응답 추출 헬퍼(R2 연장)
 
 ## 참고 실측치
 
-| 파일 | 줄 수 |
+| 파일 | 줄 수(2026-06-15, git-tracked) |
 |---|---|
-| src/agents/briefing_generation_agent.py | 7,028 |
-| src/agents/strategic_insight_agent.py | 6,071 |
-| src/parsers/ir_parser.py | ~3,836 |
-| src/analysis/summarizer.py | ~3,040 |
-| src/db/article_store.py | ~2,749 |
-| src/api/router.py | 898 (테스트 0) |
+| src/agents/strategic_insight_agent.py | **11,705** 🔥 (6/12 분해 6,658 → 재증식) |
+| src/agents/briefing_generation_agent.py | 4,761 |
+| src/parsers/ir_parser.py | 3,835 |
+| src/composers/card_news_composer.py | 3,763 |
+| src/analysis/summarizer.py | 3,636 |
+| src/db/article_store.py | 3,071 |
+| src/agents/today_insight_agent.py | 3,037 |
+| src/agents/mixer_analysis_agent.py | 2,955 |
+| src/agents/peer_swot_llm_preview.py | 2,561 |
+| src/api/router.py | ~900 (엔드포인트 테스트 완료, PR #157) |
 
-테스트: 36개 파일, 모듈 커버 추정 ~47%. 잘 지켜지는 것: ingestion/delivery 그래프 분리, config 외부화, uv+lock, cron 의존성 그룹.
+테스트: 44개 파일. 잘 지켜지는 것: ingestion/delivery 그래프 분리, config 외부화, uv+lock, cron 의존성 그룹, R1 LLM 팩토리·R2 JSON 헬퍼.
