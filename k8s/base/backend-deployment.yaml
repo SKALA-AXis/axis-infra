@@ -47,8 +47,13 @@ spec:
             - secretRef:
                 name: axis-secrets
           env:
+            # 파드 기본 TZ 를 KST 로 — LocalDate.now()/LocalDateTime.now() 가 KST 가 되어
+            # 브리핑 메일 날짜·anchor_date·sent_alerts.sent_at·로그가 한국시간으로 표시됨.
+            # (Instant.now() 는 절대 instant 라 무관. -Duser.timezone 은 JRE 내장 tzdata 로 보장.)
+            - name: TZ
+              value: "Asia/Seoul"
             - name: JAVA_TOOL_OPTIONS
-              value: "-XX:MaxRAMPercentage=75 -XX:+UseG1GC"
+              value: "-XX:MaxRAMPercentage=75 -XX:+UseG1GC -Duser.timezone=Asia/Seoul"
           resources:
             requests:
               # 300m — 실사용 2~20m (2026-06-12 실측). JVM 시동 burst 는 limit 1000m 로 보장.
