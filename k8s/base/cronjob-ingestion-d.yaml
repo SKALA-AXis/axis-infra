@@ -9,8 +9,9 @@ metadata:
     app.kubernetes.io/component: cron
     app.kubernetes.io/part-of: axis
 spec:
-  # 04:25 KST — ingestion-a 03:00/04:00 파이프라인과 03:30 겹침 회피(Track D DeadlineExceeded 이력).
-  schedule: "15 7 * * *"  # 노드 야간 셧다운(23:00-07:00 KST) 회피 — docs/adr/0007 참조
+  # 07:15 KST — 노드 야간 셧다운(23:00-07:00 KST) 회피.
+  # Naver DataLab 최신 일자 보강은 axis-cron-naver-datalab-late 가 별도 수행한다.
+  schedule: "15 7 * * *"
   timeZone: "Asia/Seoul"
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 600

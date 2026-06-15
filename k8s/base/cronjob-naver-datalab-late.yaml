@@ -1,0 +1,65 @@
+# Naver DataLab · 홈 대시보드 섹터별 검색 관심도 보강 수집.
+#   · Track D 전체를 늦추지 않고, DataLab 일별 검색지수 공개 지연만 흡수한다.
+#   · 홈 그래프 4개 그룹(AX/사이버보안/인프라/수주)을 09:15 KST 에 한 번 더 수집.
+#   · 원인분석은 Track D 기본 수집에 맡기고, 이 Job 은 최신 chart point 저장만 빠르게 수행한다.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: axis-cron-naver-datalab-late
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app.kubernetes.io/component: cron
+    app.kubernetes.io/part-of: axis
+spec:
+  schedule: "15 9 * * *"
+  timeZone: "Asia/Seoul"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 300
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: cron
+            cron: naver-datalab-late
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: axis-ai-sa
+          containers:
+            - name: collect
+              image: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-ai:REPLACE_TAG
+              imagePullPolicy: IfNotPresent
+              command:
+                - python
+                - src/crawler/sources/keyword_sector_runner.py
+                - --sectors
+                - ax,security,infra,deal
+                - --lookback-days
+                - "14"
+                - --skip-cause-analysis
+                - --no-print-ratios
+                - --output
+                - /tmp/naver_datalab_late.json
+              envFrom:
+                - configMapRef:
+                    name: axis-config
+                - secretRef:
+                    name: axis-secrets
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: 1000m
+                  memory: 1Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+                readOnlyRootFilesystem: false
+                runAsNonRoot: true
+                runAsUser: 1000
