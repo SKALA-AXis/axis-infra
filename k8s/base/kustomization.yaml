@@ -43,6 +43,9 @@ resources:
   - hpa-backend.yaml
   - ai-deployment.yaml
   - ai-service.yaml
+  # 시연용 데모 뉴스룸 (정적 페이지 — 발표 시 "중요 뉴스 게시 → 이메일 알림" 시연)
+  - demo-newsroom-deployment.yaml
+  - demo-newsroom-service.yaml
   # 외부 진입
   - ingress.yaml
   # 보안
@@ -72,3 +75,13 @@ resources:
   - cronjob-global-trend.yaml
   # CronJob 실패 → Slack 알림 (watcher + RBAC).
   - cronjob-failure-notifier.yaml
+  # 대형 이벤트 1회성 이메일 알림 스캔 (매시 :50, 07-22 KST) → backend /api/alerts/scan.
+  - cronjob-alert-scan.yaml
+
+# 데모 뉴스룸 정적 콘텐츠(index.html + nginx default.conf) → ConfigMap.
+# 내용 변경 시 hash 접미사가 바뀌어 Deployment 가 자동 롤링된다.
+configMapGenerator:
+  - name: demo-newsroom
+    files:
+      - configs/demo-newsroom/index.html
+      - configs/demo-newsroom/default.conf

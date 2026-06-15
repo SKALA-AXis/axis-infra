@@ -65,6 +65,14 @@ spec:
                 name: axis-backend
                 port:
                   number: 8080
+          # 시연용 데모 뉴스룸 정적 페이지. API(/api/demo/**)는 위 /api 규칙으로 backend 가 처리.
+          - path: /demo-newsroom
+            pathType: Prefix
+            backend:
+              service:
+                name: demo-newsroom
+                port:
+                  number: 80
           - path: /
             pathType: Prefix
             backend:
