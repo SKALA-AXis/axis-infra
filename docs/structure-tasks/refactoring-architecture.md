@@ -45,9 +45,11 @@ db/ rag/ config/ contracts/ ── 리프 (부작용 격리)
 
 | # | 추출물 | 신규 위치 | 흡수 대상 | 효과 | 위험 |
 |---|---|---|---|---|---|
-| **R1** | **공용 LLM 클라이언트 팩토리** | `src/llm/client.py` + `src/llm/config.py` | `_get_llm` 19곳 | gpt-5 분기·토큰캡·json_mode·reasoning_effort·캐싱을 1곳에. 모델 교체 1줄. 작업별 설정 dict(`TASK_CONFIG`) | 낮음 (leaf, 동작 불변 — 각 호출처는 `get_llm(task=...)` 로 치환) |
-| **R2** | **JSON/텍스트 헬퍼** | `src/shared/json_helpers.py` `text_norm.py` | `_json_dict`/`_json_list`/`_safe_json_*` ~10곳 | 파싱 실패 처리·타입 강제 표준화 | 낮음 |
-| **R3** | **LLM 호출 격리 래퍼** | `src/llm/invoke.py` (`await ainvoke_json(...)`) | 각 에이전트의 `to_thread(sync invoke)` 반복 | event-loop 안전(probe 보호, #146 패턴)을 1곳에 | 중간 (async 경계) |
+| ✅ **R1** | **공용 LLM 클라이언트 팩토리 — 완료(2026-06-14, PR #177~#183)** | `src/llm/`(LLMSpec+build_chat_llm, leaf) | LLM 생성 21곳 중 20곳 | gpt-5 reasoning_effort(옵셔널)·json_object·토큰캡·timeout/retries 단일 출처화. import-linter `llm is a leaf` 계약. summarizer 1곳은 base+bind 패턴 의도적 예외 | 낮음 (각 배치 라이브 kwargs 동등성 검증, 동작 불변) |
+| ✅ **R2** | **JSON 헬퍼 단일 출처화 — 완료(2026-06-14, PR #184)** | `src/shared/json_helpers.py`(leaf) | `_json_dict` 4곳 + `_json_dumps` 2곳 (구현 동일분만) | 통합. import-linter `shared is a leaf` 계약 | 낮음 |
+| ⚠️ **R3 (보류·재평가)** | ~~LLM 호출 격리 래퍼~~ | — | — | **2026-06-14 조사: 깨끗한 통합 아님.** `.invoke()` 가 전부 sync 헬퍼 내부에 박혀 있고(messages/prompt/config/override 제각각) `to_thread` 격리는 이미 에이전트 메서드 레벨에 구조적으로 적용됨. 공용화하려면 sync 헬퍼를 async 재구조화 → 동작 변경. 이득 대비 위험 높아 보류 | (제외) |
+
+> **R2 통합 제외분(구현 갈라짐)**: `_json_list` 3곳(non-list 파싱 결과 `[]`/`[parsed]`/`[value]` 상이), `_parse_json_loose` 2곳(any-type vs dict-only), today_insight `_json_dumps`(`_json_ready` 전처리), it_trend `_safe_json_object`, summarizer `_safe_json_loads` — 통합 시 회귀라 의도적 제외(json_helpers docstring 명시).
 | **R4** | **크롤러 fetch/parse 베이스** | `src/crawler/base/{fetchers,parsers}.py` | sources/* 의 httpx/Playwright/requests·날짜파싱 중복 | 신규 크롤러 보일러플레이트 ~50%↓ | 중간 (소스 1개씩 이행) |
 
 > R1 은 **이번 세션 briefing gpt-5 작업이 만든 중복**을 정리하는 것이기도 하다. 가장 먼저, 가장 안전하게(leaf) 착수 가능.
@@ -64,7 +66,7 @@ db/ rag/ config/ contracts/ ── 리프 (부작용 격리)
 
 ### 2.5 ai 실행 순서
 
-1. **R1 공용 LLM 팩토리** (leaf, 최고 ROI) → 2. **R2 JSON 헬퍼** → 3. **R3 격리 래퍼** → 4. preprocessing↔analysis 순환 절단(import-linter 계약 추가) → 5. summarizer/card_news_composer/article_store 분해 → 6. R4 크롤러 베이스(2-A4, 크롤러 팀 잠잠해진 후).
+1. ✅ **R1 공용 LLM 팩토리** (완료) → 2. ✅ **R2 JSON 헬퍼** (완료) → 3. ~~R3 격리 래퍼~~ (보류·재평가, 위 표) → 4. ~~preprocessing↔analysis 순환 절단~~ → **2026-06-14 실측: 순환 없음**(preprocessing→analysis 단방향 1건, 역방향 0건. 계획 시점 진단은 무효 — 이미 단방향) → 5. **(다음) summarizer/card_news_composer/article_store 분해** — characterization test 선행, 분리는 briefing/strategic_insight 와 동일한 AST 추출+re-export 패턴 → 6. R4 크롤러 베이스(2-A4, 크롤러 팀 잠잠해진 후).
 
 ---
 
@@ -113,8 +115,8 @@ domain/
 ### 4.1 현황 진단 (2026-06-14 실측)
 
 - **이중 구조**: app/(28,753줄/106 TSX, 실사용) vs features/(10,759줄/25 feature). 동일 이름 뷰 6쌍 중복 — 렌더되는 건 전부 app/, features/ 동명본은 dead.
-- **검증된 dead code**: `app/components/AxisPlanningViews.tsx` **2,980줄 import 0건**, `app/shell/` 5파일(DashboardShell·Sidebar·TopNav·Footer·InAppGuideOverlay — FloatingAiChat만 사용 중).
-- 거대 컴포넌트: AxisPlanningViews 2,980 / MixerView 1,993 / HomeCardNewsView 1,113 / HomeDashboardView 1,103 / PeerPlusView 935 (fetch+상태+렌더+비즈로직+Three.js 혼재).
+- ⚠️ **(2026-06-14 정정) dead code 판정 오류**: AxisPlanningViews·app/shell 은 develop **미추적 로컬 파일**(git ls-files 0). 레포 dead code 아님 — 작업트리 오염 오판.
+- 거대 컴포넌트(tracked 실측): MixerView 1,993 / KeywordGraphView 1,169 / HomeDashboardView 1,103 / PeerPlusView 935 / BriefingsView 884 (fetch+상태+렌더+비즈로직 혼재).
 - Repository 패턴: 10 feature 우수 채택, 그러나 keyword-graph 는 `httpClient` 직접 호출 2건(우회), home·admin·keyword-graph feature 구조 미완.
 - 테스트 0개, 인라인 style ~120건. (any 타입 0 · 자동생성 api.ts 규칙 준수 — 양호)
 
@@ -131,7 +133,7 @@ feature 표준: features/<도메인>/{api(Repository)/hooks/model/components/map
 
 | 우선 | 항목 | 근거 |
 |---|---|---|
-| P0 | **dead code 제거 검증·삭제** — AxisPlanningViews(2,980, import 0) + app/shell 5파일 | 실측 import 0 확인 |
+| ~~P0~~ | ~~dead code 제거~~ — **취소(2026-06-14): 대상이 develop 미추적 로컬 파일, 레포에 없음** | git ls-files 0 |
 | P0 | **app↔features 수렴 방향 결정** (권장: features/ 로 통일) | 6쌍 중복의 근원 |
 | P1 | keyword-graph Repository 신설 → httpClient 직접 호출 2건 제거 | 패턴 일관성 |
 | P1 | home·admin feature 구조 정규화 | 표준 미완 3곳 |
@@ -160,7 +162,7 @@ feature 표준: features/<도메인>/{api(Repository)/hooks/model/components/map
 | ai 거대 파일(>2,500줄) | 9 | ≤4 |
 | backend 거대 서비스(>500줄) | 5 | 0 |
 | backend service 내 SQL 라인 | ~1,800 | ~200 |
-| frontend dead code(검증분) | ~6,000줄 | 0 |
+| frontend dead code | (해당 없음 — 오판 정정) | — |
 | frontend 컴포넌트(>1,000줄) | 5 | 0 |
 | frontend 테스트 | 0 | 스모크+핵심 단위 |
 
@@ -170,7 +172,7 @@ feature 표준: features/<도메인>/{api(Repository)/hooks/model/components/map
 
 병렬 가능하되 레포 내부는 순서 의존. **각 레포 "빠른 승리(leaf·저위험)" 먼저** → 동기 확보 후 대형 분해.
 
-1. **Week 1 (저위험 재사용 추출)**: ai R1 LLM 팩토리 + R2 JSON 헬퍼 · backend B-R1 PeerCompanyProvider · frontend dead code 제거(검증 후)
+1. **Week 1 (저위험 재사용 추출)**: ai R1 LLM 팩토리 + R2 JSON 헬퍼 · backend B-R1 PeerCompanyProvider · frontend: 로컬 untracked 47건 점검(작업자)
 2. **Week 2~3 (계층 분리)**: ai summarizer/article_store 분해 · backend PeerOverviewTableService 3분할 · frontend keyword-graph Repository + 수렴 방향 결정
 3. **Week 3~4 (테스트·강제)**: 거대 모듈 characterization/단위 테스트 · import-linter/ArchUnit/ESLint 계층 계약 CI 추가
 4. **지속**: ai 크롤러 베이스(2-A4) · frontend 거대 컴포넌트 분해 · backend fallback AOP
