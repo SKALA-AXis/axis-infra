@@ -75,6 +75,8 @@ resources:
   - cronjob-global-trend.yaml
   # CronJob 실패 → Slack 알림 (watcher + RBAC).
   - cronjob-failure-notifier.yaml
+  # 대형 이벤트 1회성 이메일 알림 스캔 (매시 :50, 07-22 KST) → backend /api/alerts/scan.
+  - cronjob-alert-scan.yaml
 
 # 데모 뉴스룸 정적 콘텐츠(index.html + nginx default.conf) → ConfigMap.
 # 내용 변경 시 hash 접미사가 바뀌어 Deployment 가 자동 롤링된다.

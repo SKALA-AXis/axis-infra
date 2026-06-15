@@ -1,0 +1,71 @@
+# Alert scan · 매시 :50 (07–22 KST) 대형 이벤트 1회성 이메일 알림 스캔.
+#   · backend 의 /api/alerts/scan 호출 → EventAlertService 가 최근 card_news 를
+#     게이트(event_type∈{ma,contract,partnership} AND (점수≥min OR 금액근거)) + dedup 평가 후
+#     통과분만 SES 로 1회 발송.
+#   · prod 는 AXIS_SCHEDULER_ENABLED=false (in-app @Scheduled off) 라, 이 CronJob 이
+#     실제 자동 트리거다 (delivery/ingestion 과 동일한 k8s-CronJob-driven 패턴).
+#   · ingestion-a(:10) 가 만든 카드가 영속화될 여유를 두고 :50 에 실행. 미스는
+#     scan-lookback(기본 90분)으로 다음 시간에 보정. 중복은 sent_alerts dedupe_key 가 차단.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: axis-cron-alert-scan
+  namespace: skala3-finalproj-class3-team13
+  labels:
+    app.kubernetes.io/component: cron
+    app.kubernetes.io/part-of: axis
+spec:
+  schedule: "50 7-22 * * *"
+  timeZone: "Asia/Seoul"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 300
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: cron
+            cron: alert-scan
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: axis-cron-sa
+          containers:
+            - name: trigger
+              image: curlimages/curl:8.5.0
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  curl -fsSL \
+                    --connect-timeout 5 --max-time 60 \
+                    --retry 3 --retry-delay 5 --retry-connrefused \
+                    -X POST \
+                    -H "Content-Type: application/json" \
+                    -H "Authorization: Bearer ${CRON_INTERNAL_TOKEN}" \
+                    "http://axis-backend:8080/api/alerts/scan"
+              env:
+                - name: CRON_INTERNAL_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: axis-secrets
+                      key: CRON_INTERNAL_TOKEN
+                      optional: true
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  cpu: 100m
+                  memory: 64Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 65534
