@@ -5728,6 +5728,11 @@ components:
           format: date
           nullable: true
           description: 카드 뉴스 기준 날짜
+        published_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 최초 원문 발행 시각 기준의 카드 뉴스 정렬용 시각
         summary_lines:
           type: array
           items:
