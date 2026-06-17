@@ -89,7 +89,7 @@ GitHub Actions / CI
 | `axis-cron-delivery` | 평일 08:30 | backend `/api/pipeline/delivery` | 일일 브리핑 발송 | backend + SES |
 | `axis-cron-global-trend` | 월요일 02:30 | axis-ai `/global/trends/run` | 글로벌 IT 트렌드 갱신 | axis-ai |
 | `axis-cron-profile-refresh` | 분기 첫 달 1일 03:00 | `scripts/refresh_peer_profile_snapshots.py` | 피어 프로필 snapshot 갱신 | axis-ai |
-| `axis-cron-card-evaluator` | 5분마다 | `scripts.evaluate_recent_cards` | 카드 LLM judge/evaluation | axis-ai-cron |
+| `axis-cron-card-evaluator` | 매일 12:00, 22:00 | `scripts.evaluate_recent_cards` | 카드 LLM judge/evaluation | axis-ai-cron |
 | `axis-cron-sector-pulse` | 월요일 02:00 | psql/materialized view refresh | 섹터 pulse 갱신 | PostgreSQL |
 | `axis-cron-capability-evolution` | 매월 1일 03:00 | `scripts/refresh_capability_evolution.py` | 역량 변화 context 갱신 | axis-ai |
 | `axis-cron-failure-notifier` | 10분마다 | kubectl + Slack webhook | CronJob 실패 알림 | K8s API/Slack |

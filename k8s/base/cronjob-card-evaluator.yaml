@@ -1,7 +1,7 @@
-# W5-2 · 5분 주기 CardEvaluatorSidecar (LLM-as-Judge 4 score).
+# W5-2 · 일 2회 CardEvaluatorSidecar (LLM-as-Judge 4 score).
 #   · card_news.evaluation_payload['llm_judge'] 가 비어있는 v2 카드를 평가.
-#   · daily cost cap: $5/일 (EVAL_DAILY_BUDGET_USD env).
-#   · batch limit: 20 (EVAL_BATCH_LIMIT env).
+#   · daily cost cap: $1/일 (EVAL_DAILY_BUDGET_USD env).
+#   · batch limit: 10 (EVAL_BATCH_LIMIT env).
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -11,9 +11,9 @@ metadata:
     app.kubernetes.io/component: cron
     app.kubernetes.io/part-of: axis
 spec:
-  # 매 5 분 v2 카드 LLM-as-Judge 평가. daily cap $5 (EVAL_DAILY_BUDGET_USD).
+  # 매일 12:00/22:00 v2 카드 LLM-as-Judge 평가. daily cap $1 (EVAL_DAILY_BUDGET_USD).
   suspend: false
-  schedule: "*/5 7-22 * * *"  # 노드 야간 셧다운(23:00-07:00 KST) 회피 — docs/adr/0007 참조
+  schedule: "0 12,22 * * *"  # 노드 야간 셧다운(23:00-07:00 KST) 회피 — docs/adr/0007 참조
   timeZone: "Asia/Seoul"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
@@ -46,9 +46,9 @@ spec:
                 - name: PYTHONPATH
                   value: /app
                 - name: EVAL_BATCH_LIMIT
-                  value: "20"
+                  value: "10"
                 - name: EVAL_DAILY_BUDGET_USD
-                  value: "5"
+                  value: "1"
                 - name: EVAL_LOOKBACK_HOURS
                   value: "24"
               resources:
