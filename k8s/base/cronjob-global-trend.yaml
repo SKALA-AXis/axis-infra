@@ -57,7 +57,7 @@ spec:
                     --retry 8 --retry-delay 30 --retry-connrefused \
                     -X POST \
                     -H "Content-Type: application/json" \
-                    -d '{"window_days": 30, "include_peer_alignment": true, "max_trend_count": 8, "min_mention_count": 3}' \
+                    -d '{"window_days": 30, "include_peer_alignment": false, "global_only": true, "max_trend_count": 8, "min_mention_count": 3}' \
                     "http://axis-ai:8001/global/trends/run"
               resources:
                 requests:
