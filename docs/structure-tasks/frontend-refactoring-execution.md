@@ -14,7 +14,7 @@
 
 | 단계 | 내용 | 상태 | PR |
 |---|---|---|---|
-| P0 안전망·강제 | characterization 스모크 + ESLint httpClient 차단 + 크기 메트릭 | ⬜ 미착수 | — |
+| P0 안전망·강제 | characterization 스모크 + ESLint httpClient 차단 + 크기 메트릭 | 🟡 진행 (vitest+첫 테스트 완료) | #133 |
 | P1 빠른 승리·재사용 1차 | httpClient 우회 1건 Repository화 · 재사용 추출(차트/라벨/날짜) | ⬜ 미착수 | — |
 | P2 이중구조 단일화 | features/ 수렴 선언 + 동명 중복 정리 | ⬜ 미착수 | — |
 | P3 거대 컴포넌트 분해 | 컴포넌트별 container/presentational (1 PR=1 컴포넌트) | ⬜ 미착수 | — |
@@ -27,12 +27,12 @@
 | 컴포넌트 >600줄 | 10 | 0 |
 | 컴포넌트 >1,000줄 | 4 (Mixer·Home·Settings·KeywordGraph) | 0 |
 | Repository httpClient 직접 우회 | 1 (KeywordGraphView) | 0 |
-| 테스트 파일 | 0 | 스모크+핵심 단위 |
-| ESLint/vitest 설치·게이트 | ❌ 둘 다 **미설치**(orphan .eslintrc) | ✅ 설치 + `lint`/`test` 연결 |
+| 테스트 파일 | 0 → **1 (4 테스트, #133)** | 스모크+핵심 단위 |
+| ESLint/vitest 설치·게이트 | vitest **✅ 설치+`test` 연결(#133)** / ESLint ❌ 미설치 | ESLint 설치 + `lint` 연결 |
 | app↔features 동명 중복 | 다수(이중구조) | 0 (features/ 단일) |
 | manualChunks 함수형(#115) | ✅ 완료 | — |
 
-**🔖 마지막 작업**: (없음 — 계획 수립) · **▶ 다음 작업**: P0-1 characterization 스모크 골격 · **열린 PR**: —
+**🔖 마지막 작업**: P0-1 vitest 안전망 + `todayInsightUtils` characterization 4건 (#133) · **▶ 다음 작업**: `@testing-library`+jsdom 컴포넌트 스모크 → ESLint 설치+`no-restricted-imports` · **열린 PR**: #133
 
 ---
 
