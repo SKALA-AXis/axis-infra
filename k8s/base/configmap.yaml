@@ -23,8 +23,8 @@ data:
 
   # ── LLM-assisted AI pipeline
   ENABLE_OPENAI_CALLS: "true"
-  ENABLE_RELEVANCE_LLM: "true"
-  POSTPROCESS_TITLE_LLM_JUDGE_ENABLED: "true"
+  ENABLE_RELEVANCE_LLM: "false"
+  POSTPROCESS_TITLE_LLM_JUDGE_ENABLED: "false"
 
   # ── 브리핑 본문 LLM 모델 상향 (2026-06-13).
   # 브리핑은 메일 본문으로 사용자에 직접 노출되는 핵심 출력이고 호출 빈도가 낮아
