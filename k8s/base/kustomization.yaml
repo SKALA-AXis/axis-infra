@@ -72,11 +72,10 @@ resources:
   - cronjob-briefing-generate.yaml
   - cronjob-today-insight.yaml
   - cronjob-weak-signal.yaml
-  # axis-ai 1단계 분석 supervisor 의 context layer + evaluation layer CronJob.
+  # axis-ai 1단계 분석 supervisor 의 context layer CronJob.
   - cronjob-profile-refresh.yaml
   - cronjob-weekly-digest.yaml
   - cronjob-sector-pulse.yaml
-  - cronjob-card-evaluator.yaml
   - cronjob-news-cluster-postprocess.yaml
   # 글로벌 IT 트렌드 + peer alignment (design: axis-ai/design/30-analysis/global-trends.md).
   - cronjob-global-trend.yaml

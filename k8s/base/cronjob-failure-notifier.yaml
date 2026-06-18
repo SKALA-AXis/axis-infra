@@ -4,7 +4,7 @@
 #   2026-06-05 최종민 — CronJob 실패 Slack 알림 notifier 신규 추가, 이후 상시 Pod 크래시 감시 추가·야간 셧다운 창 밖으로 스케줄 이동
 # 워크로드 실패 감시 → Slack 알림 (CronJob/Job 실패 + 상시 Pod 크래시).
 #
-# 문제: ① CronJob(ingestion-*, delivery, global-trend, card-evaluator, pg-dump 등)이
+# 문제: ① CronJob(ingestion-*, delivery, global-trend, pg-dump 등)이
 #       실패하거나, ② 상시 Deployment(backend/ai/frontend) 파드가 CrashLoopBackOff /
 #       OOMKilled / ImagePullBackOff 로 죽어도 kubectl/ArgoCD 를 직접 보기 전까진
 #       아무도 모른다. 공용(매니저 운영) ArgoCD 라 argocd-notifications 로 앱 "Degraded"

@@ -6,7 +6,7 @@
 ## 배경
 
 "매일 아침 7시쯤 포드와 CronJob이 한꺼번에 터진다"는 현상이 수 주간 반복됐고,
-그동안의 대응(#49 card-evaluator activeDeadlineSeconds, #53 pg-dump 3-phase + 스케줄 분산,
+그동안의 대응(#53 pg-dump 3-phase + 스케줄 분산,
 #56 cron hygiene, failure-notifier 신설, harbor pre-pull secret)은 모두 증상 완화였을 뿐
 재발을 막지 못했다.
 
@@ -48,7 +48,6 @@ axis-pg-dump (02:10 KST):  Failed — 밤사이 스케줄할 노드가 없어 �
 | axis-cron-profile-refresh | 분기 1일 03:00 | 분기 1일 10:30 |
 | axis-cron-weekly-digest | 일 23:55 | **일 21:55** (셧다운 직전이 아닌 안전 구간) |
 | axis-cron-ingestion-a | 매시 :00 | 07–22시 :10 |
-| axis-cron-card-evaluator | 매일 12:00, 22:00 | 12:00, 22:00 |
 | axis-cron-failure-notifier | 매 10분 | 07–22시 매 10분 |
 | axis-cron-news-cluster-postprocess | 매시 :25 | 07–22시 :25 |
 
