@@ -1,3 +1,7 @@
+# 작성일: 2026-06-10
+# 작성자: 박진
+# 변경이력:
+#   2026-06-10 박진 — 브리핑 생성 크론잡 수정
 # 화면용 Daily Briefing · 매일 08:20 KST 사전 생성.
 #   · axis-ai POST /briefing/generate 호출 → BriefingGenerationAgent 실행.
 #   · save=true 로 briefing_reports / briefing_report_cards / briefing_report_articles 저장.

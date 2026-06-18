@@ -1,3 +1,8 @@
+# 작성일: 2026-06-09
+# 작성자: 박지원
+# 변경이력:
+#   2026-06-09 박지원 — 뉴스 클러스터 후처리 CronJob 신설, lookback 확대 및 LLM 후처리 window·cron 활성화
+#   2026-06-10 최종민 — 23:00-07:00 KST 노드 셧다운 시간대 밖으로 스케줄 이동
 # 최근 뉴스 클러스터 후처리.
 # ingestion-a 가 crawl_run/source 단위로 전처리하면서 같은 이벤트가 singleton으로
 # 쪼개질 수 있어, 최근 published_at window를 한 번 더 보수적으로 consolidation한다.

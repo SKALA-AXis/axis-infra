@@ -1,3 +1,8 @@
+# 작성일: 2026-05-04
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-04 최종민 — 로컬 overlay kustomization 신설, 이후 단일 namespace 적용·모델 캐시 PVC patch 반영
+#   2026-05-12 박지원 — track 관련 항목 수정
 # 로컬 K8s overlay (kind / minikube / docker-desktop / k3d)
 #
 # base 와의 차이:

@@ -1,3 +1,9 @@
+# 작성일: 2026-05-04
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-04 최종민 — kustomize base(EKS) 매니페스트에 이미지 공유 PVC 추가
+#   2026-05-06 최종민 — SKALA 공유 클러스터 단일 namespace 적용
+#   2026-05-11 최종민 — ArgoCD GitOps 도입에 따른 infra 측 P1 변경 반영
 # 카드 뉴스 이미지 공유 PVC.
 #   · ReadWriteMany — axis-ai (write) + axis-backend (read) 동시 mount 필요.
 #   · AWS 환경에서는 EFS CSI Driver 필요 (helm install aws-efs-csi-driver).

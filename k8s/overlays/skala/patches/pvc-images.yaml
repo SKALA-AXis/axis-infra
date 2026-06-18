@@ -1,3 +1,7 @@
+# 작성일: 2026-05-08
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-08 최종민 — SKALA EKS in-namespace 배포 overlay에 images PVC 패치 추가
 # SKALA EFS 의 RWX storage class 사용 (efs-sc-shared = ReadWriteMany 지원).
 # JSON 6902 patch 로 storageClassName 만 치환.
 - op: replace

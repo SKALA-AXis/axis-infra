@@ -1,3 +1,7 @@
+# 작성일: 2026-06-10
+# 작성자: 최종민
+# 변경이력:
+#   2026-06-10 최종민 — BGE-M3/Reranker 모델 캐시를 PVC(axis-models)에 영속화하는 로컬 PVC 패치 추가
 # 로컬 single-node 가정 — RWO + local-path StorageClass (pvc-local.yaml 과 동일 원칙).
 # 모델 캐시는 ai 단독 mount 라 RWO 로 충분.
 apiVersion: v1

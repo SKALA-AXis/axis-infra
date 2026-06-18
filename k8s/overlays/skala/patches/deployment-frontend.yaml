@@ -1,3 +1,8 @@
+# 작성일: 2026-05-08
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-08 최종민 — SKALA EKS in-namespace 배포 overlay에 frontend 패치 추가
+#   2026-06-08 최종민 — non-root frontend 적용 등 인프라 정비
 # Frontend — Harbor pullPolicy + imagePullSecrets
 apiVersion: apps/v1
 kind: Deployment

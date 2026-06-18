@@ -1,3 +1,7 @@
+# 작성일: 2026-06-15
+# 작성자: 최종민
+# 변경이력:
+#   2026-06-15 최종민 — 시연용 데모 뉴스룸 ClusterIP Service 추가
 apiVersion: v1
 kind: Service
 metadata:

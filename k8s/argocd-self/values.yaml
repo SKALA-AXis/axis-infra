@@ -1,3 +1,7 @@
+# 작성일: 2026-05-11
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-11 최종민 — 공용 ArgoCD Tekton 좀비 CRD 회피용 자체 ArgoCD pivot values 작성, notifications 활성화 및 SMTP→Resend 전환 후 Resend 잔재 cleanup
 # AXIS 자체 ArgoCD — namespace-scoped install in skala3-finalproj-class3-team13.
 #
 # 왜 자체 ArgoCD?

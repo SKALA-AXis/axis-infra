@@ -1,3 +1,7 @@
+# 작성일: 2026-06-12
+# 작성자: 박진
+# 변경이력:
+#   2026-06-12 박진 — axis-ai PodDisruptionBudget 추가
 # PodDisruptionBudget — AI 는 현재 1 replica 이므로 자발적 eviction 을 차단해
 # 노드 drain/업그레이드 중 갑작스러운 중단을 피한다.
 #

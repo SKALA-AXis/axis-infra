@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# 작성일: 2026-06-09
+# 작성자: 최종민
+# 변경이력:
+#   2026-06-09 최종민 — Postgres 백업용 S3 버킷 + IRSA(role/policy) 프로비저닝 스크립트 추가
 # team13 전용 Postgres 백업 S3 버킷 + IRSA(role/policy) 1회 프로비저닝.
 #
 # Prerequisites: AWS CLI, skala-student (또는 동등) IAM 권한.

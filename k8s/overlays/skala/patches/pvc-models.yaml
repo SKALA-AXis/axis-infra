@@ -1,3 +1,7 @@
+# 작성일: 2026-06-10
+# 작성자: 최종민
+# 변경이력:
+#   2026-06-10 최종민 — BGE-M3/Reranker 모델 캐시 보존용 models PVC 패치 추가
 # SKALA EFS 의 RWX storage class 사용 (efs-sc-shared = ReadWriteMany 지원).
 # JSON 6902 patch 로 storageClassName 만 치환 (pvc-images.yaml 과 동일 패턴).
 - op: replace

@@ -1,3 +1,7 @@
+# 작성일: 2026-06-09
+# 작성자: 최종민
+# 변경이력:
+#   2026-06-09 최종민 — weekly digest CronJob 신설, cron 정비 후 셧다운 시간대 밖으로 스케줄 이동
 # K2 · 주 1회 (일요일 23:55 KST) peer weekly_digest narrative 갱신.
 #   · card_news 최근 7일 → LLM weekly narrative + delta_vs_prev.
 #   · 결과: peer_companies.peer_plus_payload['weekly_digest'] JSONB.

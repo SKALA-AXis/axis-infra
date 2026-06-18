@@ -1,3 +1,7 @@
+# 작성일: 2026-06-15
+# 작성자: 최종민
+# 변경이력:
+#   2026-06-15 최종민 — 클러스터 데모 뉴스룸 + sent_alerts 스키마 동기화 작업 중 추가
 # Alert scan · 매시 :50 (07–22 KST) 대형 이벤트 1회성 이메일 알림 스캔.
 #   · backend 의 /api/alerts/scan 호출 → EventAlertService 가 최근 card_news 를
 #     게이트(event_type∈{ma,contract,partnership} AND (점수≥min OR 금액근거)) + dedup 평가 후

@@ -1,3 +1,7 @@
+# 작성일: 2026-05-11
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-11 최종민 — ArgoCD GitOps Application 도입, 공용 skala-argocd 정착으로 pivot 정정, Pod 크래시 감시·ArgoCD Degraded 참조 설정 추가
 # ArgoCD Application — axis-team13 (SKALA EKS, develop branch GitOps).
 #
 # 사전 조건:

@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# 작성일: 2026-06-08
+# 작성자: 최종민
+# 변경이력:
+#   2026-06-08 최종민 — 클러스터 axis-secrets 의 legacy JWT_SECRET 키 제거 스크립트 추가
 # 클러스터 axis-secrets 에서 legacy JWT_SECRET 키 제거.
 # backend 는 AXIS_AUTH_JWT_SECRET 만 읽음 — JWT_SECRET 은 0-byte legacy drift.
 #

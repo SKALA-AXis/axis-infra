@@ -1,3 +1,8 @@
+# 작성일: 2026-04-21
+# 작성자: 최종민
+# 변경이력:
+#   2026-04-21 최종민 — 운영 배포 compose 베이스라인 작성, obsolete version 키 제거, Supabase+Qdrant Cloud 전환, 카드뉴스 이미지 공유 볼륨, SARAMIN→WORK24 API 키 전파
+#   2026-05-18 박지원 — naver id 수정
 # 운영 배포용 — docker compose -f docker-compose.prod.yml up -d
 # PostgreSQL = Supabase, Vector DB = Qdrant Cloud. 모든 자격증명은 .env에서 주입.
 # 반드시 .env에 운영 값을 설정한 후 실행하세요.

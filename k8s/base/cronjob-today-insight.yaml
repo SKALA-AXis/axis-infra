@@ -1,3 +1,7 @@
+# 작성일: 2026-06-09
+# 작성자: 최종민
+# 변경이력:
+#   2026-06-09 최종민 — 평일 08:10 KST today-insight CronJob 신설
 # Today's Insight · 평일 08:10 KST 사전 생성.
 #   · backend POST /api/dashboard/today-insight/cron-generate (1회) → axis-ai /today-insight/generate.
 #   · Spring @Scheduled 대신 CronJob — backend replicas:2 중복 트리거 방지.

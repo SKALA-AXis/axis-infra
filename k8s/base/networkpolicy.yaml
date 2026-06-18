@@ -1,3 +1,7 @@
+# 작성일: 2026-05-04
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-04 최종민 — NetworkPolicy 매트릭스 신설(kustomize base), 이후 단일 namespace 적용·하드닝·demo-newsroom 정책 추가
 # NetworkPolicy 매트릭스.
 #   기본 default-deny ingress + 명시적 allow.
 #   egress 는 모두 허용 (외부 SaaS 호출 필요: Supabase / Qdrant Cloud / OpenAI / DART / Naver / KIPRIS / Saramin / SMTP / S3).

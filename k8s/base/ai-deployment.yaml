@@ -1,3 +1,7 @@
+# 작성일: 2026-05-04
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-04 최종민 — kustomize base에 axis-ai Deployment 추가 및 단일 namespace 적용, BGE-M3 메모리·프로브 조정, PVC 모델 캐시·initContainer 워밍, zero-downtime 롤아웃과 ns CPU request 적정화
 # axis-ai Deployment.
 #   · 메모리 집약 (BGE-M3 ~2Gi + Reranker ~1Gi + 워킹셋)
 #   · 절대 ×2 금지 — 같은 PVC 에 동시 write 시 race condition 위험 + 메모리 비용

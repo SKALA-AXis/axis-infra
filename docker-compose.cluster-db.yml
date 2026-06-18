@@ -1,3 +1,7 @@
+# 작성일: 2026-05-19
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-19 최종민 — cluster DB 모드 override 신설(로컬 compose로 ai·frontend만 띄우고 클러스터 DB/backend 연결), port-forward backend 연동 및 frontend nginx /api 라우팅 정리
 # axis-infra · docker compose override — Cluster DB 모드
 #
 # 용도: 로컬에서 docker compose 로 ai + frontend 만 띄우고,

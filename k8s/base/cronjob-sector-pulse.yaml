@@ -1,3 +1,7 @@
+# 작성일: 2026-05-21
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-21 최종민 — sector-pulse CronJob 신설, Degraded 복구·psql 재시도/CONCURRENTLY 폴백 추가 및 셧다운 시간대 밖으로 스케줄 이동
 # W4-4 · 주 1회 (월 02:00 KST) sector_pulse MATERIALIZED VIEW REFRESH.
 #   · LLM 호출 0건.
 #   · psql 컨테이너에서 단일 REFRESH 쿼리 실행.

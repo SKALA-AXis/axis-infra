@@ -1,3 +1,10 @@
+# 작성일: 2026-05-04
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-04 최종민 — kustomize base(EKS) 매니페스트에 backend Deployment 추가
+#   2026-05-06 최종민 — SKALA 공유 클러스터 단일 namespace 적용
+#   2026-06-12 최종민 — namespace CPU request 1900→1100m 적정화로 surge 포드 Pending 해소
+#   2026-06-15 최종민 — backend 파드 TZ=Asia/Seoul 설정(메일/timestamp KST 표시)
 # axis-backend Deployment.
 #   · Spring Boot 3 / Java 17 / 8080
 #   · Healthcheck: backend 의 custom HealthController (/health) — Actuator probes 미활성

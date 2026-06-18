@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# 작성일: 2026-05-08
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-08 최종민 — SKALA overlay 용 K8s Secret 생성 스크립트 신규 작성, 이후 키 목록·구성 지속 갱신(JWT 키 교정·PII 분리·Langfuse Cloud 전환 등)
+#   2026-05-18 박지원 — NAVER 클라이언트 키 항목 수정
 #
 # .env → SKALA overlay 의 두 K8s Secret 을 생성한다. stdout 으로 출력.
 #

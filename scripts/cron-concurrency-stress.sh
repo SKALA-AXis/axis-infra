@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# 작성일: 2026-06-09
+# 작성자: 최종민
+# 변경이력:
+#   2026-06-09 최종민 — Cron 동시 실행 겹침/병목 스트레스 테스트 스크립트 추가
 # pg-dump + ingestion-a + ingestion-d 동시 트리거 — Cron 겹침/병목 스트레스 테스트.
 # Usage: ./scripts/cron-concurrency-stress.sh
 set -euo pipefail
