@@ -41,16 +41,16 @@ resources:
 images:
 - name: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-ai
   newName: amdp-registry.skala-ai.com/skala26a-ai3/axis-ai
-  newTag: 2c0555d
+  newTag: d6e815a
 - name: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-ai-cron
   newName: amdp-registry.skala-ai.com/skala26a-ai3/axis-ai-cron
-  newTag: 2c0555d
+  newTag: d6e815a
 - name: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-backend
   newName: amdp-registry.skala-ai.com/skala26a-ai3/axis-backend
-  newTag: edf3bc7
+  newTag: d9e2291
 - name: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-frontend
   newName: amdp-registry.skala-ai.com/skala26a-ai3/axis-frontend
-  newTag: 813695b
+  newTag: 9724a7c
 
   # ── pullPolicy + imagePullSecrets (3 Deployment)
 
