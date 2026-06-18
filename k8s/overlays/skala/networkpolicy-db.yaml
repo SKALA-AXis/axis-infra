@@ -1,3 +1,7 @@
+# 작성일: 2026-05-08
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-08 최종민 — in-namespace Postgres/Qdrant 에 대한 NetworkPolicy(backend/ai pod 만 ingress 허용) 추가
 # in-namespace Postgres / Qdrant 는 base manifest 에 없어서 default-deny-ingress 의 영향 받음.
 # 명시적 ingress 룰로 backend / ai pod 만 허용.
 ---

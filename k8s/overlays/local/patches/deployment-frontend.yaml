@@ -1,3 +1,7 @@
+# 작성일: 2026-05-04
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-04 최종민 — 로컬 overlay용 axis-frontend Deployment 패치 추가 및 namespace를 공유 클러스터 단일 namespace로 적용
 apiVersion: apps/v1
 kind: Deployment
 metadata:

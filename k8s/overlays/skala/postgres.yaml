@@ -1,3 +1,9 @@
+# 작성일: 2026-05-08
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-08 최종민 — SKALA EKS in-namespace 배포 overlay에 PostgreSQL 추가
+#   2026-05-11 최종민 — ArgoCD GitOps 도입에 맞춘 변경
+#   2026-06-12 최종민 — namespace CPU request 적정화(surge 포드 Pending 해소)
 # SKALA EKS overlay — namespace 내부 PostgreSQL.
 # 매니저 가이드 ("우리 namespace 에 직접 쓰면 된다") 에 따라 cluster 공용 postgres 대신
 # 본인 namespace 에 자체 인스턴스 배포. 다른 팀과 완전 격리.

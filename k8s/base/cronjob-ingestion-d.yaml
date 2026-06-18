@@ -1,3 +1,9 @@
+# 작성일: 2026-05-18
+# 작성자: 박지원
+# 변경이력:
+#   2026-05-18 박지원 — Track D ingestion CronJob track 설정 수정
+#   2026-05-22 최종민 — Track D 주석 정리 및 pg_dump atomic 백업, 이후 콜드스타트 흡수·pg-dump 3단계 백업 및 ingestion-d 스케줄 분산·야간 셧다운 창 밖으로 이동
+#   2026-06-15 안가은 — datalab 신선도 확보 위해 track D ingestion 지연
 # Track D · 문서/리포트/자사 사이트 저빈도 인제스션.
 #   · DART / IR / Naver DataLab / SPRi / BCG.
 apiVersion: batch/v1

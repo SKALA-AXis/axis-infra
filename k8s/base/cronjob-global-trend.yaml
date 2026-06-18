@@ -1,3 +1,8 @@
+# 작성일: 2026-05-26
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-26 최종민 — global-trend CronJob(매일 02:30 KST) 신규 추가, 이후 LLM cron unsuspend·daily 02:30 실행 정비·야간 셧다운 창 밖으로 스케줄 이동
+#   2026-06-01 박지원 — profile 및 trend CronJob 갱신, 이후 global trend 설정 수정
 # Global Trend · 매일 02:30 KST 글로벌 IT 트렌드 + peer alignment 분석.
 #   · axis-ai 의 POST /global/trends/run 호출 → ITTrendAgent 5-phase 실행.
 #   · 결과는 global_industry_trends 테이블에 keyword 별 row 로 upsert (V29 unique

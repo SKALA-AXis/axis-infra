@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# 작성일: 2026-06-08
+# 작성자: 최종민
+# 변경이력:
+#   2026-06-08 최종민 — diag-* 디버그 Job 정리 스크립트 추가
 # 수동 디버그 Job(diag-*) 정리 — suspend 된 CronJob 에서 kubectl create job --from=cronjob 로
 # 만든 실패 Job 이 ArgoCD Degraded 를 유발할 때 사용.
 #

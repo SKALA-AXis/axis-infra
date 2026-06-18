@@ -1,3 +1,7 @@
+# 작성일: 2026-06-05
+# 작성자: 최종민
+# 변경이력:
+#   2026-06-05 최종민 — CronJob 실패 Slack 알림 notifier 신규 추가, 이후 상시 Pod 크래시 감시 추가·야간 셧다운 창 밖으로 스케줄 이동
 # 워크로드 실패 감시 → Slack 알림 (CronJob/Job 실패 + 상시 Pod 크래시).
 #
 # 문제: ① CronJob(ingestion-*, delivery, global-trend, card-evaluator, pg-dump 등)이

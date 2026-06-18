@@ -1,3 +1,8 @@
+# 작성일: 2026-05-12
+# 작성자: 박지원
+# 변경이력:
+#   2026-05-12 박지원 — Track C ingestion CronJob track 설정 작성·수정
+#   2026-06-05 최종민 — CronJob 실패 Slack 알림 적용, 이후 콜드스타트 흡수 보강
 # Track C · 업무시간성 채용/기업 뉴스 인제스션.
 #   · jobs / company_news
 apiVersion: batch/v1

@@ -1,3 +1,7 @@
+# 작성일: 2026-06-05
+# 작성자: 최종민
+# 변경이력:
+#   2026-06-05 최종민 — 백업본을 Postgres 로 되돌리는 1회성 복구 Job 추가, 이후 3단계 백업 구조에 맞춰 정리
 # axis-images PVC(/data/backups)의 pg_dump 백업을 Postgres 로 되돌리는 1회성 복구 Job.
 #
 # ⚠️ 파괴적 작업이다. 기본 동작은 대상 DB 의 public 스키마를 통째로 DROP 후

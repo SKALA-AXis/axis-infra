@@ -1,3 +1,9 @@
+# 작성일: 2026-05-08
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-08 최종민 — SKALA overlay 용 axis-config ConfigMap 패치 최초 작성, 이후 SES(IRSA) 이메일·스케줄러 토글·public-nginx HTTPS 전환·하드닝 관련 env 반영
+#   2026-05-18 박지원 — env 정책/추적 항목 수정, LLM news cluster postprocess cron 활성화 플래그 추가
+#   2026-05-21 박진 — 로그인/회원가입·카드뉴스·알림 기능 관련 env 값 추가
 # axis-config — in-namespace Postgres/Qdrant (postgres.yaml, qdrant.yaml) + SKALA HTTPS.
 apiVersion: v1
 kind: ConfigMap

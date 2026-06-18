@@ -1,3 +1,8 @@
+# 작성일: 2026-04-21
+# 작성자: 최종민
+# 변경이력:
+#   2026-04-21 최종민 — axis-infra 베이스라인으로 매니페스트 검증 CI 신설, permissions·concurrency·feat/fix 트리거·secrets SSoT 추가, cron 야간 셧다운 창 밖 이동
+#   2026-06-08 박진 — infra CI 도구 설치 단계 강화, 목업 삭제 및 챗봇 고도화 반영
 name: Validate Specs
 
 on:

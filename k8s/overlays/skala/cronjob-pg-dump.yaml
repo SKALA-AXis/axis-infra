@@ -1,3 +1,7 @@
+# 작성일: 2026-05-08
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-08 최종민 — SKALA EKS overlay 일부로 pg-dump CronJob 추가, 이후 스케줄 조정·DeadlineExceeded 대응·3단계 백업/S3(IRSA) 업로드·야간 셧다운 창 회피까지 반복 개선
 # 매일 02:10 KST Postgres dump → 전용 PVC(axis-backup-pvc) + S3 (IRSA).
 # axis-images(카드뉴스) 와 PVC 분리 + dump 단계는 EFS 미마운트(efs-csi stall 회피).
 #

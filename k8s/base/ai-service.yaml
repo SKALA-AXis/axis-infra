@@ -1,3 +1,8 @@
+# 작성일: 2026-05-04
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-04 최종민 — kustomize base(EKS) 매니페스트에 axis-ai Service 추가
+#   2026-05-06 최종민 — SKALA 공유 클러스터 단일 namespace 적용
 # axis-ai Service.
 #   · ClusterIP — 외부 노출 절대 금지.
 #   · NetworkPolicy 가 backend pod 만 접근 허용 (networkpolicy.yaml 참조).

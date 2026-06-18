@@ -1,3 +1,8 @@
+# 작성일: 2026-05-21
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-21 최종민 — 카드 평가 등 supervisor 지원 CronJob 4종 신규 추가, 이후 activeDeadlineSeconds 420 설정·야간 셧다운 창 밖으로 스케줄 이동
+#   2026-05-26 박지원 — track A 외 LLM CronJob suspend 처리, 이후 카드 평가 실행 빈도 축소·일 2회로 조정
 # W5-2 · 일 2회 CardEvaluatorSidecar (LLM-as-Judge 4 score).
 #   · card_news.evaluation_payload['llm_judge'] 가 비어있는 v2 카드를 평가.
 #   · daily cost cap: $1/일 (EVAL_DAILY_BUDGET_USD env).
