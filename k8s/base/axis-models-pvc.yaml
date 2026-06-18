@@ -1,3 +1,7 @@
+# 작성일: 2026-06-10
+# 작성자: 최종민
+# 변경이력:
+#   2026-06-10 최종민 — BGE-M3/Reranker 모델 캐시를 PVC(axis-models)로 영속화
 # BGE-M3 + Reranker 모델 캐시 PVC (huggingface hub cache).
 #   · 기존: ai-deployment 의 model-cache emptyDir — Pod 재시작마다 HF 에서 ~3.4GB 재다운로드.
 #   · 노드가 매일 23:00–07:00 KST 재생성되는 환경(ADR 0007)이라 매 아침 재다운로드 발생

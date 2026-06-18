@@ -1,3 +1,8 @@
+# 작성일: 2026-05-04
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-04 최종민 — 로컬용 in-cluster Qdrant 매니페스트 추가, namespace 단일화 및 이미지 v1.9.4 핀 고정
+#   2026-06-08 박진 — Qdrant 이미지 런타임 업그레이드(v1.18.0)
 # 옵션 — in-cluster Qdrant.
 # kustomization.yaml 의 resources 에서 주석 해제 후 사용.
 ---

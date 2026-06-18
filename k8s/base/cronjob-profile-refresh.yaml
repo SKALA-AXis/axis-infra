@@ -1,3 +1,8 @@
+# 작성일: 2026-05-21
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-21 최종민 — profile-refresh CronJob 신설, Degraded 복구 및 셧다운 시간대 밖으로 스케줄 이동
+#   2026-05-26 박지원 — track-a 외 LLM cronjob suspend 및 profile·trend cronjob 정비
 # W2-2 · 분기 1회 (분기 첫날 03:00 KST) peer profile_snapshot 갱신.
 #   · axis-ai 컨테이너에서 scripts/refresh_peer_profile_snapshots.py 실행.
 #   · PeerProfileAgent(ProfileInputBuilder → EvidenceSelector → SnapshotSummarizer → Validator)

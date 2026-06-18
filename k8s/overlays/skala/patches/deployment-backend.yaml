@@ -1,3 +1,8 @@
+# 작성일: 2026-05-08
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-08 최종민 — SKALA EKS in-namespace 배포 overlay에 backend 패치 추가
+#   2026-05-12 최종민 — AWS SES 발송용 IRSA ServiceAccount(ses-mailer-sa)로 변경
 apiVersion: apps/v1
 kind: Deployment
 metadata:

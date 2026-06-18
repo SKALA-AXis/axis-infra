@@ -1,3 +1,7 @@
+# 작성일: 2026-05-04
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-04 최종민 — 로컬 single-node용 axis-images PVC 패치 추가 및 namespace를 공유 클러스터 단일 namespace로 적용
 # 로컬 single-node 가정 — RWO + local-path StorageClass.
 #
 # 주의: ai 와 backend 가 같은 PVC 를 mount 해야 하는데 RWO 라 한 노드에 배치되어야 함.

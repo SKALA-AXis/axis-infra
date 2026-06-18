@@ -1,3 +1,8 @@
+# 작성일: 2026-05-04
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-04 최종민 — kustomize base(EKS) 매니페스트로 Track A ingestion CronJob 추가, 이후 단일 namespace 적용·CronJob 실패 Slack 알림·콜드스타트 흡수·야간 셧다운 창 밖으로 스케줄 이동
+#   2026-05-18 박지원 — track 설정 수정
 # Track A · 뉴스성 고빈도 인제스션.
 #   · naver_news / global_newsroom
 #   · backend 의 /api/pipeline/trigger?track=A 호출 (B1 코드 변경 후 동작).

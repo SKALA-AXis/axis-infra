@@ -1,3 +1,7 @@
+# 작성일: 2026-06-15
+# 작성자: 최종민
+# 변경이력:
+#   2026-06-15 최종민 — 클러스터 데모 뉴스룸 페이지 추가 및 sent_alerts 스키마 동기화
 # 데모 뉴스룸 — 시연용 정적 페이지(공개 nginx:alpine, ConfigMap 마운트).
 #   · 발표 시 "중요 뉴스 게시 → 이메일 알림" 을 시연하는 throwaway 표면.
 #   · 정적 HTML 1장만 서빙. API(/api/demo/**)는 페이지의 same-origin fetch 로 backend 가 처리.

@@ -1,3 +1,7 @@
+# 작성일: 2026-05-04
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-04 최종민 — kustomize base/local 매니페스트로 추가, 단일 namespace 적용 및 CronJob 실패 Slack 알림·하드닝 반영
 # Weak Signal · 월 09:00 약신호 감지 (W7+).
 #   · 현재는 suspend: true — W7 활성 시 false 로 변경.
 #   · ai 측 WeakSignalSupervisor 미구현 상태에서 호출 시 500 또는 stub 응답.

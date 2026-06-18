@@ -1,3 +1,7 @@
+# 작성일: 2026-05-04
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-04 최종민 — ALB Ingress 최초 작성(kustomize base), 단일 namespace 적용 후 데모 뉴스룸 경로 추가
 # AWS ALB Ingress.
 #   · 사내망 only (D4 권장) — alb.ingress.kubernetes.io/scheme: internal
 #   · TLS termination at ALB — ACM 인증서 ARN 필요

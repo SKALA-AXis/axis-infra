@@ -1,3 +1,8 @@
+# 작성일: 2026-05-04
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-04 최종민 — kustomize base(EKS) 매니페스트로 Track B ingestion CronJob 추가, 이후 단일 namespace 적용·CronJob 실패 Slack 알림·콜드스타트 흡수 보강
+#   2026-05-18 박지원 — track 설정 수정, 이후 DB schema V31 반영
 # Track B · 평일 마켓/증권 리포트 인제스션.
 #   · stock / naver_research
 apiVersion: batch/v1

@@ -1,3 +1,8 @@
+# 작성일: 2026-05-08
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-08 최종민 — SKALA EKS in-namespace 배포 overlay에 ingress host 패치 추가
+#   2026-05-29 최종민 — public-nginx + cert-manager HTTPS 전환에 맞춰 host 조정
 # Ingress host — SKALA 공용 플랫폼 도메인으로 고정.
 # *.skala25a.project.skala-ai.com 은 공용 nginx ALB 로 DNS 가 이미 잡혀 있고
 # cert-manager(letsencrypt-prod)로 무료 TLS 인증서를 발급받는다. (도메인 구매 불필요)

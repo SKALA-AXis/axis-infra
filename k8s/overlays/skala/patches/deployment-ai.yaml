@@ -1,3 +1,7 @@
+# 작성일: 2026-05-08
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-08 최종민 — SKALA overlay 용 axis-ai Deployment 패치 추가 (Harbor pull secret 주입)
 apiVersion: apps/v1
 kind: Deployment
 metadata:

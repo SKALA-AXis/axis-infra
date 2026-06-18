@@ -1,3 +1,7 @@
+# 작성일: 2026-05-04
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-04 최종민 — kustomize base(EKS) 매니페스트로 delivery CronJob 추가, 이후 단일 namespace 적용·CronJob 실패 Slack 알림 및 deadline 정비
 # Delivery · 평일 08:30 메일 브리핑.
 #   · backend 의 /api/pipeline/delivery 호출 → backend 가 ai 의 /pipeline/delivery 위임 (D8b=a).
 #   · backend 측 endpoint 구현 필요 (B8).

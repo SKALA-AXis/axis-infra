@@ -1,3 +1,9 @@
+# 작성일: 2026-04-21
+# 작성자: 최종민
+# 변경이력:
+#   2026-04-21 최종민 — compose 베이스라인 작성, obsolete version 키 제거, Supabase+Qdrant Cloud 전환 및 local 프로파일 복구, 카드뉴스 이미지 공유 볼륨, WORK24 API 키 전파, Qdrant v1.9.4 핀
+#   2026-05-07 박지원 — DB 스키마 업데이트 반영, naver id 수정
+#   2026-06-08 박진 — Qdrant 런타임 업그레이드, 목업 삭제 및 챗봇 고도화 반영
 # 두 가지 모드 지원:
 #  - cluster-db (권장): host port-forward로 SKALA EKS Postgres/Qdrant에 연결.
 #       make up-cluster

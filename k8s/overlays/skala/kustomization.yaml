@@ -1,3 +1,9 @@
+# 작성일: 2026-05-08
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-08 최종민 — SKALA EKS overlay kustomization 최초 작성, 이후 ArgoCD GitOps 도입·백업/cron/harbor-pull·모델캐시 PVC 리소스 편입
+#   2026-05-18 박지원 — overlay resources 목록 수정
+#   2026-05-22 박진 — 로그인 인증 작업(auth) 브랜치 병합 반영
 # SKALA EKS overlay — class3-team13
 #
 # 대상 환경:
@@ -41,10 +47,10 @@ resources:
 images:
 - name: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-ai
   newName: amdp-registry.skala-ai.com/skala26a-ai3/axis-ai
-  newTag: 6c6d1f7
+  newTag: "71908e8"
 - name: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-ai-cron
   newName: amdp-registry.skala-ai.com/skala26a-ai3/axis-ai-cron
-  newTag: 6c6d1f7
+  newTag: "71908e8"
 - name: REPLACE_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/axis-backend
   newName: amdp-registry.skala-ai.com/skala26a-ai3/axis-backend
   newTag: dfea98f

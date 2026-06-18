@@ -1,3 +1,7 @@
+# 작성일: 2026-05-08
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-08 최종민 — SKALA EKS in-namespace 배포 overlay 일부로 backend alias Service 추가
 # axis-frontend 의 nginx default.conf 가 `upstream backend` 를 expect.
 # 우리 backend Service 이름은 `axis-backend` 라 mismatch → alias Service 추가.
 # ExternalName 으로 axis-backend 를 가리키는 logical alias.

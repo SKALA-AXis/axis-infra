@@ -1,3 +1,7 @@
+# 작성일: 2026-05-04
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-04 최종민 — kind 로컬 클러스터 설정(single node + NodePort 매핑) 추가
 # kind 클러스터 설정 — single node + NodePort 매핑.
 #
 # 사용:

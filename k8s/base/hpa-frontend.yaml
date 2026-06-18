@@ -1,3 +1,7 @@
+# 작성일: 2026-05-04
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-04 최종민 — frontend HPA 최초 작성(kustomize base) 및 단일 namespace 적용
 # Horizontal Pod Autoscaler — frontend
 # 전제: metrics-server 설치 (EKS 기본 미포함, helm install metrics-server)
 apiVersion: autoscaling/v2

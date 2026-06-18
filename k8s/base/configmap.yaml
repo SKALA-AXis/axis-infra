@@ -1,3 +1,9 @@
+# 작성일: 2026-05-04
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-04 최종민 — kustomize base(EKS) 매니페스트에 axis-config ConfigMap 추가
+#   2026-05-21 박진 — 로그인/회원가입 관련 설정 추가 및 로직 개선
+#   2026-06-11 박지원 — LLM 뉴스 클러스터 postprocess cron 활성화 설정
 # axis-config — 비밀이 아닌 설정만. 자격증명은 secret.yaml 참조.
 # 값에 placeholder 가 있으면 환경별 overlay 또는 실 배포 전에 치환.
 apiVersion: v1

@@ -1,3 +1,7 @@
+# 작성일: 2026-06-09
+# 작성자: 최종민
+# 변경이력:
+#   2026-06-09 최종민 — pg-dump 전용 백업 PVC(axis-backup-pvc) 신규 추가
 # pg_dump 전용 RWX PVC — axis-images(카드뉴스 이미지) 와 분리해 EFS I/O 경합 제거.
 apiVersion: v1
 kind: PersistentVolumeClaim

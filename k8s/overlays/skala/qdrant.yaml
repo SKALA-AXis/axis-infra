@@ -1,3 +1,11 @@
+# 작성일: 2026-05-08
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-08 최종민 — SKALA EKS in-namespace 배포 overlay에 Qdrant 추가
+#   2026-05-11 최종민 — ArgoCD GitOps 도입에 맞춘 변경
+#   2026-06-08 박진 — Qdrant 런타임 업그레이드
+#   2026-06-09 최종민 — PVC segment 포맷 비호환 회피로 이미지 v1.9.4 고정
+#   2026-06-12 최종민 — namespace CPU request 적정화(surge 포드 Pending 해소)
 # SKALA EKS overlay — namespace 내부 Qdrant.
 # StorageClass: gp3 (SKALA 클러스터 default).
 # 데이터 보존: PVC qdrant-data (5Gi). 임베딩 재생성 비용 큼 → 백업 권장.

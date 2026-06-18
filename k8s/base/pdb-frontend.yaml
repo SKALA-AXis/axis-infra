@@ -1,3 +1,7 @@
+# 작성일: 2026-06-08
+# 작성자: 최종민
+# 변경이력:
+#   2026-06-08 최종민 — axis-frontend PodDisruptionBudget 추가(infra 하드닝 배치)
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:

@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# 작성일: 2026-05-04
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-04 최종민 — .env SSoT 기반 K8s Secret YAML 자동 생성 스크립트 신규 작성, 이후 SECRET_KEYS 목록 갱신(WORK24 키 교체 등)
+#   2026-05-18 박지원 — NAVER 클라이언트 키 항목 수정
 #
 # .env (or .env.local) 에서 K8s Secret YAML 을 생성한다.
 # stdout 으로 출력 — Makefile 의 secret target 에서 redirect 로 파일 저장.

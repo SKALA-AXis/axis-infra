@@ -1,3 +1,9 @@
+# 작성일: 2026-05-08
+# 작성자: 최종민
+# 변경이력:
+#   2026-05-08 최종민 — SKALA EKS in-namespace 배포 overlay에 ingress 패치 추가
+#   2026-05-29 최종민 — ingress를 public-nginx + cert-manager HTTPS로 전환
+#   2026-06-17 심유정 — strategy context용 ingress timeout 연장
 # Ingress SKALA 환경 patch — 공용 nginx + cert-manager HTTPS 로 전환 (team5/team6 패턴).
 #
 # 변경 (vs base, 그리고 이전 ALB-HTTP overlay 대비):
