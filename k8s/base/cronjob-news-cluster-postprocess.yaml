@@ -61,9 +61,9 @@ spec:
                 - name: ENABLE_OPENAI_CALLS
                   value: "true"
                 - name: ENABLE_RELEVANCE_LLM
-                  value: "true"
+                  value: "false"
                 - name: POSTPROCESS_TITLE_LLM_JUDGE_ENABLED
-                  value: "true"
+                  value: "false"
               resources:
                 requests:
                   cpu: 50m
