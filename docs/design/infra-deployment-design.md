@@ -89,7 +89,6 @@ GitHub Actions / CI
 | `axis-cron-delivery` | 평일 08:30 | backend `/api/pipeline/delivery` | 일일 브리핑 발송 | backend + SES |
 | `axis-cron-global-trend` | 월요일 02:30 | axis-ai `/global/trends/run` | 글로벌 IT 트렌드 갱신 | axis-ai |
 | `axis-cron-profile-refresh` | 분기 첫 달 1일 03:00 | `scripts/refresh_peer_profile_snapshots.py` | 피어 프로필 snapshot 갱신 | axis-ai |
-| `axis-cron-card-evaluator` | 매일 12:00, 22:00 | `scripts.evaluate_recent_cards` | 카드 LLM judge/evaluation | axis-ai-cron |
 | `axis-cron-sector-pulse` | 월요일 02:00 | psql/materialized view refresh | 섹터 pulse 갱신 | PostgreSQL |
 | `axis-cron-capability-evolution` | 매월 1일 03:00 | `scripts/refresh_capability_evolution.py` | 역량 변화 context 갱신 | axis-ai |
 | `axis-cron-failure-notifier` | 10분마다 | kubectl + Slack webhook | CronJob 실패 알림 | K8s API/Slack |
@@ -224,7 +223,6 @@ Secret 생성, 백업/복구, 진단 cleanup 등 운영 보조 작업을 제공�
 | `axis-cron-ingestion-*` | Backend `PipelineController.trigger` | axis-ai crawler/preprocessing/pipeline, PostgreSQL, Qdrant |
 | `axis-cron-global-trend` | Backend/Frontend Global Trends read API | `ITTrendAgent`, global trend tables |
 | `axis-cron-profile-refresh` | Peer+ / analysis context | `PeerProfileAgent`, `peer_companies.profile_snapshot` |
-| `axis-cron-card-evaluator` | 카드 품질/관리자 검수 | card evaluation payload |
 | `axis-cron-delivery` | `BriefingService.generateAndSend` | `card_news`, AWS SES |
 | `axis-images` PVC | Backend image serving, frontend cards | axis-ai image writer |
 | `openapi.yaml` | frontend repository, backend controller | API contract |
