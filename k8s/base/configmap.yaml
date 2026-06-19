@@ -33,13 +33,14 @@ data:
   POSTPROCESS_TITLE_LLM_JUDGE_ENABLED: "false"
 
   # ── premium LLM 경로 모델: gpt-4o 통일 (2026-06-18 비용 절감 — gpt-5.5/5.4 대신 4o).
-  # briefing(메일 본문)·today-insight·mixer-deep 는 호출 빈도가 낮아도 gpt-5 계열은 비싸,
+  # briefing(메일 본문)·today-insight·mixer-deep·strategic frontend-ready 는 호출 빈도가 낮아도 gpt-5 계열은 비싸,
   # 가성비 위해 premium 경로도 gpt-4o 로 하향. 코드 기본: briefing=gpt-4o /
-  # today-insight·mixer-deep=gpt-5.5 → 여기서 셋 다 gpt-4o 로 명시 하향.
+  # today-insight·mixer-deep·strategic frontend-ready=gpt-5.5 → 여기서 gpt-4o 로 명시 하향.
   # cronjob-briefing-generate(curl→동일 API)·on-demand 모두 ai-deployment 포드라 본 ConfigMap 하나로 적용.
   BRIEFING_LLM_MODEL: "gpt-4o"
   TODAY_INSIGHT_MODEL: "gpt-4o"
   MIXER_DEEP_LLM_MODEL: "gpt-4o"
+  FRONTEND_READY_MODEL: "gpt-4o"
 
   # ── 카드 뉴스 이미지 공유 볼륨
   IMAGE_STORAGE_PATH: "/data/images"

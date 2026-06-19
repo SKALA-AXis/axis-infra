@@ -92,7 +92,7 @@ ENTRYPOINT ["java","-XX:MaxRAMPercentage=75","-jar","app.jar"]
    → ArgoCD 가 develop 변경 감지(3분 polling) → cluster sync
 ```
 
-> **신규 이미지 추가 시**: `kustomization.yaml` 에 `axis-ai-cron` 등 **Harbor에 push된 태그**만 참조. infra 머지가 axis-ai Build and Push 보다 앞서면 `ImagePullBackOff` → CronJob `DeadlineExceeded` 발생 (2026-06-08 card-evaluator).
+> **신규 이미지 추가 시**: `kustomization.yaml` 에 `axis-ai-cron` 등 **Harbor에 push된 태그**만 참조. infra 머지가 axis-ai Build and Push 보다 앞서면 `ImagePullBackOff` → CronJob `DeadlineExceeded` 가 발생할 수 있다.
 
 ### ArgoCD Application (`k8s/argocd/axis-application.yaml`)
 | 설정 | 값 | 의미 |
@@ -191,7 +191,6 @@ k8s/
 | ingestion-c | 08:30, 17:30 | backend 트리거 | |
 | ingestion-d | **04:25** | backend 트리거 track=D | ingestion-a 03:00/04:00 파이프라인과 겹침 회피 |
 | delivery | 평일 08:30 | 일일 브리핑 메일 발송 | |
-| card-evaluator | 매일 12:00, 22:00 | `axis-ai-cron` 이미지로 LLM-as-Judge | Playwright/torch 제외 |
 | global-trend | 매일 02:30 KST | curl axis-ai `/global/trends/run` (retry-connrefused) | LLM |
 | profile-refresh | 분기 1/4/7/10 03:00 | axis-ai `refresh_peer_profile_snapshots.py` | PYTHONPATH=/app |
 | sector-pulse | 월 02:00 | psql REFRESH MV (retry + CONCURRENTLY 폴백) | |
@@ -279,10 +278,8 @@ k8s/
 | sector-pulse 실패 | psql 일시 연결거부 / MV edge | PR #45: psql 재시도 + CONCURRENTLY→blocking 폴백 |
 | CRON 토큰 우회 | backend fail-open(빈 토큰=허용) | prod `cron-auth-required=true` fail-closed (2026-06) |
 | JWT 키 이름 혼동 | 예시 `JWT_SECRET` vs backend `AXIS_AUTH_JWT_SECRET` | 예시/스크립트 통일 + legacy 키 클러스터 제거 |
-| card-evaluator 6GB pull | full axis-ai 이미지(Playwright/torch) 재사용 | `axis-ai-cron` 슬림 이미지 + 리소스 하향 |
 | gitleaks 미적용 | CI secret scan 없음 | OSS gitleaks CLI (`--no-git`) |
 | diag-cap Degraded | suspend CronJob 에서 수동 `kubectl create job` | Job 삭제 + notifier가 `diag-*` 제외 |
-| card-evaluator DeadlineExceeded | infra가 `axis-ai-cron:f02ce52` 참조했으나 Harbor 미push | axis-ai #105 merge → `543283c` push; deploy 순서 주의 |
 | qdrant CrashLoopBackOff | **v1.9.4 PVC** 를 **v1.18.0** 으로 무중단 업그레이드 → segment `on_disk` 역직렬화 panic | 이미지 **v1.9.4 pin** 복구. major bump 는 snapshot export/import 후만 |
 | 아침 7시 Cron·Pod 알림 폭주 | ① Qdrant 다운 → ingestion 실패 ② ArgoCD 롤아웃 중 **구 RS** `ErrImagePull` ③ 의존 서비스 불능 시 Cron이 deadline 까지 hang | 근본 원인(벡터 DB·이미지 태그) 먼저 해결. notifier deadline 300s |
 | ArgoCD UI RS 10개씩 | `revisionHistoryLimit: 10` 의 0-replica 히스토리 | 정상. 필요 시 limit 하향 |
