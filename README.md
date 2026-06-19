@@ -5,14 +5,14 @@ AXIS는 Peer사(삼성SDS·LG CNS·현대오토에버·포스코DX)의 전략적
 이 레포(`axis-infra`)는 **4개 레포를 묶는 단일 기준(Single Source of Truth)**이자 **로컬 풀스택 실행의 오케스트레이션 허브**입니다.
 
 ```
-React (frontend :3000)  ──REST──▶  Spring Boot (backend :8080)  ──HTTP 내부──▶  Python AI (FastAPI :8001)
+React (frontend :3000)  ──REST──→  Spring Boot (backend :8080)  ──HTTP 내부──→  Python AI (FastAPI :8001)
                                           │                                          │
                                    PostgreSQL :5432 (원문 전량)            Qdrant :6333 (벡터)
 ```
 
 ---
 
-## 1. 빠른 시작 — 완전 로컬 실행 (클러스터·팀 시크릿 불필요) ⭐
+## 1. 빠른 시작 — 완전 로컬 실행 (클러스터·팀 시크릿 불필요)
 
 > **평가자/처음 받는 분은 이 섹션만 보면 됩니다.** SKALA EKS 접근 권한이나 팀 비밀값 없이, 로컬 Docker만으로 전체 스택(DB·벡터DB·backend·ai·frontend)이 뜹니다.
 
