@@ -180,7 +180,7 @@ docker compose --profile local up -d postgres qdrant
 
 # 2) 각 서비스를 호스트에서 (별도 터미널)
 cd ../axis-backend  && ./gradlew bootRun --args='--spring.profiles.active=local'   # :8080
-cd ../axis-ai       && uv run uvicorn src.main:app --reload --port 8001            # :8001
+cd ../axis-ai       && uv sync && uv run uvicorn src.api.main:app --port 8001      # :8001
 cd ../axis-frontend && npm install && npm run dev                                  # :3000 (Vite proxy → 8080)
 ```
 
