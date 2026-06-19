@@ -79,7 +79,7 @@ spec:
     spec:
       containers:
         - name: qdrant
-          image: qdrant/qdrant:v1.9.4
+          image: qdrant/qdrant:v1.17.1
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
